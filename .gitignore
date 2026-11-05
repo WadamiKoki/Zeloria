@@ -22,3 +22,6 @@ Thumbs.db
 
 # Git・バージョン管理
 .git/
+
+#VsCode
+.vscode/
