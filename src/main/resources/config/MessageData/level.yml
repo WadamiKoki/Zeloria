@@ -1,0 +1,6 @@
+id: "level"
+name: "レベル・経験値関連メッセージ"
+
+# モブ撃破時の経験値獲得とレベルアップ通知。
+gain: "<gray>経験値</gray> <aqua>+{exp}</aqua> <dark_gray>(Lv.{level} {current}/{required})</dark_gray>"
+level_up: "<gold><bold>LEVEL UP!</bold></gold> <white>Lv.{old_level}</white> <gray>→</gray> <yellow>Lv.{new_level}</yellow> <dark_gray>(+{levels})</dark_gray>"

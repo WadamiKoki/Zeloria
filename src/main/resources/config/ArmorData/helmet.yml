@@ -1,0 +1,28 @@
+id: "helmet"
+name: "<white>ヘルメット"
+material: IRON_HELMET
+lore:
+  - "<gray>防具テンプレート（ヘルメット）。"
+  - "<gray>stats の数値を編集して使用してください。"
+sell_price: 0
+equipment_slot: HELMET
+requiredLevel: 0
+stats:
+  maxHealth: 20
+  maxMana: 0
+  attackPower: 0
+  defense1: 0
+  defense2: 0
+  criticalRate: 0
+  criticalDamage: 0
+  accuracy: 0
+  evasion: 0
+  dodgeCooldownReduction: 0
+  cooldownReduction: 0
+  moveSpeed: 0
+  healthRegenFlat: 0
+  healthRegenPercent: 0
+  manaRegenFlat: 0
+  manaRegenPercent: 0
+  armorPenetration: 0
+  lifesteal: 0

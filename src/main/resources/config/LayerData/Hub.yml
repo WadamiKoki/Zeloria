@@ -1,0 +1,36 @@
+id: "hub"
+name: "中心街"
+templateId: "hub"
+maxInstances: 1
+isShared: true
+
+display:
+  title: "<gradient:#00c6ff:#0072ff><bold>中央都市</bold></gradient>"
+  subtitle: "<gray>ようこそ、<white>{player}</white> さん</gray>"
+  fade_in: 10
+  stay: 50
+  fade_out: 10
+  sound: "block.note_block.pling"
+  volume: 1.0
+  pitch: 1.2
+
+portals:
+  to_field:
+    world: "hub_instance_1"
+    x: 0.5
+    y: 65.0
+    z: 0.5
+    target_template: "field_1"
+    target_x: 0.5
+    target_y: 65.0
+    target_z: 0.5
+    target_yaw: 0.0
+    target_pitch: 0.0
+
+npcs:
+  - npcId: test
+    x: 3.5
+    y: 65.0
+    z: 0.5
+    yaw: 90.0
+    pitch: 0.0

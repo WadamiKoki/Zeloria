@@ -1,0 +1,6 @@
+id: "combat"
+name: "戦闘モード関連メッセージ"
+
+mode:
+  # 戦闘モード ON 切り替え時にアクションバーへ表示する。
+  enabled: "<gold>戦闘モード: ON</gold>"

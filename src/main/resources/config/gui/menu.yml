@@ -1,0 +1,63 @@
+id: "menu"
+name: "装備メニュー設定"
+
+gui:
+  title: "<gradient:#00c6ff:#0072ff><bold>Zeloria</bold></gradient> <dark_gray>|</dark_gray> <white>装備メニュー</white>"
+  rows: 6
+filler:
+  equipment: "LIGHT_BLUE_STAINED_GLASS_PANE"
+equipment_slots:
+  helmet: 16
+  offhand: 24
+  chestplate: 25
+  main_weapon: 26
+  leggings: 34
+  boots: 43
+
+# 装飾専用アイテム
+decorations:
+  divider:
+    material: "GRAY_STAINED_GLASS_PANE"
+    slots: [5, 14, 23, 32, 41, 50]
+
+# 閉じるボタン
+footer:
+  close_slot: 53
+
+features:
+  class_select:
+    slot: 0
+    icon: class_select
+    action: class_select
+    permission: "zeloria.player"
+
+sounds:
+  open:
+    key: "block.ender_chest.open"
+    volume: 0.8
+    pitch: 1.2
+  click:
+    key: "ui.button.click"
+    volume: 0.6
+    pitch: 1.4
+  error:
+    key: "entity.villager.no"
+    volume: 0.7
+    pitch: 1.0
+  equip:
+    key: "item.armor.equip_generic"
+    volume: 0.9
+    pitch: 1.1
+
+icons:
+  class_select:
+    material: "END_CRYSTAL"
+    name: "<aqua>クラス選択</aqua>"
+    lore:
+      - "<gray>クリックでクラス選択画面を開きます</gray>"
+      - "<dark_gray>5つのクラスから選択できます</dark_gray>"
+  close:
+    material: "COMPASS"
+    name: "<red>閉じる</red>"
+    lore:
+      - "<gray>クリックでメニューを閉じます</gray>"

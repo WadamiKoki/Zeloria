@@ -1,0 +1,13 @@
+id: "equipment"
+name: "装備関連メッセージ"
+
+# バニラ操作で装備しようとした場合の案内。
+armor_blocked: "<red>防具は <white>/menu</white> から装備してください。</red>"
+offhand_blocked: "<red>オフハンドは <white>/menu</white> から装備してください。</red>"
+slot_locked: "<red>このスロットは装備表示専用のため操作できません。</red>"
+
+# 必要レベルを満たさない場合の通知。
+level_required: "<red>この装備にはレベル <white>{required}</white> 以上が必要です。</red> <gray>(現在: Lv.{level})</gray>"
+
+# 退避していたアイテムをインベントリへ戻せず、足元へドロップした場合の通知。
+overflow_dropped: "<yellow>インベントリがいっぱいのため、アイテムを足元にドロップしました。</yellow>"

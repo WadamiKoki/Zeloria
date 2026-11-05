@@ -1,0 +1,15 @@
+id: "system"
+name: "システム共通メッセージ"
+
+prefix: "<gradient:#00c6ff:#0072ff>[Zeloria]</gradient> "
+
+system:
+  player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
+  unknown_command: "<red>不明なコマンドです。</red>"
+  reloaded: "<green>設定を再読み込みしました。</green> <gray>({count} 件)</gray>"
+  layer_unavailable: "<red>レイヤーが利用できません。</red>"
+  data_saved: "<green>プレイヤーデータを保存しました。</green>"
+
+layer:
+  enter: "<gray>レイヤー</gray> <white>{layer_name}</white> <gray>へ入場しました。</gray>"
+  leave: "<gray>レイヤー</gray> <white>{layer_name}</white> <gray>から退出しました。</gray>"

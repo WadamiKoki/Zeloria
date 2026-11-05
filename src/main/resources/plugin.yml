@@ -1,0 +1,32 @@
+name: Zeloria
+version: '${version}'
+
+main: com.zeloria.core.Zeloria
+api-version: '26.3'
+load: POSTWORLD
+
+commands:
+  menu:
+    description: 装備メニュー（装備の着脱）を開く
+    usage: /menu
+    aliases: [inv, inventory, equipment]
+  admin:
+    description: Zeloria の管理コマンド
+    usage: /admin <reload|test yaml [<folder>] [<id>]|test db|give <armor|material|weapon> <id> [amount]|npc <list|spawn <npcId>|remove>|stop>
+    aliases: [zeloria]
+
+permissions:
+  zeloria.menu:
+    description: /menu で装備メニューを開く
+    default: true
+  zeloria.player:
+    description: /menu のクラス選択からクラス選択 GUI を開く
+    default: true
+  zeloria.admin:
+    description: Zeloria の管理コマンドを実行する
+    default: op
+    children:
+      zeloria.admin.stop: true
+  zeloria.admin.stop:
+    description: 安全停止コマンド (/admin stop) を実行する
+    default: op

@@ -1,0 +1,28 @@
+id: "sorcerer_skill2"
+icon: "AMETHYST_SHARD"
+displayName: "<green>スキル2</green>"
+description: "ここにスキルの説明を書く"
+cooldown: 5 # 秒
+
+# コスト関連
+manaCost: 10 # 固定マナコスト
+manaPercentCost: 0.0 # 最大マナに対する割合コスト (0.1 = 10%)
+healthCost: 0 # 固定ヘルスコスト
+healthPercentCost: 0.0 # 最大ヘルスに対する割合コスト (0.05 = 5%)
+
+# 効果関連
+baseDamageMultiplier: 1.0 # 基礎ダメージ倍率
+range: 5.0 # 効果範囲・射程距離 (ブロック単位)
+
+# 戦闘効果
+armorPenetration: 0.0 # 相手の防御力を無視する割合 (0.2 = 20%)
+lifesteal: 0.0 # 与ダメージに対する回復割合 (0.1 = 10%)
+particle: "CRIT" # 発動時に表示するパーティクル (空文字で無効)
+particleCount: 12 # パーティクル数
+particleSpread: 0.5 # パーティクルの広がり
+sound: "entity.player.attack.sweep" # 発動音 (空文字で無効)
+soundVolume: 1.0 # 音量
+soundPitch: 1.0 # 音の高さ
+
+# 今後のツリー分岐用の空枠
+upgrades: []

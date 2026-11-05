@@ -1,0 +1,13 @@
+id: "test"
+name: "テストモブ"
+# 省略時はZOMBIE。
+entityType: "zombie"
+maxHp: 50.0
+defense: 2.0
+attackPower: 4.0
+criticalRate: 5.0
+criticalDamage: 50.0
+accuracy: 90.0
+evasion: 0.0
+expReward: 15
+moneyReward: 5

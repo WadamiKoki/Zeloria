@@ -1,0 +1,32 @@
+id: "archer_test_bow"
+name: "<white>アーチャー用武器テンプレート（弓）"
+material: BOW
+lore:
+  - "<gray>アーチャー用の武器テンプレート。"
+  - "<gray>stats の数値を編集して使用してください。"
+sell_price: 0
+weaponType: "BOW"
+baseDamage: 5.0
+attackRange: 0.0
+attackAngle: 0.0
+requiredLevel: 1
+stats:
+  maxHealth: 0
+  maxMana: 0
+  attackPower: 0
+  defense1: 0
+  defense2: 0
+  criticalRate: 0
+  criticalDamage: 0
+  accuracy: 0
+  evasion: 0
+  dodgeCooldownReduction: 0
+  cooldownReduction: 0
+  moveSpeed: 0
+  healthRegenFlat: 0
+  healthRegenPercent: 0
+  manaRegenFlat: 0
+  manaRegenPercent: 0
+  armorPenetration: 0
+  lifesteal: 0
+

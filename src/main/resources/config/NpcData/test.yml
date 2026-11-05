@@ -1,0 +1,24 @@
+# NPC 定義。1 ファイルが 1 種類の NPC に対応します。
+# ファイル名（拡張子なし）が ID のフォールバックになります。
+id: "test"
+name: "<green>テストNPC</green>"
+
+# スポーンさせるエンティティ種別（Bukkit の EntityType 名）。
+# villager / minecraft:villager のような表記も受け付けます。
+mobType: "VILLAGER"
+
+# 名前を常時表示するか。
+alwaysShowName: true
+
+# 右クリックで開く GUI（config/gui/<name>.yml）。
+# 空文字にすると右クリックしても何も開きません。
+interactGui: "menu"
+
+# 見た目用の装備。未指定または AIR は非表示。
+# NPC の装備はドロップしません。
+equipment:
+  mainHand: "AIR"
+  helmet: "AIR"
+  chestplate: "AIR"
+  leggings: "AIR"
+  boots: "AIR"

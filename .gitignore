@@ -1,0 +1,24 @@
+# ビルド成果物・キャッシュ
+.gradle/
+.idea/
+build/
+out/
+bin/
+*.jar
+*.class
+
+# ログファイル・一時ファイル
+*.log
+*.tmp
+*.temp
+
+# OS・システムファイル
+.DS_Store
+Thumbs.db
+
+# データベース関連（ローカル検証用データなど）
+*.db
+*.sqlite
+
+# Git・バージョン管理
+.git/

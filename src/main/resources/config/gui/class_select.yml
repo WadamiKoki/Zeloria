@@ -1,0 +1,33 @@
+id: "class_select"
+name: "クラス選択 GUI 設定"
+
+gui:
+  title: "<gradient:#00c6ff:#0072ff><bold>Zeloria</bold></gradient> <dark_gray>|</dark_gray> <white>クラス選択</white>"
+  rows: 5
+
+classes:
+  archer: 18
+  sorcerer: 20
+  rogue: 22
+  knight: 24
+  vanguard: 26
+
+status:
+  selected: "<green>▶ 選択中</green>"
+  unlocked: "<yellow>クリックでこのクラスに切り替えます</yellow>"
+  locked: "<red>未解放</red>"
+
+# UI 効果音
+sounds:
+  open:
+    key: "block.ender_chest.open"
+    volume: 0.8
+    pitch: 1.2
+  click:
+    key: "ui.button.click"
+    volume: 0.7
+    pitch: 1.4
+  error:
+    key: "entity.villager.no"
+    volume: 0.8
+    pitch: 1.0

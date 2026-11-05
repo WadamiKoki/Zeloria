@@ -1,0 +1,14 @@
+id: "skill"
+name: "スキル関連メッセージ"
+
+skill:
+  not_enough_mp: "<red>MP が足りません。</red> <gray>(必要: <yellow>{cost}</yellow> / 現在: <white>{current}</white>)</gray>"
+  not_enough_hp: "<red>HP が足りません。</red> <gray>(必要: <yellow>{cost}</yellow> / 現在: <white>{current}</white>)</gray>"
+  no_target: "<red>対象が見つかりません。</red> <gray>(<white>{skill_name}</white>)</gray>"
+  cooldown: "<gray><white>{skill_name}</white> はクールダウン中です。</gray> <yellow>({time} 秒)</yellow>"
+  not_found: "<red>スキルが見つかりません: <white>{skill_name}</white></red>"
+  not_owned: "<red>このスキルは現在のクラスでは使用できません: <white>{skill_name}</white></red>"
+  cast: "<aqua>{skill_name}</aqua> <gray>を発動しました。</gray>"
+  damage: "<gray><white>{target}</white> に <red>{damage}</red> ダメージを与えました。</gray>"
+  critical: "<gray><white>{target}</white> に <gold>クリティカル</gold> <red>{damage}</red> ダメージを与えました。</gray>"
+  evaded: "<gray><white>{target}</white> に回避されました。</gray> <dark_gray>(<white>{skill_name}</white>)</dark_gray>"

@@ -1,0 +1,68 @@
+id: "admin"
+name: "管理コマンド関連メッセージ"
+
+# /admin コマンド全般のメッセージを一元管理します。
+# MiniMessage 形式で記述し、{permission} などのプレースホルダーは実行時に置換されます。
+
+command:
+  no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
+  player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
+  usage: "<gray>使い方:</gray> <white>/admin reload</white> <dark_gray>|</dark_gray> <white>/admin test yaml \\<folder> \\<id></white> <dark_gray>|</dark_gray> <white>/admin test db</white> <dark_gray>|</dark_gray> <white>/admin mob spawn \\<mobId></white> <dark_gray>|</dark_gray> <white>/admin info \\<player></white> <dark_gray>|</dark_gray> <white>/admin gui \\<yml></white> <dark_gray>|</dark_gray> <white>/admin npc list|spawn|remove</white> <dark_gray>|</dark_gray> <white>/admin stop</white>"
+  reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
+  unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
+
+mob:
+  spawn:
+    usage: "<gray>使い方:</gray> <white>/admin mob spawn \\<mobId> [count]</white>"
+    success: "<green>モブ</green> <white>{mob_name}</white> <gray>をスポーンしました。</gray> <dark_gray>(<gray>{count} 体</gray>)</dark_gray>"
+    not_found: "<red>モブ設定が見つかりません: <white>{mob_id}</white></red>"
+    invalid_type: "<red>スポーンできないエンティティ種別です: <white>{entity_type}</white></red>"
+    failed: "<red>モブのスポーンに失敗しました: <white>{mob_id}</white> <gray>({error})</gray></red>"
+  list:
+    empty: "<gray>MobData が 1 件も読み込まれていません。</gray>"
+    header: "<gray>MobData: <white>{count}</white> 件</gray>"
+    entry: "<gray>- <white>{mob_id}</white> <dark_gray>({entity_type})</dark_gray></gray>"
+
+give:
+  usage: "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon> \\<id> [amount]</white>"
+  success: "<green>アイテム</green> <white>{item_name}</white> <gray>を</gray> <white>{amount}</white> <gray>個付与しました。</gray>"
+  partial: "<yellow>アイテム</yellow> <white>{item_name}</white> <gray>を</gray> <white>{amount}</white> <gray>個付与しました。</gray> <dark_gray>(溢れ: <gray>{leftover}</gray> 個)</dark_gray>"
+  full: "<red>プレイヤーインベントリに空きがありません。</red>"
+  not_found: "<red>アイテム設定が見つかりません: <white>{item_id}</white></red>"
+  invalid_amount: "<red>個数は <white>1</white> 〜 <white>{max}</white> の範囲で指定してください。</red>"
+  failed: "<red>アイテムの付与に失敗しました: <gray>{error}</gray></red>"
+
+info:
+  usage: "<gray>使い方:</gray> <white>/admin info \\<player></white>"
+  header: "<gold>=== <white>{player}</white> ===</gold>"
+  identity: "<gray>UUID:</gray> <white>{uuid}</white> <dark_gray>|</dark_gray> <gray>Class:</gray> <aqua>{class}</aqua> <dark_gray>|</dark_gray> <gray>Unlocked:</gray> <white>{unlocked}</white>"
+  level: "<gray>Level:</gray> <yellow>{level}</yellow> <dark_gray>|</dark_gray> <gray>EXP:</gray> <white>{exp}</white><gray>/</gray><white>{required}</white>"
+  vitals: "<gray>HP:</gray> <red>{health}</red><gray>/</gray><white>{max_health}</white> <dark_gray>|</dark_gray> <gray>MP:</gray> <blue>{mana}</blue><gray>/</gray><white>{max_mana}</white> <dark_gray>|</dark_gray> <gray>Money:</gray> <gold>{money}</gold>"
+  combat: "<gray>ATK:</gray> <white>{attack}</white> <dark_gray>|</dark_gray> <gray>DEF1:</gray> <white>{defense1}</white> <dark_gray>/</dark_gray> <gray>DEF2:</gray> <white>{defense2}</white> <dark_gray>|</dark_gray> <gray>CRIT:</gray> <white>{crit_rate}%</white> <dark_gray>|</dark_gray> <gray>CRIT DMG:</gray> <white>{crit_damage}%</white> <dark_gray>|</dark_gray> <gray>ACC:</gray> <white>{accuracy}%</white> <dark_gray>|</dark_gray> <gray>EVA:</gray> <white>{evasion}%</white> <dark_gray>|</dark_gray> <gray>CDR:</gray> <white>{cdr}%</white> <dark_gray>|</dark_gray> <gray>Speed:</gray> <white>{move_speed}%</white>"
+  regen: "<gray>Regen:</gray> HP <white>{hp_flat}</white> + <white>{hp_percent}%</white> <dark_gray>|</dark_gray> MP <white>{mp_flat}</white> + <white>{mp_percent}%</white>"
+  connection: "<gray>Last instance:</gray> <white>{instance}</white> <dark_gray>|</dark_gray> <gray>Login:</gray> <white>{last_login}</white> <dark_gray>|</dark_gray> <gray>Saved:</gray> <white>{last_updated}</white>"
+  equipment_entry: "<gray>└ {slot}: <white>{item}</white></gray>"
+  not_found: "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"
+  error: "<red>プレイヤー情報の取得に失敗しました: <gray>{error}</gray></red>"
+
+gui:
+  usage: "<gray>使い方:</gray> <white>/admin gui \\<yml></white>"
+  not_found: "<red>GUI 設定が見つかりません: <white>{yml}</white></red>"
+  unsupported: "<red>この GUI 設定はコマンドから開けません: <white>{yml}</white></red>"
+  unavailable: "<red>GUI を開けません（未初期化）: <white>{yml}</white></red>"
+
+npc:
+  usage: "<gray>使い方:</gray> <white>/admin npc list</white> <dark_gray>|</dark_gray> <white>/admin npc spawn npcId</white> <dark_gray>|</dark_gray> <white>/admin npc remove</white>"
+  unavailable: "<red>NPC 管理が初期化されていません。</red>"
+  list:
+    empty: "<gray>NpcData が 1 件も読み込まれていません。</gray>"
+    header: "<gray>NpcData: <white>{count}</white> 件</gray>"
+    entry: "<gray>- <white>{npc_id}</white> <dark_gray>({entity_type}, GUI: {gui})</dark_gray></gray>"
+  spawn:
+    success: "<green>NPC</green> <white>{npc_id}</white> <gray>をスポーンしました。</gray>"
+    not_found: "<red>NPC 設定が見つかりません: <white>{npc_id}</white></red>"
+    failed: "<red>NPC のスポーンに失敗しました: <white>{npc_id}</white></red>"
+  remove:
+    success: "<green>最寄りの NPC を削除しました。</green>"
+    not_found: "<red>半径 {radius} ブロック以内に NPC が見つかりません。</red>"
+

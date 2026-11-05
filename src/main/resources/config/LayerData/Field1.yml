@@ -1,0 +1,29 @@
+id: "field_1"
+name: "平原フィールド"
+templateId: "field_1"
+maxInstances: 1
+isShared: false
+
+display:
+  title: "<gradient:#7ed321:#417505><bold>平原フィールド</bold></gradient>"
+  subtitle: "<gray>のどかな草原が広がっている...</gray>"
+  fade_in: 10
+  stay: 40
+  fade_out: 10
+  sound: "block.note_block.bell"
+  volume: 0.8
+  pitch: 0.9
+
+portals:
+  to_hub:
+    world: ""
+    x: 0.5
+    y: 65.0
+    z: 0.5
+    target_template: "hub"
+    target:
+      x: 0.5
+      y: 10.0
+      z: 0.5
+      yaw: 0.0
+      pitch: 0.0

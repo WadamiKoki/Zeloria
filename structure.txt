@@ -1,0 +1,191 @@
+.
+├── .clinerules
+├── .gitignore
+├── .vscode
+│   └── settings.json
+├── build.gradle.kts
+├── gradle
+│   └── wrapper
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── gradle.properties
+├── gradlew
+├── gradlew.bat
+├── settings.gradle.kts
+├── src
+│   └── main
+│       ├── java
+│       │   └── com
+│       │       └── zeloria
+│       │           ├── combat
+│       │           │   ├── CombatActionBarTask.java
+│       │           │   ├── CombatListener.java
+│       │           │   ├── CombatModeListener.java
+│       │           │   ├── CombatModeService.java
+│       │           │   ├── CombatService.java
+│       │           │   ├── CombatStateListener.java
+│       │           │   ├── CombatStateService.java
+│       │           │   ├── DamageCalculator.java
+│       │           │   ├── DamageResult.java
+│       │           │   └── DeathListener.java
+│       │           ├── command
+│       │           │   ├── AdminCommand.java
+│       │           │   └── MenuCommand.java
+│       │           ├── core
+│       │           │   ├── DatabaseManager.java
+│       │           │   ├── DatabaseService.java
+│       │           │   ├── ListenerRegistrar.java
+│       │           │   ├── LoggerService.java
+│       │           │   ├── MessageService.java
+│       │           │   ├── YamlLoader.java
+│       │           │   └── Zeloria.java
+│       │           ├── gui
+│       │           │   ├── ClassSelectGUI.java
+│       │           │   ├── GuiConfigService.java
+│       │           │   ├── GuiIcon.java
+│       │           │   ├── GuiSound.java
+│       │           │   ├── InventorySettings.java
+│       │           │   ├── MenuFeature.java
+│       │           │   ├── MenuGui.java
+│       │           │   ├── MenuLayout.java
+│       │           │   ├── MenuListener.java
+│       │           │   └── MenuService.java
+│       │           ├── item
+│       │           │   ├── ArmorData.java
+│       │           │   ├── EquipmentListener.java
+│       │           │   ├── EquipmentService.java
+│       │           │   ├── ItemCategory.java
+│       │           │   ├── ItemData.java
+│       │           │   ├── ItemService.java
+│       │           │   ├── ItemStatBonus.java
+│       │           │   ├── MaterialData.java
+│       │           │   ├── VirtualInventoryListener.java
+│       │           │   ├── VirtualInventoryService.java
+│       │           │   ├── VirtualItem.java
+│       │           │   └── WeaponData.java
+│       │           ├── mob
+│       │           │   ├── MobConfigService.java
+│       │           │   ├── MobData.java
+│       │           │   ├── MobStats.java
+│       │           │   └── MobStatsService.java
+│       │           ├── player
+│       │           │   ├── EquipSlot.java
+│       │           │   ├── InventorySerializer.java
+│       │           │   ├── PlayerClassData.java
+│       │           │   ├── PlayerData.java
+│       │           │   ├── PlayerListener.java
+│       │           │   ├── PlayerRegenTask.java
+│       │           │   ├── PlayerRepository.java
+│       │           │   ├── PlayerService.java
+│       │           │   ├── PlayerSnapshot.java
+│       │           │   ├── PlayerStats.java
+│       │           │   ├── PlayerStatsService.java
+│       │           │   ├── PlayerStatus.java
+│       │           │   └── ZeloriaClass.java
+│       │           ├── skill
+│       │           │   ├── ClassManager.java
+│       │           │   ├── CooldownService.java
+│       │           │   ├── DefinitionParser.java
+│       │           │   ├── LevelListener.java
+│       │           │   ├── LevelService.java
+│       │           │   ├── LevelSettings.java
+│       │           │   ├── Skill.java
+│       │           │   ├── SkillCastNotifier.java
+│       │           │   ├── SkillCastResult.java
+│       │           │   ├── SkillCastService.java
+│       │           │   ├── SkillCooldownHotbarTask.java
+│       │           │   ├── SkillManager.java
+│       │           │   ├── SkillSlotListener.java
+│       │           │   └── SkillSlotService.java
+│       │           └── world
+│       │               ├── LayerCleanupTask.java
+│       │               ├── LayerConfigService.java
+│       │               ├── LayerData.java
+│       │               ├── LayerDisplay.java
+│       │               ├── LayerEffectService.java
+│       │               ├── LayerEntryListener.java
+│       │               ├── LayerManager.java
+│       │               ├── PortalDefinition.java
+│       │               ├── PortalListener.java
+│       │               └── PortalParticleTask.java
+│       └── resources
+│           ├── config
+│           │   ├── ArmorData
+│           │   │   ├── boots.yml
+│           │   │   ├── chestplate.yml
+│           │   │   ├── helmet.yml
+│           │   │   └── leggings.yml
+│           │   ├── ClassData
+│           │   │   ├── archer.yml
+│           │   │   ├── knight.yml
+│           │   │   ├── rogue.yml
+│           │   │   ├── sorcerer.yml
+│           │   │   └── vanguard.yml
+│           │   ├── LayerData
+│           │   │   ├── Field1.yml
+│           │   │   └── Hub.yml
+│           │   ├── LevelData
+│           │   │   └── level_settings.yml
+│           │   ├── MaterialData
+│           │   │   └── iron_ore.yml
+│           │   ├── MessageData
+│           │   │   ├── admin.yml
+│           │   │   ├── combat.yml
+│           │   │   ├── death.yml
+│           │   │   ├── equipment.yml
+│           │   │   ├── gate.yml
+│           │   │   ├── level.yml
+│           │   │   ├── skill.yml
+│           │   │   └── system.yml
+│           │   ├── MobData
+│           │   │   └── Goblin.yml
+│           │   ├── SkillData
+│           │   │   ├── archer
+│           │   │   │   ├── skill1.yml
+│           │   │   │   ├── skill2.yml
+│           │   │   │   ├── skill3.yml
+│           │   │   │   ├── skill4.yml
+│           │   │   │   └── skill5.yml
+│           │   │   ├── knight
+│           │   │   │   ├── skill1.yml
+│           │   │   │   ├── skill2.yml
+│           │   │   │   ├── skill3.yml
+│           │   │   │   ├── skill4.yml
+│           │   │   │   └── skill5.yml
+│           │   │   ├── rogue
+│           │   │   │   ├── skill1.yml
+│           │   │   │   ├── skill2.yml
+│           │   │   │   ├── skill3.yml
+│           │   │   │   ├── skill4.yml
+│           │   │   │   └── skill5.yml
+│           │   │   ├── sorcerer
+│           │   │   │   ├── skill1.yml
+│           │   │   │   ├── skill2.yml
+│           │   │   │   ├── skill3.yml
+│           │   │   │   ├── skill4.yml
+│           │   │   │   └── skill5.yml
+│           │   │   └── vanguard
+│           │   │       ├── skill1.yml
+│           │   │       ├── skill2.yml
+│           │   │       ├── skill3.yml
+│           │   │       ├── skill4.yml
+│           │   │       └── skill5.yml
+│           │   ├── WeaponData
+│           │   │   ├── archer
+│           │   │   │   └── test.yml
+│           │   │   ├── knight
+│           │   │   │   └── test.yml
+│           │   │   ├── rogue
+│           │   │   │   └── test.yml
+│           │   │   ├── sorcerer
+│           │   │   │   └── test.yml
+│           │   │   └── vanguard
+│           │   │       └── test.yml
+│           │   └── gui
+│           │       ├── class_select.yml
+│           │       └── menu.yml
+│           ├── plugin.yml
+│           └── sql.yml
+└── structure.txt
+
+40 directories, 149 files

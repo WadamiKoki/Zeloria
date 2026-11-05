@@ -1,0 +1,30 @@
+id: "death"
+name: "死亡・リスポーン関連メッセージ"
+
+# スペクテイターとして待機する時間（秒）。1〜300 の範囲で有効です。
+wait_seconds: 5
+
+# 待機開始時に表示するタイトル・サブタイトル（MiniMessage 形式）。
+title: "<red><bold>あなたは死亡しました</bold></red>"
+subtitle: "<gray>まもなくリスポーンします…</gray>"
+
+# 待機中にアクションバーへ表示する案内。{seconds} は残り秒数に置換されます。
+waiting: "<gray>リスポーンまで <white>{seconds}</white> 秒…</gray>"
+
+# 待機開始時に再生するサウンド。
+sound: "entity.player.death"
+sound_volume: 1.0
+sound_pitch: 1.0
+
+# 待機終了後の復帰先（Hub インスタンス）。
+# world が空、またはワールドが取得できない場合は現在のワールドのスポーンへ戻ります。
+hub:
+  world: "hub_instance_1"
+  x: 0.0
+  y: 10.0
+  z: 0.0
+  yaw: 0.0
+  pitch: 0.0
+
+# リスポーン完了時にチャットへ表示するメッセージ。
+respawned: "<green>ハブへリスポーンしました。</green>"

@@ -1,0 +1,56 @@
+id: "sorcerer"
+displayName: "<blue><bold>ソーサラー</bold></blue>"
+description:
+  - "<gray>強力な魔法で広範囲を攻撃する</gray>"
+icon: "BLAZE_ROD"
+unlockedByDefault: true
+# このクラスで使用できるスキルID（SkillData/ 配下の id と一致させる）。
+# スキルスロット実装時にここへ紐付けるスキルを追加する。
+skills:
+  - "sorcerer_skill1"
+  - "sorcerer_skill2"
+  - "sorcerer_skill3"
+  - "sorcerer_skill4"
+  - "sorcerer_skill5"
+
+# 基礎ステータス（レベル1時のステータス）
+baseStats:
+  maxHealth: 20.0
+  maxMana: 100.0
+  attackPower: 1.0
+  defense1: 0.0
+  defense2: 0.0
+  criticalRate: 5.0
+  criticalDamage: 50.0
+  accuracy: 90.0
+  evasion: 5.0
+  dodgeCooldownReduction: 0.0
+  cooldownReduction: 0.0
+  moveSpeed: 0.2
+  healthRegenFlat: 0.0
+  healthRegenPercent: 0.02
+  manaRegenFlat: 0.0
+  manaRegenPercent: 0.05
+  armorPenetration: 0.0
+  lifesteal: 0.0
+
+# レベルアップごとの成長値
+levelUpStats:
+  maxHealth: 2.0
+  maxMana: 10.0
+  attackPower: 0.5
+  defense1: 0.0
+  defense2: 0.5
+  criticalRate: 0.1
+  criticalDamage: 0.0
+  accuracy: 0.5
+  evasion: 0.1
+  dodgeCooldownReduction: 0.0
+  cooldownReduction: 0.0
+  moveSpeed: 0.0
+  healthRegenFlat: 0.0
+  healthRegenPercent: 0.0
+  manaRegenFlat: 0.0
+  manaRegenPercent: 0.0
+  armorPenetration: 0.0
+  lifesteal: 0.0
