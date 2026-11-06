@@ -47,6 +47,14 @@ public record MobStats(
     /** 既定の回避率（%）。 */
     public static final double DEFAULT_EVASION = 0.0;
 
+    /**
+     * レベル 1 を基準とした 1 レベルあたりのステータス増加倍率。
+     * <p>
+     * 倍率は {@code 1 + 0.15 × (レベル - 1)} の単利計算で、
+     * レベル 2 で 1.15 倍、レベル 3 で 1.30 倍となる。
+     */
+    public static final double LEVEL_SCALING_PER_LEVEL = 0.15;
+
     public MobStats {
         id = id == null ? "" : id;
         maxHealth = Math.max(1.0, maxHealth);
@@ -61,26 +69,54 @@ public record MobStats(
 
     /**
      * {@link MobData} の定義値から実行時ステータスを生成する。
+     * <p>
+     * レベルは {@link MobData#level()} を使用する。
      *
      * @param data モブ定義
      * @return 実行時ステータス
      */
     public static MobStats from(MobData data) {
+        return from(data, data == null ? 1 : data.level());
+    }
+
+    /**
+     * {@link MobData} の定義値とレベルから実行時ステータスを生成する。
+     * <p>
+     * 最大 HP・防御力・攻撃力は {@link #levelFactor(int)} 倍され、
+     * 確率系ステータス（クリティカル率・命中率・回避率）は定義値のまま使用する。
+     *
+     * @param data  モブ定義
+     * @param level モブレベル（1 未満は 1 として扱う）
+     * @return 実行時ステータス
+     */
+    public static MobStats from(MobData data, int level) {
         if (data == null) {
             return new MobStats("", 1.0, 0.0, 0.0, DEFAULT_ATTACK_POWER,
                     DEFAULT_CRITICAL_RATE, DEFAULT_CRITICAL_DAMAGE,
                     DEFAULT_ACCURACY, DEFAULT_EVASION);
         }
+
+        double factor = levelFactor(level);
         return new MobStats(
                 data.id(),
-                data.maxHp() > 0.0 ? data.maxHp() : 1.0,
+                (data.maxHp() > 0.0 ? data.maxHp() : 1.0) * factor,
                 0.0,
-                data.defense(),
-                data.attackPower(),
+                data.defense() * factor,
+                data.attackPower() * factor,
                 data.criticalRate(),
                 data.criticalDamage(),
                 data.accuracy(),
                 data.evasion());
+    }
+
+    /**
+     * レベルに応じたステータス倍率を返す（{@code 1 + 0.15 × (レベル - 1)}）。
+     *
+     * @param level モブレベル（1 未満は 1 として扱う）
+     */
+    public static double levelFactor(int level) {
+        int normalized = Math.max(1, level);
+        return 1.0 + LEVEL_SCALING_PER_LEVEL * (normalized - 1);
     }
 
     private static double clampPercent(double value) {

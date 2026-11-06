@@ -152,15 +152,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin reload</white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin test yaml \\<folder> \\<id></white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin test db</white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin mob spawn \\<mobId> [count]</white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin give \\<armor|material|weapon> \\<id> [amount]</white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin info \\<player></white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin gui \\<yml></white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin npc list|spawn|remove</white> <dark_gray>|</dark_gray> "
-                    + "<white>/admin stop</white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|stop></white>";
 
     private final Zeloria plugin;
 
@@ -400,6 +392,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
         if (plugin.getClassSelectGUI() != null) {
             plugin.getClassSelectGUI().reload();
+        }
+        if (plugin.getSpawnerManager() != null) {
+            plugin.getSpawnerManager().reload();
         }
 
         send(sender, message("command.reloaded",

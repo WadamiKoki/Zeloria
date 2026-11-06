@@ -75,6 +75,17 @@ public final class ClassSelectGUI implements Listener {
     private static final GuiSound DEFAULT_ERROR =
             new GuiSound("entity.villager.no", 0.8f, 1.0f);
 
+    /** クラスアイコンの下に並べる成長率表示アイテムの既定 Material（アイテムフレーム）。 */
+    private static final Material DEFAULT_GROWTH_MATERIAL = Material.ITEM_FRAME;
+
+    private static final String DEFAULT_GROWTH_NAME =
+            "<light_purple>{class}</light_purple> <gray>のレベル成長率</gray>";
+    private static final String DEFAULT_GROWTH_LINE =
+            "<gray>{label}</gray> <dark_gray>+</dark_gray> <aqua>{value}%</aqua>"
+                    + " <gray>/ Lv</gray>";
+    private static final String DEFAULT_GROWTH_EMPTY =
+            "<dark_gray>成長率は設定されていません。</dark_gray>";
+
     private final Zeloria plugin;
     private final ClassManager classManager;
     private final NamespacedKey classIdKey;
@@ -146,9 +157,11 @@ public final class ClassSelectGUI implements Listener {
         Component unlockedLore = parseStatus(status, "unlocked", DEFAULT_UNLOCKED);
         Component lockedLore = parseStatus(status, "locked", DEFAULT_LOCKED);
 
+        GrowthDisplay growth = parseGrowth(config.getConfigurationSection("growth"));
+
         return new Layout(title, rows, Map.copyOf(classSlots),
                 openSound, clickSound, errorSound,
-                selectedLore, unlockedLore, lockedLore);
+                selectedLore, unlockedLore, lockedLore, growth);
     }
 
     private static Layout defaults() {
@@ -161,7 +174,57 @@ public final class ClassSelectGUI implements Listener {
                 DEFAULT_ERROR,
                 MINI.deserialize(DEFAULT_SELECTED),
                 MINI.deserialize(DEFAULT_UNLOCKED),
-                MINI.deserialize(DEFAULT_LOCKED));
+                MINI.deserialize(DEFAULT_LOCKED),
+                GrowthDisplay.defaults());
+    }
+
+    /**
+     * 成長率表示（クラスアイコンの下に並べるアイテムフレーム）の設定を読み取る。
+     * <p>
+     * セクションが無い場合は既定値（アイテムフレーム＋主要ステータス）を使用する。
+     */
+    private GrowthDisplay parseGrowth(ConfigurationSection section) {
+        if (section == null) {
+            return GrowthDisplay.defaults();
+        }
+
+        boolean enabled = section.getBoolean("enabled", true);
+        Material material = DEFAULT_GROWTH_MATERIAL;
+        String rawMaterial = section.getString("material");
+        if (rawMaterial != null && !rawMaterial.isBlank()) {
+            Material resolved = Material.matchMaterial(rawMaterial.trim().toUpperCase(Locale.ROOT));
+            if (resolved == null || resolved.isAir()) {
+                plugin.getLogger().warning(
+                        "成長率表示の material が不正です: " + rawMaterial + " - 既定値を使用します。");
+            } else {
+                material = resolved;
+            }
+        }
+
+        String name = section.getString("name", DEFAULT_GROWTH_NAME);
+        String line = section.getString("line", DEFAULT_GROWTH_LINE);
+        String empty = section.getString("empty", DEFAULT_GROWTH_EMPTY);
+
+        List<StatDisplay> stats = new ArrayList<>();
+        ConfigurationSection statsSection = section.getConfigurationSection("stats");
+        if (statsSection != null) {
+            for (String key : statsSection.getKeys(false)) {
+                String label = statsSection.getString(key, key);
+                if (key == null || key.isBlank()) {
+                    continue;
+                }
+                stats.add(new StatDisplay(key.trim(), label == null ? key : label));
+            }
+        }
+        if (stats.isEmpty()) {
+            stats.addAll(GrowthDisplay.DEFAULT_STATS);
+        }
+
+        return new GrowthDisplay(enabled, material,
+                name == null || name.isBlank() ? DEFAULT_GROWTH_NAME : name,
+                line == null || line.isBlank() ? DEFAULT_GROWTH_LINE : line,
+                empty == null || empty.isBlank() ? DEFAULT_GROWTH_EMPTY : empty,
+                List.copyOf(stats));
     }
 
     private static ConfigurationSection section(ConfigurationSection parent, String child) {
@@ -185,12 +248,57 @@ public final class ClassSelectGUI implements Listener {
             GuiSound errorSound,
             Component selectedLore,
             Component unlockedLore,
-            Component lockedLore
+            Component lockedLore,
+            GrowthDisplay growth
     ) {
 
         int size() {
             return rows * 9;
         }
+    }
+
+    /**
+     * 成長率表示アイテム（アイテムフレーム）の設定。
+     *
+     * @param enabled  表示するか
+     * @param material 表示に使用する Material
+     * @param name     表示名（MiniMessage、{@code {class}} はクラス表示名に置換）
+     * @param line     1 ステータス分の lore（MiniMessage、{@code {label}} / {@code {value}} を置換）
+     * @param empty    成長率がすべて 0 のときの lore（MiniMessage）
+     * @param stats    表示するステータス（上から順に lore へ並ぶ）
+     */
+    private record GrowthDisplay(
+            boolean enabled,
+            Material material,
+            String name,
+            String line,
+            String empty,
+            List<StatDisplay> stats
+    ) {
+
+        /** YAML に {@code growth.stats} が無い場合に表示する既定ステータス。 */
+        static final List<StatDisplay> DEFAULT_STATS = List.of(
+                new StatDisplay("maxHealth", "最大HP"),
+                new StatDisplay("maxMana", "最大MP"),
+                new StatDisplay("attackPower", "攻撃力"),
+                new StatDisplay("criticalRate", "クリティカル率"),
+                new StatDisplay("accuracy", "命中率"),
+                new StatDisplay("evasion", "回避率"));
+
+        static GrowthDisplay defaults() {
+            return new GrowthDisplay(true, DEFAULT_GROWTH_MATERIAL,
+                    DEFAULT_GROWTH_NAME, DEFAULT_GROWTH_LINE, DEFAULT_GROWTH_EMPTY,
+                    DEFAULT_STATS);
+        }
+    }
+
+    /**
+     * 成長率表示の 1 行分（ステータスキーと表示ラベル）。
+     *
+     * @param key   {@code levelUpPercent} のキー名
+     * @param label 表示ラベル
+     */
+    private record StatDisplay(String key, String label) {
     }
 
     /* ------------------------------------------------------------------
@@ -271,6 +379,7 @@ public final class ClassSelectGUI implements Listener {
         inventory.clear();
 
         Set<Integer> used = new HashSet<>(current.classSlots().values());
+        Map<Integer, ZeloriaClass> placed = new LinkedHashMap<>();
         int autoSlot = 10;
 
         for (ZeloriaClass definition : classManager.all()) {
@@ -293,7 +402,86 @@ public final class ClassSelectGUI implements Listener {
                 continue;
             }
             inventory.setItem(slot, createClassItem(definition, classData, current));
+            placed.putIfAbsent(slot, definition);
+            used.add(slot);
         }
+
+        // 成長率表示はクラスアイコンをすべて配置した後に置き、アイコンを上書きしないようにする。
+        if (!current.growth().enabled()) {
+            return;
+        }
+        for (Map.Entry<Integer, ZeloriaClass> entry : placed.entrySet()) {
+            placeGrowthItem(inventory, entry.getValue(), entry.getKey(), used, current.growth());
+        }
+    }
+
+    /**
+     * クラスアイコンの 1 行下（{@code アイコンのスロット + 9}）へ成長率表示アイテムを配置する。
+     * <p>
+     * 最下段のクラスアイコンには下段が存在しないため、その場合は表示を省略する。
+     * 他のクラスアイコン／成長率表示とスロットが重複する場合も省略し、警告を残す。
+     */
+    private void placeGrowthItem(Inventory inventory, ZeloriaClass definition, int iconSlot,
+                                 Set<Integer> used, GrowthDisplay growth) {
+        int frameSlot = iconSlot + 9;
+        if (frameSlot >= inventory.getSize()) {
+            return;
+        }
+        if (used.contains(frameSlot)) {
+            plugin.getLogger().warning("クラス '" + definition.id() + "' の成長率表示スロット "
+                    + frameSlot + " は他の表示と重複するため省略します。");
+            return;
+        }
+        used.add(frameSlot);
+        inventory.setItem(frameSlot, createGrowthItem(definition, growth));
+    }
+
+    /**
+     * 成長率表示アイテム（アイテムフレーム）を生成する。
+     * <p>
+     * lore には {@code levelUpPercent} の値が 0 以外のステータスだけを、
+     * {@code growth.stats} の並び順で表示する。すべて 0 の場合は
+     * {@code growth.empty} の文言を 1 行表示する。
+     */
+    private ItemStack createGrowthItem(ZeloriaClass definition, GrowthDisplay growth) {
+        ItemStack item = new ItemStack(growth.material());
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+
+        Component name = MINI.deserialize(growth.name());
+        meta.displayName(name.replaceText(builder -> builder
+                .matchLiteral("{class}")
+                .replacement(definition.displayName())));
+
+        List<Component> lore = new ArrayList<>();
+        for (StatDisplay stat : growth.stats()) {
+            double percent = definition.levelUpPercent().valueOfKey(stat.key());
+            if (percent == 0.0) {
+                continue;
+            }
+            lore.add(MINI.deserialize(growth.line()
+                    .replace("{label}", stat.label())
+                    .replace("{value}", formatPercent(percent))));
+        }
+        if (lore.isEmpty()) {
+            lore.add(MINI.deserialize(growth.empty()));
+        }
+
+        meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /**
+     * 成長率（%）を表示用の文字列へ整形する（整数なら小数点以下を省略）。
+     */
+    private static String formatPercent(double value) {
+        if (value == Math.rint(value)) {
+            return String.valueOf((long) value);
+        }
+        return String.format(Locale.ROOT, "%.1f", value);
     }
 
     /**
@@ -384,7 +572,7 @@ public final class ClassSelectGUI implements Listener {
         switch (selection) {
             case SELECTED -> {
                 current.clickSound().play(player);
-                // クラス変更後の基礎ステータス（baseStats + levelUpStats）を即時反映する。
+                // クラス変更後の基礎ステータス（baseStats × レベル成長率）を即時反映する。
                 PlayerStatsService statsService = plugin.getPlayerStatsService();
                 if (statsService != null) {
                     statsService.apply(player, data);

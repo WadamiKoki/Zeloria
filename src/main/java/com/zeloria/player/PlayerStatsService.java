@@ -77,7 +77,7 @@ public final class PlayerStatsService {
      * 指定したプレイヤーデータのステータスを反映する。
      * <p>
      * 反映前に現在のクラス定義の基礎ステータス（{@code baseStats}）と
-     * レベルアップ成長値（{@code levelUpStats}）を再計算する。
+     * レベルアップ成長率（{@code levelUpPercent}）を再計算する。
      *
      * @param player 対象プレイヤー
      * @param data   プレイヤーデータ
@@ -93,7 +93,7 @@ public final class PlayerStatsService {
     /**
      * 現在のクラスとレベルから基礎ステータスを再計算し、{@link PlayerStats} へ上書きする。
      * <p>
-     * 計算式は {@code baseStats + levelUpStats × (level - 1)}。レベル 0 と 1 は
+     * 計算式は {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。レベル 0 と 1 は
      * {@code baseStats} のみとなる。装備補正は {@link PlayerStats#getBonuses()} に
      * 分離して保持されるため、ここでは基礎値だけを更新する。
      * <p>

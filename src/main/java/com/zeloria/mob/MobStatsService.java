@@ -47,10 +47,24 @@ public final class MobStatsService {
      * @param data   モブ定義
      */
     public void attach(LivingEntity entity, MobData data) {
+        attach(entity, data, data == null ? 1 : data.level());
+    }
+
+    /**
+     * スポーン時にモブ定義とレベルを登録する。
+     * <p>
+     * スポナーが個別のレベルを指定した場合は、{@link MobData#level()} ではなく
+     * このメソッドで明示したレベルが使用される。
+     *
+     * @param entity 対象エンティティ
+     * @param data   モブ定義
+     * @param level  モブレベル（1 未満は 1 として扱う）
+     */
+    public void attach(LivingEntity entity, MobData data, int level) {
         if (entity == null || data == null) {
             return;
         }
-        stats.put(entity.getUniqueId(), MobStats.from(data));
+        stats.put(entity.getUniqueId(), MobStats.from(data, level));
     }
 
     /**

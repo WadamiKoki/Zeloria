@@ -27,3 +27,25 @@ portals:
       z: 0.5
       yaw: 0.0
       pitch: 0.0
+
+# 定点スポナー。半径 radius 以内にプレイヤーがいると interval tick ごとに判定し、
+# maxAlive 体を上限に 1 回あたり spawnAmount 体までスポーンします。
+spawners:
+  - mobId: "goblin"
+    x: 8.5
+    y: 65.0
+    z: 8.5
+    level: 1
+    maxAlive: 5
+    spawnAmount: 1
+    interval: 100
+    radius: 24.0
+  - mobId: "goblin"
+    x: -8.5
+    y: 65.0
+    z: -8.5
+    level: 3
+    maxAlive: 3
+    spawnAmount: 1
+    interval: 200
+    radius: 20.0

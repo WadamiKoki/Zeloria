@@ -6,6 +6,7 @@ name: "ポータル／ゲート関連メッセージ"
 portal:
   cooldown: "<red>ポータルはクールダウン中です。</red> <gray>あと <yellow>{time}</yellow> 秒お待ちください。</gray>"
   warping: "<aqua>ポータル</aqua> <gray>→</gray> <white>{layer_name}</white> <gray>へ転送します...</gray>"
+  creating: "<aqua>{layer_name}</aqua> <gray>を準備しています...</gray> <gray>完了までお待ちください。</gray>"
   not_found: "<gray>近くにポータルはありません。</gray>"
   creation_failed: "<red>転送先レイヤーを生成できませんでした: <white>{layer_name}</white></red>"
   teleport_failed: "<red>転送に失敗しました。もう一度お試しください。</red>"

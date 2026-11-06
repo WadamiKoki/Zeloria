@@ -17,7 +17,8 @@ import java.util.Objects;
  * <p>
  * 既存のフィールド（{@code id} / {@code name} / {@code templateId} /
  * {@code maxInstances} / {@code isShared}）に加え、入場演出（{@code display}）、
- * ポータル定義（{@code portals}）、NPC 配置（{@code npcs}）を保持する。
+ * ポータル定義（{@code portals}）、NPC 配置（{@code npcs}）、
+ * モブスポナー定義（{@code spawners}）を保持する。
  */
 public class LayerData {
 
@@ -30,10 +31,12 @@ public class LayerData {
     private final LayerDisplay display;
     private final Map<String, PortalDefinition> portals;
     private final List<NpcPlacement> npcs;
+    private final List<SpawnerPlacement> spawners;
 
     private LayerData(String sourceKey, String id, String name, String templateId,
                       int maxInstances, boolean shared, LayerDisplay display,
-                      Map<String, PortalDefinition> portals, List<NpcPlacement> npcs) {
+                      Map<String, PortalDefinition> portals, List<NpcPlacement> npcs,
+                      List<SpawnerPlacement> spawners) {
         this.sourceKey = sourceKey;
         this.id = id;
         this.name = name;
@@ -43,6 +46,7 @@ public class LayerData {
         this.display = display;
         this.portals = Collections.unmodifiableMap(new LinkedHashMap<>(portals));
         this.npcs = List.copyOf(npcs);
+        this.spawners = List.copyOf(spawners);
     }
 
     /**
@@ -77,7 +81,7 @@ public class LayerData {
         }
 
         return new LayerData(sourceKey, id, name, templateId, maxInstances, shared, display, portals,
-                parseNpcs(config));
+                parseNpcs(config), parseSpawners(config));
     }
 
     /**
@@ -89,6 +93,22 @@ public class LayerData {
         List<NpcPlacement> placements = new ArrayList<>();
         for (Map<?, ?> raw : config.getMapList("npcs")) {
             NpcPlacement placement = NpcPlacement.fromMap(raw);
+            if (placement.isValid()) {
+                placements.add(placement);
+            }
+        }
+        return placements;
+    }
+
+    /**
+     * {@code spawners} セクションを解析する。
+     * <p>
+     * 不正なエントリ（{@code mobId} が空）は読み飛ばす。
+     */
+    private static List<SpawnerPlacement> parseSpawners(FileConfiguration config) {
+        List<SpawnerPlacement> placements = new ArrayList<>();
+        for (Map<?, ?> raw : config.getMapList("spawners")) {
+            SpawnerPlacement placement = SpawnerPlacement.fromMap(raw);
             if (placement.isValid()) {
                 placements.add(placement);
             }
@@ -141,6 +161,15 @@ public class LayerData {
      */
     public List<NpcPlacement> getNpcs() {
         return npcs;
+    }
+
+    /**
+     * レイヤー内に設置するモブスポナーの定義（不変リスト）。
+     * <p>
+     * レイヤーワールドのロード時に {@code SpawnerManager} が参照する。
+     */
+    public List<SpawnerPlacement> getSpawners() {
+        return spawners;
     }
 
     /**

@@ -30,6 +30,7 @@ import com.zeloria.core.LoggerService;
 import com.zeloria.core.MessageService;
 import com.zeloria.mob.MobConfigService;
 import com.zeloria.mob.MobStatsService;
+import com.zeloria.mob.SpawnerManager;
 import com.zeloria.combat.DeathListener;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerListener;
@@ -89,6 +90,9 @@ public final class Zeloria extends JavaPlugin {
 
     /** スポーン済みカスタムモブの実行時ステータス管理。 */
     private MobStatsService mobStatsService;
+
+    /** {@code LayerData.spawners} に従ってモブを定期スポーンさせるマネージャ。 */
+    private SpawnerManager spawnerManager;
 
     /** カスタムダメージの計算・適用。 */
     private CombatService combatService;
@@ -194,6 +198,7 @@ public final class Zeloria extends JavaPlugin {
         initializeDatabaseSchema();
 
         this.layerManager = new LayerManager(this);
+        this.spawnerManager = new SpawnerManager(this);
         this.layerNpcService = new LayerNpcService(this, this.npcManager, this.layerConfigService);
         this.layerEffectService = new LayerEffectService(this, this.messageService, this.layerConfigService);
 
@@ -254,9 +259,15 @@ public final class Zeloria extends JavaPlugin {
             this.npcManager.removeAll();
         }
 
+        // ワールド削除中のモブ生成を防ぐため、スポナーを先に停止する。
+        if (this.spawnerManager != null) {
+            this.spawnerManager.shutdown();
+        }
+
         if (this.layerManager != null) {
             this.layerManager.unloadAllAndDelete();
             cleanupOrphanedInstances("終了時");
+            this.layerManager.shutdown();
         }
 
         // 保存が完了しなかったプレイヤーデータが残らないよう、キャッシュを破棄する。
@@ -637,6 +648,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public MobStatsService getMobStatsService() {
         return mobStatsService;
+    }
+
+    /**
+     * SpawnerManager を取得する。
+     *
+     * @return プラグインの SpawnerManager（onEnable 前は null）
+     */
+    public SpawnerManager getSpawnerManager() {
+        return spawnerManager;
     }
 
     /**

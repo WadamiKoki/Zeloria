@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin reload</white> <dark_gray>|</dark_gray> <white>/admin test yaml \\<folder> \\<id></white> <dark_gray>|</dark_gray> <white>/admin test db</white> <dark_gray>|</dark_gray> <white>/admin mob spawn \\<mobId></white> <dark_gray>|</dark_gray> <white>/admin info \\<player></white> <dark_gray>|</dark_gray> <white>/admin gui \\<yml></white> <dark_gray>|</dark_gray> <white>/admin npc list|spawn|remove</white> <dark_gray>|</dark_gray> <white>/admin stop</white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 

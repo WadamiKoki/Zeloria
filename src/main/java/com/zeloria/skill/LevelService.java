@@ -131,7 +131,7 @@ public class LevelService {
         stats.setLevel(level);
         stats.setExp(exp);
 
-        // レベルアップ時はクラス基礎ステータス（baseStats + levelUpStats）を再計算する。
+        // レベルアップ時はクラス基礎ステータス（baseStats × レベル成長率）を再計算する。
         if (levelsGained > 0 && plugin.getPlayerStatsService() != null) {
             plugin.getPlayerStatsService().refreshClassStats(data);
         }

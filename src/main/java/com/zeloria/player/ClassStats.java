@@ -3,15 +3,18 @@ package com.zeloria.player;
 import org.bukkit.configuration.ConfigurationSection;
 
 /**
- * クラス定義の基礎ステータス／レベルアップ成長値を保持する不変モデル。
+ * クラス定義の基礎ステータス／レベルアップ成長率を保持する不変モデル。
  * <p>
- * {@code ClassData/<class>.yml} の {@code baseStats} と {@code levelUpStats} を
+ * {@code ClassData/<class>.yml} の {@code baseStats} と {@code levelUpPercent} を
  * そのまま読み込み、{@link #atLevel(ClassStats, ClassStats, int)} で
- * 「基礎値 + 成長値 × (レベル - 1)」を算出する。
+ * 「基礎値 × (1 + 成長率[%] / 100 × (レベル - 1))」を算出する（単利成長）。
  * <p>
  * レベル 0（新規プレイヤー）とレベル 1 は基礎値のみを返す。レベル 0 で
- * 成長値を減算するとステータスが負になるため、成長回数は
+ * 成長率を適用するとステータスが負になるため、成長回数は
  * {@code max(0, level - 1)} として扱う。
+ * <p>
+ * 成長率は「基礎値に対する割合（%）」であるため、基礎値が 0 の項目は
+ * 何レベルになっても 0 のままとなる。
  * <p>
  * ここで扱う値はプレイヤーの基礎値であり、装備補正（{@link PlayerStats.Bonuses}）
  * は {@link PlayerStats} 側で加算される。
@@ -150,23 +153,100 @@ public record ClassStats(
     }
 
     /**
-     * 指定レベルでの実効基礎値を算出する。
+     * 指定レベルでの実効基礎値を算出する（単利成長）。
      * <p>
-     * {@code baseStats + levelUpStats × (level - 1)}。レベル 0 と 1 は
-     * 基礎値のみを返す。
+     * {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。
+     * レベル 0 と 1 は基礎値のみを返す。
      *
-     * @param baseStats    基礎ステータス（{@code null} は {@link #DEFAULT}）
-     * @param levelUpStats レベルアップ成長値（{@code null} は {@link #NONE}）
-     * @param level        レベル
+     * @param baseStats      基礎ステータス（{@code null} は {@link #DEFAULT}）
+     * @param levelUpPercent レベルアップ成長率（%／レベル、{@code null} は {@link #NONE}）
+     * @param level          レベル
      * @return 実効基礎値
      */
-    public static ClassStats atLevel(ClassStats baseStats, ClassStats levelUpStats, int level) {
+    public static ClassStats atLevel(ClassStats baseStats, ClassStats levelUpPercent, int level) {
         ClassStats base = baseStats == null ? DEFAULT : baseStats;
         int growthLevels = Math.max(0, level - 1);
-        if (levelUpStats == null || growthLevels == 0) {
+        if (levelUpPercent == null || growthLevels == 0) {
             return base;
         }
-        return base.plus(levelUpStats.multiply(growthLevels));
+        return base.grownByPercent(levelUpPercent, growthLevels);
+    }
+
+    /**
+     * 各項目を「この値 × (1 + 成長率[%] / 100 × 成長回数)」へ単利で成長させる。
+     *
+     * @param percentPerLevel 1 レベルあたりの成長率（%、{@code null} は変化なし）
+     * @param growthLevels    成長回数（0 以下は変化なし）
+     * @return 成長後の値
+     */
+    public ClassStats grownByPercent(ClassStats percentPerLevel, int growthLevels) {
+        if (percentPerLevel == null || growthLevels <= 0) {
+            return this;
+        }
+        return new ClassStats(
+                scale(maxHealth, percentPerLevel.maxHealth, growthLevels),
+                scale(maxMana, percentPerLevel.maxMana, growthLevels),
+                scale(attackPower, percentPerLevel.attackPower, growthLevels),
+                scale(defense1, percentPerLevel.defense1, growthLevels),
+                scale(defense2, percentPerLevel.defense2, growthLevels),
+                scale(criticalRate, percentPerLevel.criticalRate, growthLevels),
+                scale(criticalDamage, percentPerLevel.criticalDamage, growthLevels),
+                scale(accuracy, percentPerLevel.accuracy, growthLevels),
+                scale(evasion, percentPerLevel.evasion, growthLevels),
+                scale(dodgeCooldownReduction, percentPerLevel.dodgeCooldownReduction, growthLevels),
+                scale(cooldownReduction, percentPerLevel.cooldownReduction, growthLevels),
+                scale(moveSpeed, percentPerLevel.moveSpeed, growthLevels),
+                scale(healthRegenFlat, percentPerLevel.healthRegenFlat, growthLevels),
+                scale(healthRegenPercent, percentPerLevel.healthRegenPercent, growthLevels),
+                scale(manaRegenFlat, percentPerLevel.manaRegenFlat, growthLevels),
+                scale(manaRegenPercent, percentPerLevel.manaRegenPercent, growthLevels),
+                scale(armorPenetration, percentPerLevel.armorPenetration, growthLevels),
+                scale(lifesteal, percentPerLevel.lifesteal, growthLevels));
+    }
+
+    /**
+     * 単利成長の計算（{@code value × (1 + percent / 100 × levels)}）。
+     */
+    private static double scale(double value, double percentPerLevel, int growthLevels) {
+        if (percentPerLevel == 0.0 || value == 0.0) {
+            return value;
+        }
+        return value * (1.0 + (percentPerLevel / 100.0) * growthLevels);
+    }
+
+    /**
+     * キー名（YAML の項目名）から値を取得する。
+     * <p>
+     * GUI などで {@code levelUpPercent} の値を表示する際に使用する。
+     *
+     * @param key 項目名（例: {@code maxHealth}）
+     * @return 該当する値。未知のキーは {@code 0.0}
+     */
+    public double valueOfKey(String key) {
+        if (key == null) {
+            return 0.0;
+        }
+        return switch (key.trim()) {
+            case "maxHealth" -> maxHealth;
+            case "maxMana" -> maxMana;
+            case "attackPower" -> attackPower;
+            case "defense1" -> defense1;
+            case "defense2" -> defense2;
+            case "criticalRate" -> criticalRate;
+            case "criticalDamage" -> criticalDamage;
+            case "accuracy" -> accuracy;
+            case "evasion" -> evasion;
+            case "dodgeCooldownReduction" -> dodgeCooldownReduction;
+            case "cooldownReduction" -> cooldownReduction;
+            case "moveSpeed" -> moveSpeed;
+            case "healthRegenFlat" -> healthRegenFlat;
+            case "healthRegenPercent" -> healthRegenPercent;
+            case "manaRegenFlat" -> manaRegenFlat;
+            case "manaRegenPercent" -> manaRegenPercent;
+            case "armorPenetration" -> armorPenetration;
+            case "lifesteal" -> lifesteal;
+            default -> 0.0;
+        };
     }
 
     /**
@@ -175,7 +255,7 @@ public record ClassStats(
      * セクションが存在しない場合は {@code fallback} を返し、個別キーが
      * 存在しない場合は {@code fallback} の同項目を既定値として使用する。
      *
-     * @param section  {@code baseStats} または {@code levelUpStats}
+     * @param section  {@code baseStats} または {@code levelUpPercent}
      * @param fallback 既定値
      * @return 読み込んだ値
      */

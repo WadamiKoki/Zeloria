@@ -21,7 +21,7 @@ import java.util.Objects;
  * @param unlockedByDefault 初期状態で解放されるか
  * @param skills            このクラスで使用できるスキル ID の一覧
  * @param baseStats         レベル 1 時点の基礎ステータス
- * @param levelUpStats      レベルアップごとの成長値
+ * @param levelUpPercent    レベルアップごとの成長率（基礎値に対する %）
  */
 public record ZeloriaClass(
         String id,
@@ -31,7 +31,7 @@ public record ZeloriaClass(
         boolean unlockedByDefault,
         List<String> skills,
         ClassStats baseStats,
-        ClassStats levelUpStats
+        ClassStats levelUpPercent
 ) {
 
     public ZeloriaClass {
@@ -53,20 +53,20 @@ public record ZeloriaClass(
                 .distinct()
                 .toList();
         baseStats = baseStats == null ? ClassStats.DEFAULT : baseStats;
-        levelUpStats = levelUpStats == null ? ClassStats.NONE : levelUpStats;
+        levelUpPercent = levelUpPercent == null ? ClassStats.NONE : levelUpPercent;
     }
 
     /**
-     * 指定レベルでの実効基礎ステータスを算出する。
+     * 指定レベルでの実効基礎ステータスを算出する（単利成長）。
      * <p>
-     * {@code baseStats + levelUpStats × (level - 1)}。レベル 0 と 1 は
-     * {@link #baseStats()} をそのまま返す。
+     * {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。
+     * レベル 0 と 1 は {@link #baseStats()} をそのまま返す。
      *
      * @param level レベル
      * @return 実効基礎ステータス
      */
     public ClassStats statsAtLevel(int level) {
-        return ClassStats.atLevel(baseStats, levelUpStats, level);
+        return ClassStats.atLevel(baseStats, levelUpPercent, level);
     }
 
     /**

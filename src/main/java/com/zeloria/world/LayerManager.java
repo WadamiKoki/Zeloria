@@ -1,6 +1,7 @@
 package com.zeloria.world;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.mob.SpawnerManager;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.Location;
@@ -26,7 +27,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 
 /**
@@ -146,6 +151,31 @@ public class LayerManager {
      * 入場演出やポータルの転送先解決に使用する。
      */
     private final Map<String, String> instanceTemplates = new ConcurrentHashMap<>();
+
+    /**
+     * 複製中のインスタンス（インスタンス ID → 完了時にワールドを返す future）。
+     * <p>
+     * ファイル複製は非同期スレッドで行うため、完了までは {@link #isCreating(String)} が
+     * {@code true} を返し、レイヤー入場やポータル転送は待機状態となる。
+     */
+    private final Map<String, CompletableFuture<World>> pendingInstances = new ConcurrentHashMap<>();
+
+    /**
+     * 複製中インスタンスの生成元テンプレート ID（インスタンス ID → テンプレート ID）。
+     */
+    private final Map<String, String> pendingTemplates = new ConcurrentHashMap<>();
+
+    /**
+     * テンプレート複製専用のエグゼキュータ。
+     * <p>
+     * ワールド操作（{@link Bukkit#createWorld(WorldCreator)}）はメインスレッドで行うため、
+     * ここではファイル I/O のみを実行する。
+     */
+    private final ExecutorService copyExecutor = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "Zeloria-LayerCopy");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     /**
      * {@link #getOrCreateInstance(String)} でインスタンス ID を採番する際の上限試行回数。
@@ -275,21 +305,8 @@ public class LayerManager {
             return existing;
         }
 
-        // Bukkit 上のワールド名は instanceId そのもの（実体は dimensions/minecraft 配下）。
-        String bukkitWorldName = LayerManager.worldName(instanceId);
-        if (Bukkit.getWorld(bukkitWorldName) != null) {
-            throw new IllegalStateException("ワールド '" + bukkitWorldName + "' は既にロードされています。");
-        }
-
-        Path templateDir = templateRoot.resolve(templateId).normalize();
-        if (!templateDir.getParent().equals(templateRoot) || !Files.isDirectory(templateDir)) {
-            throw new IllegalArgumentException("テンプレートが見つかりません: " + templateDir);
-        }
-
-        Path instanceDir = resolveInstancePath(instanceId);
-        if (Files.exists(instanceDir)) {
-            throw new IllegalStateException("インスタンスディレクトリが既に存在します: " + instanceDir);
-        }
+        Path templateDir = resolveTemplatePath(templateId);
+        Path instanceDir = prepareInstancePath(instanceId);
 
         try {
             copyDirectory(templateDir, instanceDir);
@@ -302,6 +319,161 @@ public class LayerManager {
                     "テンプレートの複製または所有権マーカーの作成に失敗しました: " + templateId, e);
         }
 
+        return loadWorld(templateId, instanceId, instanceDir);
+    }
+
+    /**
+     * テンプレートを複製し、レイヤーインスタンスを非同期で生成・ロードする。
+     * <p>
+     * ファイルコピー（{@link #copyDirectory(Path, Path)}）は専用スレッドで実行し、
+     * {@link Bukkit#createWorld(WorldCreator)} を含むワールド操作は
+     * {@link Bukkit#getScheduler()} 経由でメインスレッドへ戻してから実行する。
+     * これにより大容量テンプレートの複製中もサーバーの Tick を止めない。
+     * <p>
+     * 同一インスタンス ID の複製が進行中の場合は、新規に開始せず同じ future を返す。
+     *
+     * @param templateId テンプレート ID
+     * @param instanceId 生成するインスタンス ID
+     * @return ロード完了時にワールドを返す future（失敗時は {@link IllegalStateException} で完了）
+     */
+    public synchronized CompletableFuture<World> createLayerAsync(String templateId, String instanceId) {
+        assertMainThread();
+        validateId(templateId, "templateId");
+        validateId(instanceId, "instanceId");
+
+        World existing = loadedWorlds.get(instanceId);
+        if (existing != null) {
+            instanceTemplates.putIfAbsent(instanceId, templateId);
+            return CompletableFuture.completedFuture(existing);
+        }
+
+        CompletableFuture<World> pending = pendingInstances.get(instanceId);
+        if (pending != null) {
+            return pending;
+        }
+
+        Path templateDir;
+        Path instanceDir;
+        try {
+            templateDir = resolveTemplatePath(templateId);
+            instanceDir = prepareInstancePath(instanceId);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        CompletableFuture<World> future = CompletableFuture
+                .supplyAsync(() -> copyTemplate(templateDir, instanceDir, templateId, instanceId), copyExecutor)
+                .thenCompose(copiedDir -> createWorldOnMainThread(templateId, instanceId, copiedDir));
+
+        pendingInstances.put(instanceId, future);
+        pendingTemplates.put(instanceId, templateId);
+        future.whenComplete((world, error) -> {
+            pendingInstances.remove(instanceId);
+            pendingTemplates.remove(instanceId);
+        });
+        return future;
+    }
+
+    /**
+     * テンプレートを複製し、所有権マーカーを書き込む（非同期スレッド用）。
+     *
+     * @return 複製先ディレクトリ
+     * @throws CompletionException 複製に失敗した場合（複製先は削除済み）
+     */
+    private Path copyTemplate(Path templateDir, Path instanceDir,
+                              String templateId, String instanceId) {
+        try {
+            copyDirectory(templateDir, instanceDir);
+            // マーカーが無いとクリーンアップ対象外となり残骸が残るため、複製直後に書き込む。
+            writeOwnershipMarker(instanceDir, templateId, instanceId);
+            return instanceDir;
+        } catch (IOException e) {
+            deleteDirectoryQuietly(instanceDir);
+            throw new CompletionException(new IllegalStateException(
+                    "テンプレートの複製または所有権マーカーの作成に失敗しました: " + templateId, e));
+        }
+    }
+
+    /**
+     * ワールド生成をメインスレッドで実行し、結果を future で返す。
+     */
+    private CompletableFuture<World> createWorldOnMainThread(String templateId, String instanceId,
+                                                             Path instanceDir) {
+        CompletableFuture<World> result = new CompletableFuture<>();
+        if (!plugin.isEnabled()) {
+            deleteDirectoryQuietly(instanceDir);
+            result.completeExceptionally(
+                    new IllegalStateException("プラグインが停止中のためワールドを生成できません。"));
+            return result;
+        }
+
+        Runnable task = () -> {
+            try {
+                // 複製完了後にインスタンスディレクトリが消えている場合はロードしない。
+                if (!Files.isDirectory(instanceDir)) {
+                    result.completeExceptionally(new IllegalStateException(
+                            "複製先ディレクトリが存在しないためワールド生成を中止しました: " + instanceDir));
+                    return;
+                }
+                result.complete(loadWorld(templateId, instanceId, instanceDir));
+            } catch (RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        };
+
+        try {
+            Bukkit.getScheduler().runTask(plugin, task);
+        } catch (RuntimeException e) {
+            deleteDirectoryQuietly(instanceDir);
+            result.completeExceptionally(e);
+        }
+        return result;
+    }
+
+    /**
+     * テンプレートディレクトリを解決する。
+     *
+     * @throws IllegalArgumentException テンプレートが存在しない場合
+     */
+    private Path resolveTemplatePath(String templateId) {
+        Path templateDir = templateRoot.resolve(templateId).normalize();
+        if (!templateDir.getParent().equals(templateRoot) || !Files.isDirectory(templateDir)) {
+            throw new IllegalArgumentException("テンプレートが見つかりません: " + templateDir);
+        }
+        return templateDir;
+    }
+
+    /**
+     * 生成先インスタンスディレクトリを検証して返す。
+     *
+     * @throws IllegalStateException 同名ワールド／ディレクトリが既に存在する場合
+     */
+    private Path prepareInstancePath(String instanceId) {
+        // Bukkit 上のワールド名は instanceId そのもの（実体は dimensions/minecraft 配下）。
+        String bukkitWorldName = LayerManager.worldName(instanceId);
+        if (Bukkit.getWorld(bukkitWorldName) != null) {
+            throw new IllegalStateException("ワールド '" + bukkitWorldName + "' は既にロードされています。");
+        }
+
+        Path instanceDir = resolveInstancePath(instanceId);
+        if (Files.exists(instanceDir)) {
+            throw new IllegalStateException("インスタンスディレクトリが既に存在します: " + instanceDir);
+        }
+        return instanceDir;
+    }
+
+    /**
+     * 複製済みディレクトリからワールドを生成・ロードする（メインスレッド専用）。
+     *
+     * @param templateId  テンプレート ID
+     * @param instanceId  インスタンス ID
+     * @param instanceDir 複製済みインスタンスディレクトリ
+     * @return ロードされたワールド
+     */
+    private World loadWorld(String templateId, String instanceId, Path instanceDir) {
+        assertMainThread();
+
+        String bukkitWorldName = LayerManager.worldName(instanceId);
         World world;
         try {
             // ワールド名は instanceId のみを渡す。Paper 26.3 は実体を
@@ -346,6 +518,19 @@ public class LayerManager {
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "レイヤー NPC の配置に失敗しました: instance=" + instanceId
+                                + " (" + e.getMessage() + ")");
+            }
+        }
+
+        // LayerData に spawners が定義されていれば、モブの定期スポーンを開始する。
+        // スポーン開始の失敗でレイヤー生成自体を失敗させない。
+        SpawnerManager spawnerManager = plugin.getSpawnerManager();
+        if (spawnerManager != null) {
+            try {
+                spawnerManager.startFor(world, instanceId, templateId);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning(
+                        "レイヤーのスポナー開始に失敗しました: instance=" + instanceId
                                 + " (" + e.getMessage() + ")");
             }
         }
@@ -417,6 +602,98 @@ public class LayerManager {
     }
 
     /**
+     * テンプレート ID から利用可能なインスタンスワールドを非同期で取得する。
+     * <p>
+     * 判定ロジックは {@link #getOrCreateInstance(String)} と同一だが、未生成時の
+     * 複製・ワールド生成を {@link #createLayerAsync(String, String)} に委譲する。
+     * 既にロード済み、または生成中の場合は該当する future をそのまま返す。
+     *
+     * @param templateId テンプレート ID
+     * @return ワールドを返す future（失敗時は {@link IllegalStateException} で完了）
+     */
+    public synchronized CompletableFuture<World> getOrCreateInstanceAsync(String templateId) {
+        assertMainThread();
+        validateId(templateId, "templateId");
+
+        // 共有 Hub は固定 ID を利用する。
+        if (Zeloria.HUB_TEMPLATE_ID.equalsIgnoreCase(templateId)) {
+            World hub = getWorld(Zeloria.HUB_INSTANCE_ID);
+            if (hub != null) {
+                return CompletableFuture.completedFuture(hub);
+            }
+            return createLayerAsync(Zeloria.HUB_TEMPLATE_ID, Zeloria.HUB_INSTANCE_ID);
+        }
+
+        // 既に同じテンプレートから生成されたインスタンスがあれば再利用する。
+        for (Map.Entry<String, String> entry : instanceTemplates.entrySet()) {
+            if (!templateId.equalsIgnoreCase(entry.getValue())) {
+                continue;
+            }
+            World world = loadedWorlds.get(entry.getKey());
+            if (world != null) {
+                return CompletableFuture.completedFuture(world);
+            }
+        }
+
+        // 生成中のインスタンスがあれば、その完了を待つ future を共有する。
+        for (Map.Entry<String, String> entry : pendingTemplates.entrySet()) {
+            if (!templateId.equalsIgnoreCase(entry.getValue())) {
+                continue;
+            }
+            CompletableFuture<World> pending = pendingInstances.get(entry.getKey());
+            if (pending != null) {
+                return pending;
+            }
+        }
+
+        int maxInstances = resolveMaxInstances(templateId);
+        int attempts = Math.min(Math.max(maxInstances, 1), MAX_INSTANCE_ATTEMPTS);
+
+        for (int index = 1; index <= attempts; index++) {
+            String instanceId = templateId + "_instance_" + index;
+            if (instanceId.length() > 64) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                        "テンプレート ID が長すぎるためインスタンス ID を生成できません: " + templateId));
+            }
+            if (loadedWorlds.containsKey(instanceId)
+                    || pendingInstances.containsKey(instanceId)
+                    || Files.exists(resolveInstancePath(instanceId))) {
+                continue;
+            }
+            return createLayerAsync(templateId, instanceId);
+        }
+
+        return CompletableFuture.failedFuture(new IllegalStateException(
+                "テンプレート '" + templateId + "' のインスタンス上限 (" + maxInstances + ") に達しました。"));
+    }
+
+    /**
+     * 指定インスタンスが複製・生成中かどうかを返す。
+     *
+     * @param instanceId インスタンス ID
+     * @return 複製・生成中なら {@code true}
+     */
+    public boolean isCreating(String instanceId) {
+        return instanceId != null && pendingInstances.containsKey(instanceId);
+    }
+
+    /**
+     * 複製・生成中のインスタンス ID を返す（不変ビュー）。
+     */
+    public Set<String> getPendingInstances() {
+        return Set.copyOf(pendingInstances.keySet());
+    }
+
+    /**
+     * 複製用エグゼキュータを停止する（プラグイン無効化時に呼び出す）。
+     */
+    public void shutdown() {
+        copyExecutor.shutdownNow();
+        pendingInstances.clear();
+        pendingTemplates.clear();
+    }
+
+    /**
      * LayerData から最大インスタンス数を取得する。未設定の場合は既定値を返す。
      */
     private int resolveMaxInstances(String templateId) {
@@ -468,6 +745,16 @@ public class LayerManager {
         assertMainThread();
         validateId(instanceId, "instanceId");
 
+        // 複製中（ワールド未生成）のインスタンスは削除対象としない。
+        // 中途半端に削除すると複製処理と競合するため、完了後の再試行に委ねる。
+        if (pendingInstances.containsKey(instanceId)) {
+            plugin.getLogger().warning("レイヤー '" + instanceId + "' は準備中のため削除できません。");
+            return false;
+        }
+
+        // ワールドアンロード前にスポーンタスクを停止し、削除中のモブ生成を防ぐ。
+        // （削除中止時はスポナーを止めたままにしないよう、実際のアンロード直前で行う）
+
         if (isProtectedDirectoryName(instanceId)) {
             plugin.getLogger().severe("保護対象ディレクトリはレイヤーとして削除できません: " + instanceId);
             return false;
@@ -515,9 +802,19 @@ public class LayerManager {
                 return false;
             }
 
+            // アンロード直前でスポーン判定を停止し、削除中のモブ生成を防ぐ。
+            SpawnerManager spawnerManager = plugin.getSpawnerManager();
+            if (spawnerManager != null) {
+                spawnerManager.stopFor(instanceId);
+            }
+
             // ディレクトリごと破棄するため、アンロード時のセーブは行わない。
             if (!Bukkit.unloadWorld(world, false)) {
                 plugin.getLogger().severe("レイヤーワールドのアンロードに失敗しました: " + bukkitWorldName);
+                // ワールドが残るため、停止したスポーン判定を再開しておく。
+                if (spawnerManager != null) {
+                    spawnerManager.startFor(world, instanceId, instanceTemplates.get(instanceId));
+                }
                 return false;
             }
         }

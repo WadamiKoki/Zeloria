@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -30,8 +31,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * プレイヤーがしゃがんだ際、足元が {@code LayerData} の {@code portals} で定義された
  * 範囲（足元座標から半径 {@link PortalDefinition#PORTAL_RADIUS} m）内にあるかを判定し、
  * 該当すれば転送先レイヤーへテレポートする。
- * 転送先インスタンスが未生成の場合は {@link LayerManager#getOrCreateInstance(String)}
- * （内部で {@link LayerManager#createLayer(String, String)}）により生成する。
+ * 転送先インスタンスが未生成の場合は {@link LayerManager#getOrCreateInstanceAsync(String)}
+ * により非同期で生成し、完了後に転送する（テンプレート複製中は待機メッセージを表示）。
  * <p>
  * 転送音は全ポータル共通で {@code block.amethyst_block.chime}（volume 1.0 / pitch 1.0）に固定する。
  * <p>
@@ -113,20 +114,54 @@ public class PortalListener implements Listener {
             return;
         }
 
-        World targetWorld;
+        // 転送先ワールドは非同期で用意する（未生成の場合はテンプレート複製が走る）。
+        CompletableFuture<World> worldFuture;
         try {
-            targetWorld = layerManager.getOrCreateInstance(targetTemplate);
+            worldFuture = layerManager.getOrCreateInstanceAsync(targetTemplate);
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("ポータルの転送先レイヤーを生成できませんでした: "
-                    + targetTemplate + " (" + e.getMessage() + ")");
-            messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
-                    Map.of("layer_name", targetName));
-            logWarning("ポータル転送先の生成失敗: player=" + player.getName()
-                    + ", portal=" + portal.id() + ", target=" + targetTemplate
-                    + ", error=" + e.getMessage());
+            failCreation(player, portal, targetTemplate, targetName, e.getMessage());
             return;
         }
 
+        if (!worldFuture.isDone()) {
+            // 複製・生成中は待機メッセージを出し、連続発動を防ぐためクールダウンを先に消費する。
+            cooldowns.put(player.getUniqueId(), now);
+            actionBar(player, "portal.creating", Map.of("layer_name", targetName));
+        }
+
+        worldFuture.whenComplete((targetWorld, error) -> {
+            // 完了コールバックの実行スレッドは保証されないため、必ずメインスレッドへ戻す。
+            Runnable task = () -> {
+                if (error != null || targetWorld == null) {
+                    cooldowns.remove(player.getUniqueId());
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
+                            Map.of("layer_name", targetName));
+                    logWarning("ポータル転送先の生成失敗: player=" + player.getName()
+                            + ", portal=" + portal.id() + ", target=" + targetTemplate
+                            + ", error=" + (error != null ? rootMessage(error) : "world-not-created"));
+                    return;
+                }
+                if (!player.isOnline()) {
+                    return;
+                }
+                beginWarp(player, portal, portalMatch, targetTemplate, targetName, targetWorld, now);
+            };
+            if (Bukkit.isPrimaryThread()) {
+                task.run();
+            } else {
+                Bukkit.getScheduler().runTask(plugin, task);
+            }
+        });
+    }
+
+    /**
+     * 転送先ワールドの準備が完了した後に、転送先座標の算出とテレポートを開始する（メインスレッド専用）。
+     */
+    private void beginWarp(Player player, PortalDefinition portal, LayerConfigService.PortalMatch portalMatch,
+                           String targetTemplate, String targetName, World targetWorld, long now) {
         cooldowns.put(player.getUniqueId(), now);
         actionBar(player, "portal.warping", Map.of("layer_name", targetName));
 
@@ -140,6 +175,20 @@ public class PortalListener implements Listener {
                 Bukkit.getScheduler().runTask(plugin, () -> handleTeleportResult(
                         player, portal, targetTemplate, targetName,
                         targetWorld, sourceWorld, sourceLayer, destination, success, throwable)));
+    }
+
+    /**
+     * 転送先レイヤーを用意できなかった場合の通知とログ出力をまとめて行う。
+     */
+    private void failCreation(Player player, PortalDefinition portal, String targetTemplate,
+                              String targetName, String error) {
+        plugin.getLogger().warning("ポータルの転送先レイヤーを生成できませんでした: "
+                + targetTemplate + " (" + error + ")");
+        messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
+                Map.of("layer_name", targetName));
+        logWarning("ポータル転送先の生成失敗: player=" + player.getName()
+                + ", portal=" + portal.id() + ", target=" + targetTemplate
+                + ", error=" + error);
     }
 
     private void handleTeleportResult(Player player, PortalDefinition portal,

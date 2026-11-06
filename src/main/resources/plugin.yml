@@ -12,7 +12,7 @@ commands:
     aliases: [inv, inventory, equipment]
   admin:
     description: Zeloria の管理コマンド
-    usage: /admin <reload|test yaml [<folder>] [<id>]|test db|give <armor|material|weapon> <id> [amount]|npc <list|spawn <npcId>|remove>|stop>
+    usage: /admin <reload|test yaml|test db|give|npc|stop>
     aliases: [zeloria]
 
 permissions:

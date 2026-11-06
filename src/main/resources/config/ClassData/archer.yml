@@ -34,17 +34,21 @@ baseStats:
   armorPenetration: 0.0
   lifesteal: 0.0
 
-# レベルアップごとの成長値
-levelUpStats:
-  maxHealth: 2.0
+# レベルアップごとの成長率（%／レベル、単利成長）
+# 計算式: 実効値 = baseStats × (1 + 成長率[%] / 100 × (レベル - 1))
+# 例: maxHealth が 10.0 の場合、レベル5 では 20.0 × (1 + 0.10 × 4) = 28.0
+# 基礎値が 0 の項目は割合を掛けても 0 のままなので、成長させたい項目は
+# baseStats 側に 0 以外の値を設定すること。
+levelUpPercent:
+  maxHealth: 10.0
   maxMana: 10.0
-  attackPower: 0.5
+  attackPower: 50.0
   defense1: 0.0
-  defense2: 0.5
-  criticalRate: 0.1
+  defense2: 0.0
+  criticalRate: 2.0
   criticalDamage: 0.0
   accuracy: 0.5
-  evasion: 0.1
+  evasion: 2.0
   dodgeCooldownReduction: 0.0
   cooldownReduction: 0.0
   moveSpeed: 0.0

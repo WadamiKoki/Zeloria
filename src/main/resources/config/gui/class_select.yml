@@ -17,6 +17,25 @@ status:
   unlocked: "<yellow>クリックでこのクラスに切り替えます</yellow>"
   locked: "<red>未解放</red>"
 
+# クラスアイコンの 1 行下（スロット +9）へ並べる「レベル成長率」表示アイテム。
+# クラスアイコンが最下段にある場合、そのクラスの成長率表示は省略されます。
+growth:
+  enabled: true
+  material: "ITEM_FRAME"
+  name: "<light_purple>{class}</light_purple> <gray>のレベル成長率</gray>"
+  # 1 ステータス分の表記（{label} と {value} が置換されます）。
+  line: "<gray>{label}</gray> <dark_gray>+</dark_gray> <aqua>{value}%</aqua> <gray>/ Lv</gray>"
+  # すべての成長率が 0 のときの表記。
+  empty: "<dark_gray>成長率は設定されていません。</dark_gray>"
+  # 上から順に lore へ並びます。key は ClassData の levelUpPercent のキー名と一致させます。
+  stats:
+    maxHealth: "最大HP"
+    maxMana: "最大MP"
+    attackPower: "攻撃力"
+    criticalRate: "クリティカル率"
+    accuracy: "命中率"
+    evasion: "回避率"
+
 # UI 効果音
 sounds:
   open:

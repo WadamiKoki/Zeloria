@@ -7,6 +7,7 @@ import com.zeloria.player.PlayerClassData;
 import com.zeloria.player.ZeloriaClass;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.Collection;
@@ -155,11 +156,15 @@ public final class ClassManager {
         List<String> skills = config.getStringList("skills");
         ClassStats baseStats = ClassStats.fromConfig(
                 config.getConfigurationSection("baseStats"), ClassStats.DEFAULT);
-        ClassStats levelUpStats = ClassStats.fromConfig(
-                config.getConfigurationSection("levelUpStats"), ClassStats.NONE);
+        // 旧キー（levelUpStats: 固定加算値）も後方互換のため読み込む。
+        ConfigurationSection percentSection = config.getConfigurationSection("levelUpPercent");
+        if (percentSection == null) {
+            percentSection = config.getConfigurationSection("levelUpStats");
+        }
+        ClassStats levelUpPercent = ClassStats.fromConfig(percentSection, ClassStats.NONE);
 
         return new ZeloriaClass(id, displayName, description, icon, unlockedByDefault, skills,
-                baseStats, levelUpStats);
+                baseStats, levelUpPercent);
     }
 
     private static boolean isYaml(String key) {
