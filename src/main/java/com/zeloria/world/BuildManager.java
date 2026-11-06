@@ -10,6 +10,7 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.entity.Player;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -37,7 +38,8 @@ import java.util.stream.Stream;
 /**
  * チャンネル 1 専用の建築モードを管理するクラス。
  * <p>
- * 建築ワールドはテンプレート（{@code plugins/Zeloria/worlds/<templateId>}）を
+ * 建築ワールドはテンプレート（{@code WorldData/<templateId>}、既定:
+ * {@code ZeloriaServer/WorldData/<templateId>}）を
  * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<templateId>}
  * へ複製し、{@code WorldCreator.ofKey(new NamespacedKey("zeloria_build", templateId))}
  * でロードする。
@@ -92,7 +94,7 @@ public class BuildManager {
 
     private final Zeloria plugin;
 
-    /** テンプレート配置先: {@code plugins/Zeloria/worlds} */
+    /** テンプレート配置先: {@code <worldDataFolder>}（既定: {@code ZeloriaServer/WorldData}） */
     private final Path templateRoot;
 
     /**
@@ -136,8 +138,11 @@ public class BuildManager {
      */
     public BuildManager(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.templateRoot = plugin.getDataFolder().toPath()
-                .resolve("worlds")
+        File worldDataFolder = plugin.getWorldDataFolder();
+        if (worldDataFolder == null) {
+            throw new IllegalStateException("world-data-path が初期化されていません。");
+        }
+        this.templateRoot = worldDataFolder.toPath()
                 .toAbsolutePath()
                 .normalize();
         this.buildRoot = resolveBuildRoot();
@@ -150,7 +155,7 @@ public class BuildManager {
      * 開かれている場合は複製せず、プレイヤーをそのワールドへ参戦させる。
      * 別のテンプレートが開かれている場合は保存を促してキャンセルする。
      *
-     * @param templateId テンプレート ID（{@code worlds} 配下のディレクトリ名）
+     * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
      * @param player     入場させるプレイヤー（{@code null} の場合はワールドのロードのみ）
      * @return ロード完了時にワールドを返す future（失敗時は例外で完了）
      */
@@ -489,7 +494,7 @@ public class BuildManager {
     /**
      * 利用可能な建築テンプレート ID の一覧を取得する。
      * <p>
-     * {@code worlds} 配下のディレクトリ名を返す。保存処理中の一時ディレクトリ
+     * {@code WorldData} 配下のディレクトリ名を返す。保存処理中の一時ディレクトリ
      * （{@code .<id>.tmp} など）は先頭が {@code .} のため除外する。
      *
      * @return テンプレート ID の一覧（昇順）。テンプレートが無い場合は空リスト
@@ -1175,7 +1180,7 @@ public class BuildManager {
      *
      * @param templateId テンプレート ID
      * @return テンプレートディレクトリ
-     * @throws IllegalArgumentException パスが {@code worlds} 配下から外れる場合
+     * @throws IllegalArgumentException パスが {@code WorldData} 配下から外れる場合
      */
     private Path resolveTemplatePath(String templateId) {
         Path path = templateRoot.resolve(templateId).toAbsolutePath().normalize();

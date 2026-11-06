@@ -11,6 +11,7 @@ import org.bukkit.WorldType;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -37,7 +38,7 @@ import java.util.regex.Pattern;
 /**
  * テンプレートワールドからレイヤーインスタンスを生成・管理するクラス。
  * <p>
- * テンプレートは {@code plugins/Zeloria/worlds/{templateId}} に配置し、
+ * テンプレートは {@code WorldData/{templateId}}（既定: {@code ZeloriaServer/WorldData/{templateId}}）に配置し、
  * 生成されたインスタンスは Paper 26.3 の標準ディメンション配置先である
  * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/{instanceId}}
  * （例: {@code ZeloriaServer/world/dimensions/minecraft/hub_instance_1}）に展開される。
@@ -131,7 +132,7 @@ public class LayerManager {
     private final Zeloria plugin;
 
     /**
-     * テンプレート配置先: {@code plugins/Zeloria/worlds}
+     * テンプレート配置先: {@code <worldDataFolder>}（既定: {@code ZeloriaServer/WorldData}）
      */
     private final Path templateRoot;
 
@@ -197,8 +198,11 @@ public class LayerManager {
 
     public LayerManager(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.templateRoot = plugin.getDataFolder().toPath()
-                .resolve("worlds")
+        File worldDataFolder = plugin.getWorldDataFolder();
+        if (worldDataFolder == null) {
+            throw new IllegalStateException("world-data-path が初期化されていません。");
+        }
+        this.templateRoot = worldDataFolder.toPath()
                 .toAbsolutePath()
                 .normalize();
         this.instanceRoot = resolveDimensionsRoot();
@@ -294,7 +298,7 @@ public class LayerManager {
     /**
      * テンプレートを複製し、レイヤーインスタンスを生成・ロードする。
      *
-     * @param templateId テンプレート ID（{@code plugins/Zeloria/worlds} 配下のディレクトリ名）
+     * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
      * @param instanceId 生成するインスタンス ID
      *                   （{@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft} 配下のディレクトリ名）
      * @return ロードされたワールド

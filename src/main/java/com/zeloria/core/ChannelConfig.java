@@ -9,8 +9,8 @@ import java.util.Objects;
  * サーバー固有のチャンネル設定（{@code plugins/Zeloria/channel.yml}）を保持するクラス。
  * <p>
  * Zeloria を複数サーバー（チャンネル）で運用する場合、設定 YAML と DB 接続情報は
- * 共有フォルダに 1 箇所だけ置き、各サーバーはこのファイルで自身のチャンネル番号と
- * 共有フォルダの位置を指定する。
+ * 共有フォルダに、ワールドテンプレートは {@code WorldData/} に 1 箇所だけ置き、
+ * 各サーバーはこのファイルで自身のチャンネル番号と各フォルダの位置を指定する。
  * <p>
  * 建築モードは {@link #BUILD_CHANNEL}（チャンネル 1）でのみ有効とする。
  * {@code channel.yml} は自動生成しない。初回起動前に手動で配置すること。
@@ -25,6 +25,9 @@ public final class ChannelConfig {
 
     /** 共有設定フォルダのパスのキー。 */
     public static final String KEY_SHARED_CONFIG_PATH = "shared-config-path";
+
+    /** テンプレートワールドの保存先のキー。 */
+    public static final String KEY_WORLD_DATA_PATH = "world-data-path";
 
     /** 建築モードを許可するチャンネル番号。 */
     public static final int BUILD_CHANNEL = 1;
@@ -41,23 +44,47 @@ public final class ChannelConfig {
      */
     public static final String DEFAULT_SHARED_CONFIG_PATH = "../config";
 
+    /**
+     * {@code world-data-path} が未指定の場合に使用するテンプレートワールドの保存先。
+     * <p>
+     * サーバールート（{@code paper.jar} がある場所）からの相対パスで、
+     * 既定の {@code "../WorldData"} はサーバールートの親フォルダ直下の
+     * {@code WorldData}（例: {@code ZeloriaServer/WorldData}）を指す。
+     */
+    public static final String DEFAULT_WORLD_DATA_PATH = "../WorldData";
+
     /** 共有設定フォルダ内の設定ディレクトリ名。 */
     public static final String SHARED_CONFIG_DIR_NAME = "config";
 
     private final int channel;
     private final String sharedConfigPath;
+    private final String worldDataPath;
+
+    /**
+     * チャンネル設定を生成する（{@code world-data-path} は既定値を使用）。
+     *
+     * @param channel          チャンネル番号
+     * @param sharedConfigPath 共有設定フォルダのパス（サーバールートからの相対パス）
+     */
+    public ChannelConfig(int channel, String sharedConfigPath) {
+        this(channel, sharedConfigPath, DEFAULT_WORLD_DATA_PATH);
+    }
 
     /**
      * チャンネル設定を生成する。
      *
      * @param channel          チャンネル番号
      * @param sharedConfigPath 共有設定フォルダのパス（サーバールートからの相対パス）
+     * @param worldDataPath    テンプレートワールドの保存先（サーバールートからの相対パス）
      */
-    public ChannelConfig(int channel, String sharedConfigPath) {
+    public ChannelConfig(int channel, String sharedConfigPath, String worldDataPath) {
         this.channel = channel;
         this.sharedConfigPath = sharedConfigPath == null || sharedConfigPath.isBlank()
                 ? DEFAULT_SHARED_CONFIG_PATH
                 : sharedConfigPath.trim();
+        this.worldDataPath = worldDataPath == null || worldDataPath.isBlank()
+                ? DEFAULT_WORLD_DATA_PATH
+                : worldDataPath.trim();
     }
 
     /**
@@ -74,7 +101,8 @@ public final class ChannelConfig {
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         int channel = yaml.getInt(KEY_CHANNEL, DEFAULT_CHANNEL);
         String sharedConfigPath = yaml.getString(KEY_SHARED_CONFIG_PATH, DEFAULT_SHARED_CONFIG_PATH);
-        return new ChannelConfig(channel, sharedConfigPath);
+        String worldDataPath = yaml.getString(KEY_WORLD_DATA_PATH, DEFAULT_WORLD_DATA_PATH);
+        return new ChannelConfig(channel, sharedConfigPath, worldDataPath);
     }
 
     /**
@@ -93,6 +121,15 @@ public final class ChannelConfig {
      */
     public String getSharedConfigPath() {
         return sharedConfigPath;
+    }
+
+    /**
+     * テンプレートワールドの保存先（サーバールートからの相対パス）を取得する。
+     *
+     * @return テンプレートワールドの保存先
+     */
+    public String getWorldDataPath() {
+        return worldDataPath;
     }
 
     /**

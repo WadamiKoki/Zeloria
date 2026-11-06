@@ -110,6 +110,13 @@ public final class Zeloria extends JavaPlugin {
      */
     private File sharedConfigFolder;
 
+    /**
+     * テンプレートワールドの保存先（{@code channel.yml} の {@code world-data-path} を解決したパス）。
+     * <p>
+     * このフォルダ自体にテンプレート（{@code <templateId>/}）を置き、全サーバーで共有する。
+     */
+    private File worldDataFolder;
+
     private YamlLoader yamlLoader;
     private LoggerService loggerService;
     private MessageService messageService;
@@ -381,8 +388,9 @@ public final class Zeloria extends JavaPlugin {
 
         this.channelConfig = ChannelConfig.load(channelFile);
 
-        // shared-config-path はサーバールート（paper.jar がある場所）からの相対パスとして解決する。
-        // 絶対パスを許可すると環境ごとに設定を書き換える必要があり、環境非依存の運用が崩れるため禁止する。
+        // shared-config-path / world-data-path はサーバールート（paper.jar がある場所）からの
+        // 相対パスとして解決する。絶対パスを許可すると環境ごとに設定を書き換える必要があり、
+        // 環境非依存の運用が崩れるため禁止する。
         String sharedConfigPath = this.channelConfig.getSharedConfigPath();
         if (isAbsolutePath(sharedConfigPath)) {
             getLogger().severe("shared-config-path には絶対パスを使用しないでください: " + sharedConfigPath);
@@ -390,27 +398,39 @@ public final class Zeloria extends JavaPlugin {
             return false;
         }
 
-        File resolved;
+        String worldDataPath = this.channelConfig.getWorldDataPath();
+        if (isAbsolutePath(worldDataPath)) {
+            getLogger().severe("world-data-path には絶対パスを使用しないでください");
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
+        File resolvedShared;
+        File resolvedWorldData;
         try {
             // getDataFolder() は <server>/plugins/Zeloria/ のため、2 つ上がサーバールート。
             File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
-            resolved = new File(serverRoot, sharedConfigPath).getCanonicalFile();
+            resolvedShared = new File(serverRoot, sharedConfigPath).getCanonicalFile();
+            resolvedWorldData = new File(serverRoot, worldDataPath).getCanonicalFile();
         } catch (IOException e) {
-            getLogger().severe("共有設定フォルダが見つかりません: " + e.getMessage());
+            getLogger().severe("設定フォルダの解決に失敗しました: " + e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
             return false;
         }
 
-        if (!resolved.isDirectory()) {
-            getLogger().severe("共有設定フォルダが見つかりません: " + resolved.getAbsolutePath());
+        if (!resolvedShared.isDirectory()) {
+            getLogger().severe("共有設定フォルダが見つかりません: " + resolvedShared.getAbsolutePath());
             getServer().getPluginManager().disablePlugin(this);
             return false;
         }
 
-        this.sharedConfigFolder = resolved;
+        this.sharedConfigFolder = resolvedShared;
+        this.worldDataFolder = resolvedWorldData;
         getLogger().info("チャンネル " + this.channelConfig.getChannel()
                 + " で起動します（共有設定フォルダ: "
-                + this.sharedConfigFolder.getAbsolutePath() + "）");
+                + this.sharedConfigFolder.getAbsolutePath()
+                + "、ワールドデータフォルダ: "
+                + this.worldDataFolder.getAbsolutePath() + "）");
         return true;
     }
 
@@ -546,7 +566,7 @@ public final class Zeloria extends JavaPlugin {
             getLogger().info("共有 Hub レイヤーをロードしました: " + world.getName());
         } catch (RuntimeException e) {
             getLogger().severe("共有 Hub レイヤーの生成に失敗しました（テンプレート "
-                    + "plugins/Zeloria/worlds/" + HUB_TEMPLATE_ID + " を確認してください）: " + e.getMessage());
+                    + "WorldData/" + HUB_TEMPLATE_ID + " を確認してください）: " + e.getMessage());
         }
     }
 
@@ -724,6 +744,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public File getSharedConfigFolder() {
         return sharedConfigFolder;
+    }
+
+    /**
+     * テンプレートワールドの保存先（{@code WorldData/}）を取得する。
+     *
+     * @return ワールドデータフォルダ（onEnable 前は null）
+     */
+    public File getWorldDataFolder() {
+        return worldDataFolder;
     }
 
     /**
