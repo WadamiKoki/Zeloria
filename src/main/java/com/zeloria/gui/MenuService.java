@@ -375,6 +375,12 @@ public class MenuService {
                 notify(player, "<red>この枠には " + equipSlot.getDisplayName() + " しか装着できません。</red>");
                 return;
             }
+            EquipmentService equipmentService = plugin.getEquipmentService();
+            if (equipmentService != null && !equipmentService.canEquip(player, cursor)) {
+                playSound(player, SOUND_ERROR);
+                notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
+                return;
+            }
             if (!beginEquipmentClick(player)) {
                 return;
             }
@@ -486,6 +492,11 @@ public class MenuService {
     private void equipFromPlayerInventory(Player player, PlayerData data, MenuGui menu,
                                           int playerSlot, ItemStack item, EquipSlot equipSlot) {
         EquipmentService equipmentService = plugin.getEquipmentService();
+        if (equipmentService != null && !equipmentService.canEquip(player, item)) {
+            playSound(player, SOUND_ERROR);
+            notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
+            return;
+        }
         if (equipmentService != null && !equipmentService.meetsRequiredLevel(player, item)) {
             playSound(player, SOUND_ERROR);
             MessageService messages = plugin.getMessageService();

@@ -10,9 +10,12 @@ import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatsService;
+import com.zeloria.player.ZeloriaClass;
+import com.zeloria.skill.ClassManager;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -66,6 +69,54 @@ public class EquipmentService {
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         int level = data == null ? 0 : data.getLevel();
         return level >= requiredLevel(stack);
+    }
+
+    /**
+     * プレイヤーの現在のクラスが、指定アイテムを装着できるか判定する。
+     * <p>
+     * 武器の場合のみクラス定義の {@code weaponTypes} を照合する。クラス側が空リスト
+     * （全武器許可）または武器側のタイプが空の場合は装着を許可する。武器以外の
+     * アイテムや、クラス未選択・定義なしの場合は装着を妨げない。
+     *
+     * @param player 対象プレイヤー
+     * @param stack  判定対象
+     * @return 装着可能な場合は {@code true}
+     */
+    public boolean canEquip(Player player, ItemStack stack) {
+        if (player == null) {
+            return false;
+        }
+
+        ItemData data = resolve(stack);
+        if (!(data instanceof WeaponData weapon)) {
+            return true;
+        }
+
+        ClassManager classManager = plugin.getClassManager();
+        if (classManager == null) {
+            return true;
+        }
+
+        PlayerData playerData = PlayerData.getCached(player.getUniqueId());
+        if (playerData == null) {
+            return true;
+        }
+
+        ZeloriaClass currentClass = classManager.current(playerData.getClassData()).orElse(null);
+        if (currentClass == null || currentClass.weaponTypes().isEmpty()) {
+            return true;
+        }
+
+        List<String> weaponTypes = weapon.weaponTypes();
+        if (weaponTypes.isEmpty()) {
+            return true;
+        }
+        for (String weaponType : weaponTypes) {
+            if (currentClass.allowsWeaponType(weaponType)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

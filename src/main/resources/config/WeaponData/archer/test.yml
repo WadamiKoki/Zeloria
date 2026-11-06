@@ -5,7 +5,7 @@ lore:
   - "<gray>アーチャー用の武器テンプレート。"
   - "<gray>stats の数値を編集して使用してください。"
 sell_price: 0
-weaponType: "BOW"
+weaponTypes: [BOW]
 baseDamage: 5.0
 attackRange: 0.0
 attackAngle: 0.0

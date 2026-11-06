@@ -20,6 +20,7 @@ import java.util.Objects;
  * @param icon              GUI アイコンに使用する Material
  * @param unlockedByDefault 初期状態で解放されるか
  * @param skills            このクラスで使用できるスキル ID の一覧
+ * @param weaponTypes       このクラスで使用できる武器タイプの一覧（空なら全武器許可）
  * @param baseStats         レベル 1 時点の基礎ステータス
  * @param levelUpPercent    レベルアップごとの成長率（基礎値に対する %）
  */
@@ -30,6 +31,7 @@ public record ZeloriaClass(
         Material icon,
         boolean unlockedByDefault,
         List<String> skills,
+        List<String> weaponTypes,
         ClassStats baseStats,
         ClassStats levelUpPercent
 ) {
@@ -50,6 +52,14 @@ public record ZeloriaClass(
                 .filter(Objects::nonNull)
                 .map(ZeloriaClass::normalizeId)
                 .filter(skillId -> !skillId.isEmpty())
+                .distinct()
+                .toList();
+        weaponTypes = weaponTypes == null
+                ? List.of()
+                : weaponTypes.stream()
+                .filter(Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(Locale.ROOT))
+                .filter(value -> !value.isEmpty())
                 .distinct()
                 .toList();
         baseStats = baseStats == null ? ClassStats.DEFAULT : baseStats;
@@ -78,6 +88,25 @@ public record ZeloriaClass(
     public boolean allows(String skillId) {
         String normalized = normalizeId(skillId);
         return !normalized.isEmpty() && skills.contains(normalized);
+    }
+
+    /**
+     * 指定した武器タイプがこのクラスに許可されているか判定する。
+     * <p>
+     * {@code weaponTypes} が空の場合は全武器を許可する。
+     *
+     * @param weaponType 武器タイプ（例: {@code SWORD}）
+     * @return 許可されている場合は {@code true}
+     */
+    public boolean allowsWeaponType(String weaponType) {
+        if (weaponTypes.isEmpty()) {
+            return true;
+        }
+        if (weaponType == null || weaponType.isBlank()) {
+            return false;
+        }
+        String normalized = weaponType.trim().toUpperCase(Locale.ROOT);
+        return weaponTypes.contains(normalized);
     }
 
     private static String normalizeId(String value) {

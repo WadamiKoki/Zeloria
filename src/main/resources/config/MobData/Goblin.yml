@@ -2,8 +2,6 @@ id: "goblin"
 name: "ゴブリン"
 # 省略時はZOMBIE。
 entityType: "zombie"
-# 既定のモブレベル（スポナーの level が指定された場合はそちらを優先）。
-level: 1
 maxHp: 50.0
 defense: 2.0
 attackPower: 4.0

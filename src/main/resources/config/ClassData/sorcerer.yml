@@ -13,6 +13,10 @@ skills:
   - "sorcerer_skill4"
   - "sorcerer_skill5"
 
+# このクラスで使用できる武器タイプ（WeaponData の weaponTypes と一致させる）。
+# 空または未指定の場合は全武器を許可する。
+weaponTypes: [STAFF]
+
 # 基礎ステータス（レベル1時のステータス）
 baseStats:
   maxHealth: 20.0

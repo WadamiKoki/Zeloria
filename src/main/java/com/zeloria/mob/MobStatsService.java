@@ -41,20 +41,20 @@ public final class MobStatsService {
     }
 
     /**
-     * スポーン時にモブ定義を登録する。
+     * スポーン時にモブ定義を登録する（レベル 1）。
      *
      * @param entity 対象エンティティ
      * @param data   モブ定義
      */
     public void attach(LivingEntity entity, MobData data) {
-        attach(entity, data, data == null ? 1 : data.level());
+        attach(entity, data, 1);
     }
 
     /**
      * スポーン時にモブ定義とレベルを登録する。
      * <p>
-     * スポナーが個別のレベルを指定した場合は、{@link MobData#level()} ではなく
-     * このメソッドで明示したレベルが使用される。
+     * スポナーが個別のレベルを指定した場合は、このメソッドで明示したレベルが
+     * 使用される。
      *
      * @param entity 対象エンティティ
      * @param data   モブ定義

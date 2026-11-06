@@ -16,6 +16,7 @@ import java.util.Map;
  * <pre>
  * base_exp: 100
  * exp_growth: 1.15
+ * max_level: 50
  * stages:
  *   - min_level: 0
  *     max_level: 9
@@ -25,6 +26,8 @@ import java.util.Map;
  *     exp_multiplier: 1.2
  * </pre>
  * {@code max_level} に {@code -1} を指定した段階は上限なしとして扱う。
+ * トップレベルの {@code max_level} を 1 以上に指定した場合は、段階から算出した
+ * 上限より優先される。
  * 段階が 1 つも無い場合は倍率 1.0・レベル上限なしで動作する。
  */
 public final class LevelSettings {
@@ -74,12 +77,26 @@ public final class LevelSettings {
     private final int maxLevel;
 
     public LevelSettings(long baseExp, double expGrowth, List<Stage> stages) {
+        this(baseExp, expGrowth, stages, UNLIMITED);
+    }
+
+    /**
+     * レベル上限を明示的に指定して設定を生成する。
+     *
+     * @param baseExp          基準経験値
+     * @param expGrowth        レベルごとの成長率
+     * @param stages           レベル帯ごとの経験値倍率
+     * @param explicitMaxLevel 明示的なレベル上限（1 以上で有効、{@link #UNLIMITED} 以下は段階から算出）
+     */
+    public LevelSettings(long baseExp, double expGrowth, List<Stage> stages, int explicitMaxLevel) {
         this.baseExp = Math.max(1L, baseExp);
         this.expGrowth = expGrowth <= 0.0 ? DEFAULT_EXP_GROWTH : expGrowth;
         this.stages = stages == null
                 ? List.of()
                 : List.copyOf(new ArrayList<>(stages));
-        this.maxLevel = resolveMaxLevel(this.stages);
+        this.maxLevel = explicitMaxLevel >= 1
+                ? explicitMaxLevel
+                : resolveMaxLevel(this.stages);
     }
 
     /**
@@ -106,7 +123,8 @@ public final class LevelSettings {
         return new LevelSettings(
                 config.getLong("base_exp", DEFAULT_BASE_EXP),
                 config.getDouble("exp_growth", DEFAULT_EXP_GROWTH),
-                parsed);
+                parsed,
+                config.getInt("max_level", UNLIMITED));
     }
 
     public long baseExp() {

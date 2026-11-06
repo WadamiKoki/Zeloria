@@ -1,0 +1,21 @@
+# スポナー定義。LayerData 側では spawnerId と座標だけを指定する。
+id: "goblin_camp"
+mobId: "goblin"
+level: 3
+
+# スポーン判定の間隔（秒）。負荷対策のため 30 秒未満は 30 秒として扱われる。
+spawnRateSeconds: 30
+# 同時に生存させる最大数。負荷対策のため 5 を超える値は 5 として扱われる。
+maxAlive: 3
+# 1 回の判定でスポーンさせる最大数。
+spawnLimit: 10
+# プレイヤーを検知する半径（ブロック）。
+spawnRadius: 5.0
+
+display:
+  # ITEM_DISPLAY または BLOCK_DISPLAY
+  type: ITEM_DISPLAY
+  material: SPAWNER
+  # ITEM_DISPLAY 用の item_model（任意。空なら material をそのまま表示する）
+  itemModel: ""
+  scale: 1.0

@@ -23,7 +23,6 @@ import java.util.Objects;
  * criticalDamage: 50.0  # クリティカルダメージ（% 加算）
  * accuracy: 90.0        # 命中率（%）
  * evasion: 0.0          # 回避率（%）
- * level: 1              # レベル（1 以上。スポナーが個別レベルを指定した場合はそちらを優先）
  * expReward: 15
  * moneyReward: 5
  * </pre>
@@ -41,7 +40,6 @@ import java.util.Objects;
  * @param criticalDamage クリティカルダメージ（% 加算。50.0 = +50%）
  * @param accuracy       命中率（%）
  * @param evasion        回避率（%）
- * @param level          既定のモブレベル（1 以上）
  * @param expReward      撃破時経験値
  * @param moneyReward    撃破時報酬
  */
@@ -57,7 +55,6 @@ public record MobData(
         double criticalDamage,
         double accuracy,
         double evasion,
-        int level,
         int expReward,
         int moneyReward
 ) {
@@ -79,7 +76,6 @@ public record MobData(
         criticalDamage = Math.max(criticalDamage, 0.0);
         accuracy = Math.max(0.0, Math.min(100.0, accuracy));
         evasion = Math.max(0.0, Math.min(100.0, evasion));
-        level = Math.max(1, level);
         expReward = Math.max(expReward, 0);
         moneyReward = Math.max(moneyReward, 0);
     }
@@ -110,7 +106,6 @@ public record MobData(
                 config.getDouble("criticalDamage", MobStats.DEFAULT_CRITICAL_DAMAGE),
                 config.getDouble("accuracy", MobStats.DEFAULT_ACCURACY),
                 config.getDouble("evasion", MobStats.DEFAULT_EVASION),
-                config.getInt("level", 1),
                 config.getInt("expReward", 0),
                 config.getInt("moneyReward", 0)
         );

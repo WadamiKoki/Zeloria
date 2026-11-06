@@ -68,15 +68,16 @@ public record MobStats(
     }
 
     /**
-     * {@link MobData} の定義値から実行時ステータスを生成する。
+     * {@link MobData} の定義値からレベル 1 の実行時ステータスを生成する。
      * <p>
-     * レベルは {@link MobData#level()} を使用する。
+     * モブのレベルはスポナー定義（{@link SpawnerData#level()}）など、
+     * スポーンさせる側が明示的に指定する。
      *
      * @param data モブ定義
      * @return 実行時ステータス
      */
     public static MobStats from(MobData data) {
-        return from(data, data == null ? 1 : data.level());
+        return from(data, 1);
     }
 
     /**

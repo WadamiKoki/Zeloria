@@ -103,6 +103,7 @@ public class YamlLoader {
             "SkillData/vanguard/skill5.yml",
             "MaterialData/iron_ore.yml",
             "LevelData/level_settings.yml",
+            "SpawnerData/goblin_camp.yml",
             "ArmorData/helmet.yml",
             "ArmorData/chestplate.yml",
             "ArmorData/leggings.yml",

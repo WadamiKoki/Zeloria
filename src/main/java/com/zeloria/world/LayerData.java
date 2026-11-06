@@ -103,7 +103,7 @@ public class LayerData {
     /**
      * {@code spawners} セクションを解析する。
      * <p>
-     * 不正なエントリ（{@code mobId} が空）は読み飛ばす。
+     * 不正なエントリ（{@code spawnerId} が空）は読み飛ばす。
      */
     private static List<SpawnerPlacement> parseSpawners(FileConfiguration config) {
         List<SpawnerPlacement> placements = new ArrayList<>();

@@ -1422,6 +1422,20 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * 数値は {@code 10.0} ではなく {@code 10} のように末尾の不要なゼロを除去し、
      * {@code stats} などのネストしたセクションは階層を保ったまま展開する。
      */
+    /**
+     * 武器定義の武器タイプ表示を組み立てる。
+     * <p>
+     * 新キー {@code weaponTypes}（リスト）を優先し、無い場合は旧キー
+     * {@code weaponType}（単一文字列）へフォールバックする。
+     */
+    private static String weaponTypesLabel(FileConfiguration config) {
+        List<String> weaponTypes = config.getStringList("weaponTypes");
+        if (!weaponTypes.isEmpty()) {
+            return String.join(", ", weaponTypes);
+        }
+        return text(config.getString("weaponType"), "-");
+    }
+
     private void sendYamlEntry(CommandSender sender, YamlEntry entry) {
         FileConfiguration config = entry.config();
         String id = text(config.getString("id"), entry.fileName());
@@ -1438,7 +1452,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 sendYamlHeader(sender, label, name);
                 send(sender, treeBranch(config.isConfigurationSection("stats"))
                         + " <white>Type</white>: <yellow>"
-                        + esc(text(config.getString("weaponType"), "-")) + "</yellow>"
+                        + esc(weaponTypesLabel(config)) + "</yellow>"
                         + " <dark_gray>|</dark_gray> <white>BaseDmg</white>: <yellow>"
                         + number(config, "baseDamage") + "</yellow>"
                         + " <dark_gray>|</dark_gray> <white>Range</white>: <yellow>"

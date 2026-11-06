@@ -154,6 +154,8 @@ public final class ClassManager {
                 config.getString("icon"), FALLBACK_ICON, "class " + id, plugin.getLogger());
         boolean unlockedByDefault = config.getBoolean("unlockedByDefault", false);
         List<String> skills = config.getStringList("skills");
+        // 未指定の場合は空リスト（全武器許可）として扱う。
+        List<String> weaponTypes = config.getStringList("weaponTypes");
         ClassStats baseStats = ClassStats.fromConfig(
                 config.getConfigurationSection("baseStats"), ClassStats.DEFAULT);
         // 旧キー（levelUpStats: 固定加算値）も後方互換のため読み込む。
@@ -164,7 +166,7 @@ public final class ClassManager {
         ClassStats levelUpPercent = ClassStats.fromConfig(percentSection, ClassStats.NONE);
 
         return new ZeloriaClass(id, displayName, description, icon, unlockedByDefault, skills,
-                baseStats, levelUpPercent);
+                weaponTypes, baseStats, levelUpPercent);
     }
 
     private static boolean isYaml(String key) {

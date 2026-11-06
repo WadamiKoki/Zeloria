@@ -539,7 +539,7 @@ public class ItemService {
             pdc.set(moveSpeedKey, PersistentDataType.DOUBLE, armor.moveSpeed());
             pdc.set(requiredLevelKey, PersistentDataType.INTEGER, armor.requiredLevel());
         } else if (data instanceof WeaponData weapon) {
-            pdc.set(weaponTypeKey, PersistentDataType.STRING, weapon.weaponType());
+            pdc.set(weaponTypeKey, PersistentDataType.STRING, String.join(",", weapon.weaponTypes()));
             pdc.set(baseDamageKey, PersistentDataType.DOUBLE, weapon.baseDamage());
             pdc.set(attackRangeKey, PersistentDataType.DOUBLE, weapon.attackRange());
             pdc.set(attackAngleKey, PersistentDataType.DOUBLE, weapon.attackAngle());
@@ -645,7 +645,7 @@ public class ItemService {
             bonus = armor.statBonus();
         } else if (data instanceof WeaponData weapon) {
             bonus = weapon.statBonus();
-            lines.add("<gray>武器種別: <white>" + weapon.weaponType() + "</white></gray>");
+            lines.add("<gray>武器種別: <white>" + String.join(", ", weapon.weaponTypes()) + "</white></gray>");
             addStat(lines, "基礎ダメージ", weapon.baseDamage());
             addStat(lines, "攻撃範囲", weapon.attackRange());
             addStat(lines, "攻撃角度", weapon.attackAngle());

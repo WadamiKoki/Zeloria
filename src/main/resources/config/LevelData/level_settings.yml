@@ -5,6 +5,11 @@ name: "レベル・経験値設定"
 
 base_exp: 100
 exp_growth: 1.15
+
+# 到達可能な最大レベル。1 以上で明示指定され、-1 または未設定の場合は
+# 下記 stages の max_level から自動算出される。
+max_level: 50
+
 stages:
   - min_level: 0
     max_level: 9

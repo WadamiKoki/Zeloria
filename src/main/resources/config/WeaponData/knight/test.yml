@@ -5,7 +5,7 @@ lore:
   - "<gray>ナイト用の武器テンプレート。"
   - "<gray>stats の数値を編集して使用してください。"
 sell_price: 0
-weaponType: "SWORD"
+weaponTypes: [SWORD]
 baseDamage: 0.0
 attackRange: 0.0
 attackAngle: 0.0

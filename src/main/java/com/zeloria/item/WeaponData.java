@@ -17,7 +17,7 @@ import java.util.List;
  * lore:
  *   - "&lt;gray&gt;ナイト用の武器テンプレート。"
  * sell_price: 0
- * weaponType: "SWORD"
+ * weaponTypes: ["SWORD", "AXE"]
  * baseDamage: 10.0
  * attackRange: 3.0
  * attackAngle: 90.0
@@ -29,26 +29,26 @@ import java.util.List;
  */
 public final class WeaponData extends ItemData {
 
-    private final String weaponType;
+    private final List<String> weaponTypes;
     private final double baseDamage;
     private final double attackRange;
     private final double attackAngle;
     private final ItemStatBonus statBonus;
 
     public WeaponData(String id, String name, Material material, List<String> lore,
-                      long sellPrice, String sourceKey, String weaponType,
+                      long sellPrice, String sourceKey, List<String> weaponTypes,
                       double baseDamage, double attackRange, double attackAngle,
                       ItemStatBonus statBonus) {
-        this(id, name, material, lore, sellPrice, sourceKey, weaponType,
+        this(id, name, material, lore, sellPrice, sourceKey, weaponTypes,
                 baseDamage, attackRange, attackAngle, statBonus, null);
     }
 
     public WeaponData(String id, String name, Material material, List<String> lore,
-                      long sellPrice, String sourceKey, String weaponType,
+                      long sellPrice, String sourceKey, List<String> weaponTypes,
                       double baseDamage, double attackRange, double attackAngle,
                       ItemStatBonus statBonus, String itemModel) {
         super(id, name, material, lore, sellPrice, sourceKey, itemModel);
-        this.weaponType = text(weaponType, "SWORD").toUpperCase(java.util.Locale.ROOT);
+        this.weaponTypes = normalizeWeaponTypes(weaponTypes);
         this.baseDamage = baseDamage;
         this.attackRange = attackRange;
         this.attackAngle = attackAngle;
@@ -69,6 +69,15 @@ public final class WeaponData extends ItemData {
         String id = text(config.getString("id"), fallback);
         String name = text(config.getString("name"), id);
 
+        List<String> weaponTypes = config.getStringList("weaponTypes");
+        if (weaponTypes.isEmpty()) {
+            // 旧キー（単一文字列）との後方互換。
+            String legacy = config.getString("weaponType");
+            if (legacy != null && !legacy.isBlank()) {
+                weaponTypes = List.of(legacy);
+            }
+        }
+
         return new WeaponData(
                 id,
                 name,
@@ -76,7 +85,7 @@ public final class WeaponData extends ItemData {
                 readLore(config),
                 config.getLong("sell_price", 0L),
                 sourceKey,
-                config.getString("weaponType"),
+                weaponTypes,
                 config.getDouble("baseDamage", 0.0),
                 config.getDouble("attackRange", 0.0),
                 config.getDouble("attackAngle", 0.0),
@@ -85,8 +94,29 @@ public final class WeaponData extends ItemData {
         );
     }
 
-    public String weaponType() {
-        return weaponType;
+    /**
+     * この武器が扱える武器タイプの一覧を取得する。
+     * <p>
+     * 空になることはなく、未指定の場合は {@code SWORD} を返す。
+     */
+    public List<String> weaponTypes() {
+        return weaponTypes;
+    }
+
+    /**
+     * 武器タイプの表記を正規化する（大文字・重複除去・空要素の除外）。
+     */
+    private static List<String> normalizeWeaponTypes(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of("SWORD");
+        }
+        List<String> normalized = raw.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(value -> value.trim().toUpperCase(java.util.Locale.ROOT))
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .toList();
+        return normalized.isEmpty() ? List.of("SWORD") : normalized;
     }
 
     public double baseDamage() {

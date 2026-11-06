@@ -38,12 +38,7 @@ npcs:
 # 中心街にはモブを湧かせないため spawners は空。
 # 必要になった場合は Field1.yml と同じ形式で以下を有効化する。
 # spawners:
-#   - mobId: "goblin"
+#   - spawnerId: "goblin_camp"
 #     x: 8.5
 #     y: 65.0
 #     z: 8.5
-#     level: 1
-#     maxAlive: 3
-#     spawnAmount: 1
-#     interval: 200
-#     radius: 24.0
