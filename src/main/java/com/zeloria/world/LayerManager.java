@@ -166,6 +166,14 @@ public class LayerManager {
     private final Map<String, String> pendingTemplates = new ConcurrentHashMap<>();
 
     /**
+     * 建築モードの保存処理中でロックされているテンプレート ID。
+     * <p>
+     * ロック中はテンプレートの内容が置き換わっている可能性があるため、
+     * 新規レイヤーの生成（テンプレート複製）を拒否する。
+     */
+    private final Set<String> lockedTemplates = ConcurrentHashMap.newKeySet();
+
+    /**
      * テンプレート複製専用のエグゼキュータ。
      * <p>
      * ワールド操作（{@link Bukkit#createWorld(WorldCreator)}）はメインスレッドで行うため、
@@ -305,6 +313,8 @@ public class LayerManager {
             return existing;
         }
 
+        assertTemplateUnlocked(templateId);
+
         Path templateDir = resolveTemplatePath(templateId);
         Path instanceDir = prepareInstancePath(instanceId);
 
@@ -351,6 +361,8 @@ public class LayerManager {
         if (pending != null) {
             return pending;
         }
+
+        assertTemplateUnlocked(templateId);
 
         Path templateDir;
         Path instanceDir;
@@ -472,6 +484,14 @@ public class LayerManager {
      */
     private World loadWorld(String templateId, String instanceId, Path instanceDir) {
         assertMainThread();
+
+        // 複製中に建築モードの保存が始まった場合、テンプレートの内容が
+        // 入れ替わっている可能性があるため、ロード直前に再度検証する。
+        if (lockedTemplates.contains(templateId)) {
+            deleteDirectoryQuietly(instanceDir);
+            throw new IllegalStateException(
+                    "テンプレート '" + templateId + "' は建築モードの保存処理中のため使用できません。");
+        }
 
         String bukkitWorldName = LayerManager.worldName(instanceId);
         World world;
@@ -675,6 +695,44 @@ public class LayerManager {
      */
     public boolean isCreating(String instanceId) {
         return instanceId != null && pendingInstances.containsKey(instanceId);
+    }
+
+    /**
+     * テンプレートをロックし、新規レイヤーの生成を抑止する。
+     * <p>
+     * 建築モードがテンプレートを上書き保存している間、複製処理が
+     * 中途半端なテンプレートを読み込まないようにするために使用する。
+     *
+     * @param templateId テンプレート ID
+     */
+    public void lockTemplate(String templateId) {
+        if (templateId != null) {
+            lockedTemplates.add(templateId);
+        }
+    }
+
+    /**
+     * テンプレートのロックを解除する。
+     *
+     * @param templateId テンプレート ID
+     */
+    public void unlockTemplate(String templateId) {
+        if (templateId != null) {
+            lockedTemplates.remove(templateId);
+        }
+    }
+
+    /**
+     * テンプレートがロックされていないことを検証する。
+     *
+     * @param templateId テンプレート ID
+     * @throws IllegalStateException ロック中の場合
+     */
+    private void assertTemplateUnlocked(String templateId) {
+        if (lockedTemplates.contains(templateId)) {
+            throw new IllegalStateException(
+                    "テンプレート '" + templateId + "' は建築モードの保存処理中のため使用できません。");
+        }
     }
 
     /**

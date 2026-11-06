@@ -1,0 +1,6 @@
+# このサーバーのチャンネル番号（建築モードは1のみ有効）
+channel: 1
+
+# 共有設定フォルダのパス（プラグインのデータフォルダからの相対パス）
+# 例: "../../../config" → ZeloriaServer/config/
+shared-config-path: "../../../config"

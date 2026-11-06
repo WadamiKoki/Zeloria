@@ -10,8 +10,10 @@ import java.io.File;
 /**
  * HikariCP を用いたデータベース接続管理クラス。
  * <p>
- * プラグインデータフォルダ直下の {@code sql.yml} を読み込み、
- * MySQL へのコネクションプールを管理する。
+ * {@code channel.yml} の {@code shared-config-path} が指す共有設定フォルダ直下の
+ * {@code sql.yml} を読み込み、MySQL へのコネクションプールを管理する。
+ * 全サーバー（チャンネル）が同じ {@code sql.yml} を参照するため、DB 接続情報は
+ * 1 箇所で管理できる。本クラスは {@code sql.yml} の作成・書き込みを行わない。
  */
 public class DatabaseService {
 
@@ -34,11 +36,18 @@ public class DatabaseService {
             return;
         }
 
-        File configFile = new File(plugin.getDataFolder(), "sql.yml");
+        File sharedFolder = plugin.getSharedConfigFolder();
+        if (sharedFolder == null) {
+            plugin.getLogger().severe(
+                    "共有設定フォルダが見つかりません。channel.yml の shared-config-path を確認してください。");
+            return;
+        }
+
+        File configFile = new File(sharedFolder, "sql.yml");
         if (!configFile.exists()) {
-            // sql.yml は自動生成しない。初回起動前に手動で配置する運用とする。
+            // sql.yml は自動生成しない。初回起動前に共有設定フォルダへ手動で配置する運用とする。
             plugin.getLogger().severe("sql.yml が見つかりません: " + configFile.getAbsolutePath()
-                    + "（プラグイン同梱のテンプレートを手動で配置してください）");
+                    + "（共有設定フォルダへ手動で配置してください）");
             return;
         }
 

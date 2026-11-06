@@ -6,6 +6,7 @@ import com.zeloria.core.DatabaseService;
 import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
+import com.zeloria.world.BuildManager;
 import com.zeloria.world.LayerManager;
 import com.zeloria.skill.LevelService;
 import com.zeloria.core.LoggerService;
@@ -76,6 +77,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *         （{@code WeaponData/archer/test} のような階層パス指定にも対応）</li>
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - MobData を指定してモブをスポーンする</li>
+ *     <li>{@code /admin build <templateId>|info|save|unsave} - チャンネル 1 の建築ワールドを操作する</li>
  *     <li>{@code /admin stop} - プレイヤーデータ保存・レイヤー破棄・ワールド保存を行ってから安全に停止する</li>
  * </ul>
  * 実行結果のメッセージは {@code config/MessageData/admin.yml} で一元管理する。
@@ -95,6 +97,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String GIVE = "give";
     private static final String INFO = "info";
     private static final String GUI = "gui";
+    private static final String BUILD = "build";
+    private static final String SAVE = "save";
+    private static final String UNSAVE = "unsave";
+    private static final String FORCE = "force";
     private static final String NPC = "npc";
     private static final String LIST = "list";
     private static final String REMOVE = "remove";
@@ -152,7 +158,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|stop></white>";
 
     private final Zeloria plugin;
 
@@ -180,6 +186,13 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase(Locale.ROOT);
 
+        // 建築モードはチャンネル 1 専用。サブコマンドの解析より前に判定する。
+        if (BUILD.equals(sub) && !isBuildChannel()) {
+            send(sender, message("build.channel_only", Map.of(),
+                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+            return true;
+        }
+
         // stop は専用権限で判定する（zeloria.admin から子権限として継承される）。
         if (STOP.equals(sub)) {
             if (!sender.hasPermission(STOP_PERMISSION)) {
@@ -203,6 +216,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case GIVE -> handleGive(sender, args);
             case INFO -> handleInfo(sender, args);
             case GUI -> handleGui(sender, args);
+            case BUILD -> handleBuild(sender, args);
             default -> {
                 send(sender, message("command.unknown_subcommand", Map.of("input", sub),
                         "<red>不明なサブコマンドです: <white>{input}</white></red>"));
@@ -224,6 +238,11 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(GIVE);
                 candidates.add(INFO);
                 candidates.add(GUI);
+                if (isBuildChannel()
+                        && plugin.getBuildManager() != null
+                        && sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                    candidates.add(BUILD);
+                }
             }
             if (sender.hasPermission(STOP_PERMISSION)) {
                 candidates.add(STOP);
@@ -258,6 +277,29 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             }
             YamlLoader loader = plugin.getYamlLoader();
             return loader == null ? List.of() : partial(args[1], idsOf(loader, "gui"));
+        }
+
+        if (BUILD.equalsIgnoreCase(args[0])) {
+            BuildManager buildManager = plugin.getBuildManager();
+            if (!isBuildChannel()
+                    || !sender.hasPermission(ADMIN_PERMISSION)
+                    || !sender.hasPermission(BuildManager.BUILD_PERMISSION)
+                    || buildManager == null) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                List<String> candidates = new ArrayList<>();
+                candidates.add(INFO);
+                candidates.add(SAVE);
+                candidates.add(UNSAVE);
+                candidates.addAll(buildManager.listTemplateIds());
+                return partial(args[1], candidates);
+            }
+            if (args.length == 3
+                    && (SAVE.equalsIgnoreCase(args[1]) || UNSAVE.equalsIgnoreCase(args[1]))) {
+                return partial(args[2], List.of(FORCE));
+            }
+            return List.of();
         }
 
         if (!TEST.equalsIgnoreCase(args[0]) || !sender.hasPermission(ADMIN_PERMISSION)) {
@@ -701,6 +743,222 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return Component.text(name);
         }
         return messageService.deserialize(name, Map.of());
+    }
+
+    /**
+     * {@code /admin build}: チャンネル 1 の建築モードを操作する。
+     * <ul>
+     *     <li>{@code /admin build <templateId>} - テンプレートを複製して建築ワールドを開く</li>
+     *     <li>{@code /admin build info} - 建築モードの状態を表示する</li>
+     *     <li>{@code /admin build save [force]} - 保存して Hub へ戻る</li>
+     *     <li>{@code /admin build unsave [force]} - 保存せずに破棄して Hub へ戻る</li>
+     * </ul>
+     * 建築モードは {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
+     */
+    private void handleBuild(CommandSender sender, String[] args) {
+        // info は建築モードの状態確認のみのため、zeloria.admin だけで実行できる。
+        if (args.length >= 2 && INFO.equalsIgnoreCase(args[1])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
+                send(sender, noPermission(ADMIN_PERMISSION));
+                return;
+            }
+            if (args.length != 2) {
+                send(sender, buildUsage());
+                return;
+            }
+            handleBuildInfo(sender);
+            return;
+        }
+
+        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
+            return;
+        }
+
+        BuildManager buildManager = plugin.getBuildManager();
+        if (buildManager == null) {
+            send(sender, message("build.channel_only", Map.of(),
+                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+            return;
+        }
+
+        if (args.length < 2) {
+            send(sender, buildUsage());
+            return;
+        }
+
+        if (SAVE.equalsIgnoreCase(args[1])) {
+            handleBuildSave(sender, buildManager, args, true);
+            return;
+        }
+
+        if (UNSAVE.equalsIgnoreCase(args[1])) {
+            handleBuildSave(sender, buildManager, args, false);
+            return;
+        }
+
+        if (args.length > 2) {
+            send(sender, buildUsage());
+            return;
+        }
+        if (buildManager.isBusy()) {
+            sendBuildBusy(sender);
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            send(sender, message("build.player_only", Map.of(),
+                    "<red>建築モードを開始するにはプレイヤーとして実行してください。</red>"));
+            return;
+        }
+
+        String templateId = args[1];
+        String activeTemplate = buildManager.getActiveTemplateId();
+        if (activeTemplate != null) {
+            if (!activeTemplate.equals(templateId)) {
+                send(sender, message("build.other_active", Map.of("template", esc(activeTemplate)),
+                        "<yellow>既に別の建築ワールド（<white>{template}</white>）が開かれています。"
+                                + "先に /admin build save で保存してください</yellow>"));
+                return;
+            }
+            if (buildManager.joinBuildWorld(player)) {
+                send(sender, message("build.joined", Map.of(),
+                        "<green>既存の建築ワールドに参戦しました。</green>"));
+            } else {
+                send(sender, message("build.not_active", Map.of(),
+                        "<yellow>建築中のワールドはありません。</yellow>"));
+            }
+            return;
+        }
+
+        send(sender, message("build.preparing", Map.of("template", esc(templateId)),
+                "<yellow>建築ワールド '<white>{template}</white>' を準備しています...</yellow>"));
+        buildManager.openBuildWorldAsync(templateId, player).whenComplete((world, error) -> {
+            if (error != null) {
+                send(sender, message("build.open_failed", Map.of(
+                                "template", esc(templateId),
+                                "error", esc(rootMessage(error))),
+                        "<red>建築ワールドを開けませんでした: <white>{error}</white></red>"));
+            } else {
+                send(sender, message("build.opened", Map.of("template", esc(templateId)),
+                        "<green>建築ワールド '<white>{template}</white>' を開きました。</green>"));
+            }
+        });
+    }
+
+    /**
+     * {@code /admin build} の使用方法メッセージを返す。
+     */
+    private String buildUsage() {
+        return message("build.usage", Map.of(),
+                "<gray>使い方:</gray> <white>/admin build <templateId></white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build info</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build save [force]</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build unsave [force]</white>");
+    }
+
+    /**
+     * {@code /admin build save} / {@code /admin build unsave} の共通処理。
+     *
+     * @param save {@code true} の場合は保存、{@code false} の場合は破棄する
+     */
+    private void handleBuildSave(CommandSender sender, BuildManager buildManager,
+                                 String[] args, boolean save) {
+        boolean force = args.length == 3 && FORCE.equalsIgnoreCase(args[2]);
+        if (args.length > 3 || (args.length == 3 && !force)) {
+            send(sender, buildUsage());
+            return;
+        }
+        if (buildManager.isBusy()) {
+            sendBuildBusy(sender);
+            return;
+        }
+        String templateId = buildManager.getActiveTemplateId();
+        if (templateId == null) {
+            send(sender, message("build.not_active", Map.of(),
+                    "<yellow>建築中のワールドはありません。</yellow>"));
+            return;
+        }
+
+        Player executor = sender instanceof Player player ? player : null;
+        if (!force && buildManager.hasOtherPlayers(executor)) {
+            send(sender, message(save ? "build.others_save" : "build.others_unsave", Map.of(),
+                    save
+                            ? "<yellow>他のプレイヤーが建築ワールドにいます。全員退出するか、"
+                            + "強制保存する場合は /admin build save force を実行してください</yellow>"
+                            : "<yellow>他のプレイヤーが建築ワールドにいます。全員退出するか、"
+                            + "強制破棄する場合は /admin build unsave force を実行してください</yellow>"));
+            return;
+        }
+
+        send(sender, message(save ? "build.saving" : "build.discarding", Map.of(),
+                save
+                        ? "<yellow>建築ワールドを保存しています...</yellow>"
+                        : "<yellow>建築ワールドの変更を破棄しています...</yellow>"));
+
+        CompletableFuture<Boolean> future = save
+                ? buildManager.saveActiveAsync()
+                : buildManager.unsaveActiveAsync();
+        future.whenComplete((success, error) -> {
+            if (error != null) {
+                send(sender, message("build.save_failed", Map.of("error", esc(rootMessage(error))),
+                        "<red>建築ワールドの処理に失敗しました: <white>{error}</white></red>"));
+                return;
+            }
+            if (!Boolean.TRUE.equals(success)) {
+                send(sender, message("build.save_failed",
+                        Map.of("error", esc("処理を完了できませんでした")),
+                        "<red>建築ワールドの処理に失敗しました: <white>{error}</white></red>"));
+                return;
+            }
+            if (save) {
+                send(sender, message("build.saved", Map.of("template", esc(templateId)),
+                        "<green>テンプレート <white>{template}</white> を保存しました。"
+                                + "Hubに戻ります</green>"));
+            } else {
+                send(sender, message("build.unsaved", Map.of("template", esc(templateId)),
+                        "<green>テンプレート <white>{template}</white> の変更を破棄しました。"
+                                + "Hubに戻ります</green>"));
+            }
+        });
+    }
+
+    /**
+     * {@code /admin build info}: 建築モードの状態を表示する。
+     */
+    private void handleBuildInfo(CommandSender sender) {
+        BuildManager buildManager = plugin.getBuildManager();
+        String templateId = buildManager == null ? null : buildManager.getActiveTemplateId();
+        if (buildManager == null || templateId == null) {
+            send(sender, message("build.info_inactive", Map.of(),
+                    "<yellow>建築モードは起動していません。</yellow>"));
+            return;
+        }
+
+        World world = buildManager.getCurrentBuildWorld();
+        List<String> playerNames = buildManager.getActivePlayerNames();
+        String players = playerNames.isEmpty() ? "なし" : String.join(", ", playerNames);
+        send(sender, message("build.info", Map.of(
+                        "template", esc(templateId),
+                        "world", esc(world == null ? "不明" : world.getName()),
+                        "players", esc(players)),
+                "<gray>建築モード:</gray> <white>{template}</white> "
+                        + "<dark_gray>|</dark_gray> <gray>ワールド:</gray> <white>{world}</white> "
+                        + "<dark_gray>|</dark_gray> <gray>プレイヤー:</gray> <white>{players}</white>"));
+    }
+
+    /**
+     * 建築ワールドの処理中メッセージを送信する。
+     */
+    private void sendBuildBusy(CommandSender sender) {
+        send(sender, message("build.busy", Map.of(),
+                "<yellow>建築ワールドの処理中です。完了してから再実行してください。</yellow>"));
+    }
+
+    /**
+     * このサーバーが建築モードを許可するチャンネル 1 か判定する。
+     */
+    private boolean isBuildChannel() {
+        return plugin.getChannelConfig() != null && plugin.getChannelConfig().isBuildChannel();
     }
 
     /**

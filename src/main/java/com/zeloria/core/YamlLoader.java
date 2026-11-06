@@ -4,6 +4,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -17,11 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
- * プラグインデータフォルダ ({@code plugins/Zeloria/config/}) 配下の YAML ファイルを
+ * 共有設定フォルダの {@code config/} 配下の YAML ファイルを
  * 再帰的に読み込み、メモリ上にキャッシュする構成クラス。
  * <p>
- * キャッシュのキーは {@code config/} からの相対パス（区切り文字は {@code /}）で、
- * 例: {@code LayerData/Hub.yml}。{@code getConfig(String)} では相対パスに加えて
+ * 読み込み先は {@code channel.yml} の {@code shared-config-path} を解決した
+ * 共有設定フォルダ直下の {@code config/} で、全サーバー（チャンネル）が同じ
+ * 設定を参照する。キャッシュのキーは {@code config/} からの相対パス
+ * （区切り文字は {@code /}）で、例: {@code LayerData/Hub.yml}。
+ * {@code getConfig(String)} では相対パスに加えて
  * ファイル名（拡張子なし）や YAML 内の {@code id} でも参照できる。
  * <p>
  * 読み込みはファイル I/O を伴うため、{@link #loadAll()} / {@link #reload()} は
@@ -33,9 +37,9 @@ import java.util.stream.Stream;
  * いずれでも参照できるよう、一括読み込み時に専用キャッシュへ展開する。
  * <p>
  * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
- * 本クラスは {@code saveResource(...)} を呼び出さない。初回起動前に、必要な
- * YAML を手動で {@code plugins/Zeloria/config/} へコピーしておくこと
- * （同梱の {@code config/README.md} を参照）。
+ * 本クラスは書き込み（ファイル作成・{@code saveResource(...)}）を一切行わない。
+ * 初回起動前に、必要な YAML を手動で共有設定フォルダの {@code config/} へ
+ * コピーしておくこと（同梱の {@code config/README.md} を参照）。
  */
 public class YamlLoader {
 
@@ -57,14 +61,9 @@ public class YamlLoader {
     private final JavaPlugin plugin;
 
     /**
-     * 設定フォルダ: {@code plugins/Zeloria/config/}
+     * 設定フォルダ: {@code <共有設定フォルダ>/config/}
      */
     private final Path configFolder;
-
-    /**
-     * メッセージ設定フォルダ: {@code plugins/Zeloria/config/MessageData/}
-     */
-    private final Path messageFolder;
 
     /**
      * 相対パス（{@code /} 区切り）をキーとした読み込み済み設定。
@@ -88,30 +87,45 @@ public class YamlLoader {
 
     public YamlLoader(JavaPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.configFolder = plugin.getDataFolder().toPath()
+        this.configFolder = resolveSharedFolder(plugin)
                 .resolve(CONFIG_DIR_NAME)
                 .toAbsolutePath()
                 .normalize();
-        this.messageFolder = this.configFolder.resolve(MESSAGE_DIR_NAME);
     }
 
     /**
-     * {@code config/} ディレクトリが存在しない場合は作成したうえで、
-     * 配下のすべての YAML ファイルを読み込む。
+     * {@code channel.yml} で指定された共有設定フォルダを取得する。
+     * <p>
+     * {@link Zeloria} 以外のプラグイン実装では、従来どおりプラグインの
+     * データフォルダを共有設定フォルダとして扱う。
+     *
+     * @param plugin プラグイン
+     * @return 共有設定フォルダ
+     */
+    private static Path resolveSharedFolder(JavaPlugin plugin) {
+        if (plugin instanceof Zeloria zeloria) {
+            File sharedFolder = zeloria.getSharedConfigFolder();
+            if (sharedFolder != null) {
+                return sharedFolder.toPath();
+            }
+        }
+        return plugin.getDataFolder().toPath();
+    }
+
+    /**
+     * 共有設定フォルダの {@code config/} 配下のすべての YAML ファイルを読み込む。
      * <p>
      * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
-     * 本クラスは {@code saveResource(...)} による自動生成を行わない。
-     * 初回起動前に、必要な YAML を手動で {@code plugins/Zeloria/config/} へ
+     * 本クラスは書き込み（ファイル作成・{@code saveResource(...)}）を行わない。
+     * 初回起動前に、必要な YAML を手動で共有設定フォルダの {@code config/} へ
      * コピーしておくこと。必須 YAML の存在確認は {@link Zeloria#onEnable()} が行う。
      */
     public synchronized void loadAll() {
-        createConfigFolder();
-        createMessageFolder();
         reload();
     }
 
     /**
-     * 既存のキャッシュをすべてクリアし、{@code plugins/Zeloria/config/} 配下の
+     * 既存のキャッシュをすべてクリアし、共有設定フォルダの {@code config/} 配下の
      * YAML ファイルを再読み込みする（{@code /admin reload} 用）。
      * <p>
      * 読み込みに失敗したファイルは警告を出してスキップする。
@@ -124,9 +138,11 @@ public class YamlLoader {
     }
 
     /**
-     * キャッシュをクリアし、{@code config/} 配下の YAML ファイルを再読み込みする。
+     * キャッシュをクリアし、共有設定フォルダの {@code config/} 配下の
+     * YAML ファイルを再読み込みする。
      * <p>
-     * 読み込みに失敗したファイルは警告を出してスキップする。
+     * 読み込みに失敗したファイルは警告を出してスキップする。共有設定フォルダは
+     * 読み取り専用として扱い、ディレクトリの作成は行わない。
      */
     public synchronized void reload() {
         configs.clear();
@@ -134,10 +150,10 @@ public class YamlLoader {
         messageConfigs.clear();
         messageConfigsById.clear();
 
-        if (!createConfigFolder()) {
+        if (!Files.isDirectory(configFolder)) {
+            plugin.getLogger().severe("共有設定フォルダが見つかりません: " + configFolder);
             return;
         }
-        createMessageFolder();
 
         try (Stream<Path> stream = Files.walk(configFolder)) {
             // ディレクトリ（gui/ や LayerData/ など）自体を YAML として読み込まないよう、
@@ -433,24 +449,6 @@ public class YamlLoader {
         return normalized;
     }
 
-    /**
-     * {@code config/MessageData/} が存在しない場合は作成する。
-     *
-     * @return ディレクトリが利用可能な場合は {@code true}
-     */
-    private boolean createMessageFolder() {
-        if (Files.isDirectory(messageFolder)) {
-            return true;
-        }
-        try {
-            Files.createDirectories(messageFolder);
-            return true;
-        } catch (IOException e) {
-            plugin.getLogger().severe("メッセージフォルダの作成に失敗しました: " + e.getMessage());
-            return false;
-        }
-    }
-
     private void loadFile(Path file) {
         String key = toKey(file);
         try {
@@ -468,26 +466,6 @@ public class YamlLoader {
         } catch (RuntimeException e) {
             plugin.getLogger().warning(
                     "YAML の読み込みに失敗しました: " + key + " (" + e.getMessage() + ")");
-        }
-    }
-
-    /**
-     * {@code config/} ディレクトリが存在しない場合は作成する。
-     * <p>
-     * 同梱デフォルト YAML の展開（{@code saveResource}）は行わない。
-     *
-     * @return ディレクトリが利用可能な場合は {@code true}
-     */
-    private boolean createConfigFolder() {
-        if (Files.isDirectory(configFolder)) {
-            return true;
-        }
-        try {
-            Files.createDirectories(configFolder);
-            return true;
-        } catch (IOException e) {
-            plugin.getLogger().severe("設定フォルダの作成に失敗しました: " + e.getMessage());
-            return false;
         }
     }
 

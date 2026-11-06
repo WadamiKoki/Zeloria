@@ -19,10 +19,13 @@ import java.util.Optional;
  *     <li>LayerData の {@code isShared} が {@code false}</li>
  *     <li>プレイヤー数が 0 人</li>
  * </ul>
- * タイマーは既定 {@link #IDLE_TIMEOUT_SECONDS}（180 秒）で、カウントダウン中に
+ * タイマーは既定 {@link #IDLE_TIMEOUT_SECONDS}（60 秒）で、カウントダウン中に
  * プレイヤーが再入場した場合はキャンセルする。0 人のままタイマーが満了した場合は
  * {@link LoggerService} へ記録したうえで {@link LayerManager#unloadAndDeleteLayer(String)}
  * により安全にアンロード・削除する。
+ * <p>
+ * 建築ワールド（{@link BuildManager#BUILD_NAMESPACE} 名前空間）はこの通常削除の
+ * 対象外とし、{@link BuildManager#checkAutoSave(long)} による専用の自動保存で管理する。
  * <p>
  * ワールド操作を伴うため、{@code runTaskTimer} によりメインスレッドで実行する。
  */
@@ -32,7 +35,7 @@ public class LayerCleanupTask extends BukkitRunnable {
     public static final long CHECK_INTERVAL_TICKS = 20L * 30L;
 
     /** 空になってから削除するまでの既定時間（秒）。 */
-    public static final long IDLE_TIMEOUT_SECONDS = 180L;
+    public static final long IDLE_TIMEOUT_SECONDS = 60L;
 
     private final Zeloria plugin;
 
@@ -45,7 +48,21 @@ public class LayerCleanupTask extends BukkitRunnable {
 
     @Override
     public void run() {
-        checkIdleInstances(System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        checkIdleInstances(now);
+        checkBuildWorldAutoSave(now);
+    }
+
+    /**
+     * 建築ワールドが無人になってから 1 分経過していれば自動保存する。
+     *
+     * @param now 現在時刻（ミリ秒）
+     */
+    private void checkBuildWorldAutoSave(long now) {
+        BuildManager buildManager = plugin.getBuildManager();
+        if (buildManager != null) {
+            buildManager.checkAutoSave(now);
+        }
     }
 
     /**
@@ -73,6 +90,12 @@ public class LayerCleanupTask extends BukkitRunnable {
             String instanceId = entry.getKey();
             World world = entry.getValue();
             if (world == null) {
+                continue;
+            }
+
+            // 建築ワールドは専用の自動保存で管理するため、通常削除の対象外とする。
+            if (BuildManager.isBuildWorld(world)) {
+                idleSince.remove(instanceId);
                 continue;
             }
 

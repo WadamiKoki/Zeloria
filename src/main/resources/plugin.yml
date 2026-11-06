@@ -12,7 +12,7 @@ commands:
     aliases: [inv, inventory, equipment]
   admin:
     description: Zeloria の管理コマンド
-    usage: /admin <reload|test yaml|test db|give|npc|stop>
+    usage: /admin <reload|test yaml|test db|give|npc|build|stop>
     aliases: [zeloria]
 
 permissions:
@@ -27,6 +27,10 @@ permissions:
     default: op
     children:
       zeloria.admin.stop: true
+      zeloria.admin.build: true
   zeloria.admin.stop:
     description: 安全停止コマンド (/admin stop) を実行する
+    default: op
+  zeloria.admin.build:
+    description: 建築モード (/admin build) と建築ワールドへの入場を許可する
     default: op

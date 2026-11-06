@@ -18,6 +18,8 @@ import com.zeloria.world.LayerCleanupTask;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerEffectService;
 import com.zeloria.world.LayerEntryListener;
+import com.zeloria.world.BuildManager;
+import com.zeloria.world.BuildWorldGuardListener;
 import com.zeloria.world.LayerManager;
 import com.zeloria.world.LayerNpcService;
 import com.zeloria.npc.NpcDamageListener;
@@ -60,6 +62,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,7 +79,7 @@ public final class Zeloria extends JavaPlugin {
     public static final String HUB_INSTANCE_ID = "hub_instance_1";
 
     /**
-     * 起動時に存在を確認する必須設定ディレクトリ（{@code plugins/Zeloria/config/} 配下）。
+     * 起動時に存在を確認する必須設定ディレクトリ（共有設定フォルダの {@code config/} 配下）。
      * <p>
      * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
      * 自動生成は行わない。いずれかが未配置の場合はプラグインを無効化する。
@@ -95,6 +98,16 @@ public final class Zeloria extends JavaPlugin {
             "MobData",
             "gui"
     );
+
+    /** サーバー固有のチャンネル設定（{@code plugins/Zeloria/channel.yml}）。 */
+    private ChannelConfig channelConfig;
+
+    /**
+     * 共有設定フォルダ（{@code channel.yml} の {@code shared-config-path} を解決したルート）。
+     * <p>
+     * このフォルダ直下の {@code config/} と {@code sql.yml} を全サーバーで共有する。
+     */
+    private File sharedConfigFolder;
 
     private YamlLoader yamlLoader;
     private LoggerService loggerService;
@@ -115,6 +128,13 @@ public final class Zeloria extends JavaPlugin {
     private PlayerRepository playerRepository;
     private PlayerService playerService;
     private LayerManager layerManager;
+
+    /**
+     * チャンネル 1 専用の建築モード管理。
+     * チャンネル 2 以降では {@code null}。
+     */
+    private BuildManager buildManager;
+
     private MobConfigService mobConfigService;
 
     /** スポーン済みカスタムモブの実行時ステータス管理。 */
@@ -185,6 +205,12 @@ public final class Zeloria extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        // channel.yml はサーバーごとに異なるため自動生成しない。
+        // 未配置・共有フォルダ不在のまま起動すると設定の参照先が定まらないため、ここで停止する。
+        if (!loadChannelConfig()) {
+            return;
+        }
+
         this.yamlLoader = new YamlLoader(this);
 
         // 必須 YAML は自動生成しない。未配置のまま起動すると各サービスが
@@ -237,6 +263,10 @@ public final class Zeloria extends JavaPlugin {
         initializeDatabaseSchema();
 
         this.layerManager = new LayerManager(this);
+        // 建築モードはチャンネル 1 のみ有効。他チャンネルでは生成自体を行わない。
+        if (this.channelConfig != null && this.channelConfig.isBuildChannel()) {
+            this.buildManager = new BuildManager(this);
+        }
         this.spawnerManager = new SpawnerManager(this);
         this.layerNpcService = new LayerNpcService(this, this.npcManager, this.layerConfigService);
         this.layerEffectService = new LayerEffectService(this, this.messageService, this.layerConfigService);
@@ -303,6 +333,11 @@ public final class Zeloria extends JavaPlugin {
             this.spawnerManager.shutdown();
         }
 
+        // 建築中のワールドをテンプレートへ保存してから、レイヤーワールドを片付ける。
+        if (this.buildManager != null) {
+            this.buildManager.shutdown();
+        }
+
         if (this.layerManager != null) {
             this.layerManager.unloadAllAndDelete();
             cleanupOrphanedInstances("終了時");
@@ -327,6 +362,68 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
+     * {@code plugins/Zeloria/channel.yml} を読み込み、共有設定フォルダを解決する。
+     * <p>
+     * チャンネル番号はサーバーごとに異なるため自動生成しない。ファイルが無い場合や
+     * 共有設定フォルダが存在しない場合は、{@code getLogger().severe(...)} を出力して
+     * プラグインを無効化する。
+     *
+     * @return 読み込みに成功した場合は {@code true}
+     */
+    private boolean loadChannelConfig() {
+        File channelFile = new File(getDataFolder(), ChannelConfig.FILE_NAME);
+        if (!channelFile.isFile()) {
+            getLogger().severe("channel.yml が見つかりません。plugins/Zeloria/channel.yml を作成してください。");
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
+        this.channelConfig = ChannelConfig.load(channelFile);
+
+        File resolved;
+        try {
+            resolved = new File(getDataFolder().getAbsoluteFile(),
+                    this.channelConfig.getSharedConfigPath()).getCanonicalFile();
+        } catch (IOException e) {
+            getLogger().severe("共有設定フォルダが見つかりません: " + e.getMessage());
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
+        if (!resolved.isDirectory()) {
+            getLogger().severe("共有設定フォルダが見つかりません: " + resolved.getAbsolutePath());
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
+        this.sharedConfigFolder = normalizeSharedRoot(resolved);
+        getLogger().info("チャンネル " + this.channelConfig.getChannel()
+                + " で起動します（共有設定フォルダ: "
+                + this.sharedConfigFolder.getAbsolutePath() + "）");
+        return true;
+    }
+
+    /**
+     * 共有設定フォルダの指定を、{@code config/} と {@code sql.yml} を置くルートへ正規化する。
+     * <p>
+     * {@code shared-config-path} が {@code config} ディレクトリ自体を指している場合は、
+     * その親（サーバールートの親フォルダ）を共有ルートとして扱う。
+     * これにより {@code "../../.."} と {@code "../../../config"} のどちらでも
+     * 同じ {@code config/} と {@code sql.yml} を参照できる。
+     *
+     * @param resolved 解決済みの共有設定パス
+     * @return {@code config/} と {@code sql.yml} を置く共有ルート
+     */
+    private static File normalizeSharedRoot(File resolved) {
+        File parent = resolved.getParentFile();
+        if (parent != null
+                && ChannelConfig.SHARED_CONFIG_DIR_NAME.equalsIgnoreCase(resolved.getName())) {
+            return parent;
+        }
+        return resolved;
+    }
+
+    /**
      * 必須 YAML の配置状況を確認し、最初に不足しているパスを返す。
      * <p>
      * ディレクトリ自体が存在しない場合に加え、ディレクトリ内に YAML が 1 つも
@@ -335,7 +432,8 @@ public final class Zeloria extends JavaPlugin {
      * @return 不足しているパス。すべて配置済みの場合は {@code null}
      */
     private String findMissingConfig() {
-        Path configFolder = getDataFolder().toPath().resolve("config");
+        Path configFolder = this.sharedConfigFolder.toPath()
+                .resolve(ChannelConfig.SHARED_CONFIG_DIR_NAME);
         for (String directory : REQUIRED_CONFIG_DIRECTORIES) {
             Path path = configFolder.resolve(directory);
             if (!Files.isDirectory(path) || !containsYaml(path)) {
@@ -458,6 +556,9 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new NpcDamageListener(this));
         this.listenerRegistrar.register(new LayerEntryListener(this));
         this.listenerRegistrar.register(new PortalListener(this));
+        if (this.buildManager != null) {
+            this.listenerRegistrar.register(new BuildWorldGuardListener(this.buildManager));
+        }
         this.listenerRegistrar.register(new CombatListener(this));
         this.listenerRegistrar.register(new CombatStateListener(this));
         this.listenerRegistrar.register(new EquipmentListener(this));
@@ -597,6 +698,24 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
+     * サーバー固有のチャンネル設定を取得する。
+     *
+     * @return プラグインの ChannelConfig（onEnable 前は null）
+     */
+    public ChannelConfig getChannelConfig() {
+        return channelConfig;
+    }
+
+    /**
+     * 共有設定フォルダ（{@code config/} と {@code sql.yml} を置くルート）を取得する。
+     *
+     * @return 共有設定フォルダ（onEnable 前は null）
+     */
+    public File getSharedConfigFolder() {
+        return sharedConfigFolder;
+    }
+
+    /**
      * LoggerService を取得する。
      *
      * @return プラグインの LoggerService（onEnable 前は null）
@@ -729,6 +848,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public LayerManager getLayerManager() {
         return layerManager;
+    }
+
+    /**
+     * BuildManager を取得する。
+     *
+     * @return プラグインの BuildManager。チャンネル 2 以降または onEnable 前は {@code null}
+     */
+    public BuildManager getBuildManager() {
+        return buildManager;
     }
 
     /**
