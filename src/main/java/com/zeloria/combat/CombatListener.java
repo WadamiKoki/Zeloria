@@ -90,15 +90,12 @@ public final class CombatListener implements Listener {
      * {@code PROJECTILE} など）は含めないため、プレイヤーや他MOBからの攻撃は
      * 従来どおり {@link CombatService} のカスタム計算へ渡る。
      * <p>
-     * マグマブロック・焚き火・足元の熱は {@link DamageCause#CONTACT} /
-     * {@link DamageCause#HOT_FLOOR} / {@link DamageCause#CAMPFIRE} として通知される。
+     * マグマブロック・焚き火・足元の熱は {@link DamageCause#CONTACT} として通知される。
      */
     private static final Set<DamageCause> CUSTOM_MOB_IMMUNE_DAMAGE = EnumSet.of(
             DamageCause.FIRE,
             DamageCause.FIRE_TICK,
             DamageCause.LAVA,
-            DamageCause.HOT_FLOOR,
-            DamageCause.CAMPFIRE,
             DamageCause.CONTACT,
             DamageCause.MELTING,
             DamageCause.LIGHTNING

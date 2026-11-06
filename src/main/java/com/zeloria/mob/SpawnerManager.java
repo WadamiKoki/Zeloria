@@ -621,16 +621,23 @@ public final class SpawnerManager {
 
     /**
      * 検知半径内に生存している同種モブの数を数える。
+     * <p>
+     * ワールド全体のエンティティを走査せず、検知半径の範囲内だけを取得する。
+     * {@link World#getNearbyEntities(Location, double, double, double)} は
+     * 直方体で判定するため、元の球状判定に合わせて距離でも絞り込む。
      */
     private int countAlive(World world, Location center, MobData data, double radius) {
         String tag = MOB_TAG_PREFIX + data.id();
         double squared = radius * radius;
         int count = 0;
-        for (LivingEntity entity : world.getLivingEntities()) {
-            if (entity.isDead() || !entity.getScoreboardTags().contains(tag)) {
+        for (Entity entity : world.getNearbyEntities(center, radius, radius, radius)) {
+            if (!(entity instanceof LivingEntity living)) {
                 continue;
             }
-            if (entity.getLocation().distanceSquared(center) <= squared) {
+            if (living.isDead() || !living.getScoreboardTags().contains(tag)) {
+                continue;
+            }
+            if (living.getLocation().distanceSquared(center) <= squared) {
                 count++;
             }
         }
