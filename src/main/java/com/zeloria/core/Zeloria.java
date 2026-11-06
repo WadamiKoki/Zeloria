@@ -56,8 +56,16 @@ import com.zeloria.skill.SkillCooldownHotbarTask;
 import com.zeloria.skill.SkillSlotService;
 import com.zeloria.world.PortalListener;
 import com.zeloria.world.PortalParticleTask;
+import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
 
 public final class Zeloria extends JavaPlugin {
 
@@ -66,6 +74,27 @@ public final class Zeloria extends JavaPlugin {
 
     /** 起動時に常時ロードする共有 Hub インスタンス ID。 */
     public static final String HUB_INSTANCE_ID = "hub_instance_1";
+
+    /**
+     * 起動時に存在を確認する必須設定ディレクトリ（{@code plugins/Zeloria/config/} 配下）。
+     * <p>
+     * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
+     * 自動生成は行わない。いずれかが未配置の場合はプラグインを無効化する。
+     */
+    private static final List<String> REQUIRED_CONFIG_DIRECTORIES = List.of(
+            "ClassData",
+            "SkillData",
+            "ArmorData",
+            "WeaponData",
+            "NpcData",
+            "SpawnerData",
+            "LayerData",
+            "LevelData",
+            "MessageData",
+            "MaterialData",
+            "MobData",
+            "gui"
+    );
 
     private YamlLoader yamlLoader;
     private LoggerService loggerService;
@@ -157,6 +186,16 @@ public final class Zeloria extends JavaPlugin {
     @Override
     public void onEnable() {
         this.yamlLoader = new YamlLoader(this);
+
+        // 必須 YAML は自動生成しない。未配置のまま起動すると各サービスが
+        // 空の設定で動作してしまうため、ここで検出してプラグインを停止する。
+        String missingPath = findMissingConfig();
+        if (missingPath != null) {
+            getLogger().severe("必須YAMLが見つかりません: " + missingPath);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         this.yamlLoader.loadAll();
 
         this.loggerService = new LoggerService(this);
@@ -288,11 +327,52 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
-     * {@code players} テーブルの自動生成を開始する。
+     * 必須 YAML の配置状況を確認し、最初に不足しているパスを返す。
+     * <p>
+     * ディレクトリ自体が存在しない場合に加え、ディレクトリ内に YAML が 1 つも
+     * 無い場合も「未配置」とみなす。パスは {@code config/} からの相対表記で返す。
+     *
+     * @return 不足しているパス。すべて配置済みの場合は {@code null}
+     */
+    private String findMissingConfig() {
+        Path configFolder = getDataFolder().toPath().resolve("config");
+        for (String directory : REQUIRED_CONFIG_DIRECTORIES) {
+            Path path = configFolder.resolve(directory);
+            if (!Files.isDirectory(path) || !containsYaml(path)) {
+                return "config/" + directory;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 指定ディレクトリ配下（サブディレクトリを含む）に YAML ファイルがあるか判定する。
+     */
+    private static boolean containsYaml(Path directory) {
+        try (Stream<Path> stream = Files.walk(directory)) {
+            return stream.anyMatch(path -> Files.isRegularFile(path) && isYamlFile(path));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean isYamlFile(Path path) {
+        Path name = path.getFileName();
+        if (name == null) {
+            return false;
+        }
+        String lower = name.toString().toLowerCase(Locale.ROOT);
+        return lower.endsWith(".yml") || lower.endsWith(".yaml");
+    }
+
+    /**
+     * {@code players} テーブルの自動生成と必須カラムの検証を開始する。
      * <p>
      * DDL は {@link DatabaseManager} の専用スレッドプール上で非同期に実行されるため、
      * ここでメインスレッドをブロックすることはない。プレイヤーデータの読み書きは
      * スキーマ初期化 future の完了を待ってから行われる。
+     * <p>
+     * 必須カラムが不足している場合は、自動 ALTER は行わずにプラグインを無効化する。
      */
     private void initializeDatabaseSchema() {
         if (this.databaseManager == null) {
@@ -300,12 +380,31 @@ public final class Zeloria extends JavaPlugin {
         }
 
         this.databaseManager.initialize().whenComplete((ignored, throwable) -> {
-            if (throwable != null) {
-                getLogger().severe("players テーブルの自動生成に失敗しました: "
-                        + throwable.getMessage());
-            } else {
+            if (throwable == null) {
                 getLogger().info("players テーブルの準備が完了しました。");
+                return;
             }
+
+            Throwable cause = throwable;
+            while (cause.getCause() != null && cause.getCause() != cause) {
+                cause = cause.getCause();
+            }
+
+            if (cause instanceof DatabaseManager.MissingColumnsException missing) {
+                getLogger().severe(
+                        "players テーブルに必要なカラムがありません。sql/reset.sql を実行してください。");
+                getLogger().severe("不足しているカラム: "
+                        + String.join(", ", missing.missingColumns()));
+                // disablePlugin はメインスレッドから呼ぶ必要がある。
+                Bukkit.getScheduler().runTask(this, () -> {
+                    if (isEnabled()) {
+                        getServer().getPluginManager().disablePlugin(this);
+                    }
+                });
+                return;
+            }
+
+            getLogger().severe("players テーブルの自動生成に失敗しました: " + cause.getMessage());
         });
     }
 

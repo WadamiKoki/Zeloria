@@ -36,7 +36,10 @@ public class DatabaseService {
 
         File configFile = new File(plugin.getDataFolder(), "sql.yml");
         if (!configFile.exists()) {
-            plugin.saveResource("sql.yml", false);
+            // sql.yml は自動生成しない。初回起動前に手動で配置する運用とする。
+            plugin.getLogger().severe("sql.yml が見つかりません: " + configFile.getAbsolutePath()
+                    + "（プラグイン同梱のテンプレートを手動で配置してください）");
+            return;
         }
 
         YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);

@@ -120,6 +120,27 @@ public class EquipmentService {
     }
 
     /**
+     * 仮想装備枠（メイン武器・オフハンド・兜～靴）に 1 つでも装備しているか判定する。
+     * <p>
+     * クラス変更時に装備品のクラス制限が破綻しないよう、変更前のチェックに使用する。
+     *
+     * @param data 対象プレイヤーデータ
+     * @return いずれかのスロットに装備がある場合は {@code true}
+     */
+    public boolean hasEquipped(PlayerData data) {
+        if (data == null) {
+            return false;
+        }
+        for (EquipSlot slot : EquipSlot.values()) {
+            ItemStack equipped = data.getEquipment(slot);
+            if (equipped != null && !equipped.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * アイテムのステータス補正を取得する。
      *
      * @param stack 判定対象

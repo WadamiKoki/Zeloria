@@ -31,6 +31,11 @@ import java.util.stream.Stream;
  * {@code config/MessageData/} 配下のメッセージ設定は
  * {@link #getMessageConfig(String)} から相対パス・拡張子なし名・{@code id} の
  * いずれでも参照できるよう、一括読み込み時に専用キャッシュへ展開する。
+ * <p>
+ * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
+ * 本クラスは {@code saveResource(...)} を呼び出さない。初回起動前に、必要な
+ * YAML を手動で {@code plugins/Zeloria/config/} へコピーしておくこと
+ * （同梱の {@code config/README.md} を参照）。
  */
 public class YamlLoader {
 
@@ -48,74 +53,6 @@ public class YamlLoader {
 
     /** YAML 内の識別子として扱うキー。 */
     private static final String ID_KEY = "id";
-
-    /**
-     * 起動時に {@code config/MessageData/} へ展開する既定メッセージファイル。
-     * 既にファイルが存在する場合は上書きしない。
-     */
-    private static final List<String> DEFAULT_MESSAGE_FILES = List.of(
-            "admin.yml",
-            "combat.yml",
-            "death.yml",
-            "equipment.yml",
-            "gate.yml",
-            "level.yml",
-            "skill.yml",
-            "system.yml"
-    );
-
-    /**
-     * 起動時に {@code config/} へ展開する既定設定ファイル（GUI・アイテム）。
-     * サーバー管理者の編集内容を上書きしないよう、既存ファイルには触れない。
-     */
-    private static final List<String> DEFAULT_CONFIG_FILES = List.of(
-            "gui/menu.yml",
-            "gui/class_select.yml",
-            "ClassData/archer.yml",
-            "ClassData/sorcerer.yml",
-            "ClassData/rogue.yml",
-            "ClassData/knight.yml",
-            "ClassData/vanguard.yml",
-            "SkillData/archer/skill1.yml",
-            "SkillData/archer/skill2.yml",
-            "SkillData/archer/skill3.yml",
-            "SkillData/archer/skill4.yml",
-            "SkillData/archer/skill5.yml",
-            "SkillData/sorcerer/skill1.yml",
-            "SkillData/sorcerer/skill2.yml",
-            "SkillData/sorcerer/skill3.yml",
-            "SkillData/sorcerer/skill4.yml",
-            "SkillData/sorcerer/skill5.yml",
-            "SkillData/rogue/skill1.yml",
-            "SkillData/rogue/skill2.yml",
-            "SkillData/rogue/skill3.yml",
-            "SkillData/rogue/skill4.yml",
-            "SkillData/rogue/skill5.yml",
-            "SkillData/knight/skill1.yml",
-            "SkillData/knight/skill2.yml",
-            "SkillData/knight/skill3.yml",
-            "SkillData/knight/skill4.yml",
-            "SkillData/knight/skill5.yml",
-            "SkillData/vanguard/skill1.yml",
-            "SkillData/vanguard/skill2.yml",
-            "SkillData/vanguard/skill3.yml",
-            "SkillData/vanguard/skill4.yml",
-            "SkillData/vanguard/skill5.yml",
-            "MaterialData/iron_ore.yml",
-            "LevelData/level_settings.yml",
-            "SpawnerData/goblin_camp.yml",
-            "ArmorData/helmet.yml",
-            "ArmorData/chestplate.yml",
-            "ArmorData/leggings.yml",
-            "ArmorData/boots.yml",
-            "WeaponData/archer/test.yml",
-            "WeaponData/knight/test.yml",
-            "WeaponData/rogue/test.yml",
-            "WeaponData/sorcerer/test.yml",
-            "WeaponData/vanguard/test.yml",
-            "NpcData/guide.yml",
-            "gui/guide_menu.yml"
-    );
 
     private final JavaPlugin plugin;
 
@@ -162,16 +99,14 @@ public class YamlLoader {
      * {@code config/} ディレクトリが存在しない場合は作成したうえで、
      * 配下のすべての YAML ファイルを読み込む。
      * <p>
-     * {@code config/MessageData/} については、同梱の既定メッセージファイル
-     * （{@code gate.yml} / {@code skill.yml} / {@code system.yml} / {@code admin.yml}）が
-     * 存在しない場合のみ自動展開する。{@code config/gui/} も同様に既定ファイルを展開する。
-     * 他のデータ YAML は自動展開しない。
+     * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
+     * 本クラスは {@code saveResource(...)} による自動生成を行わない。
+     * 初回起動前に、必要な YAML を手動で {@code plugins/Zeloria/config/} へ
+     * コピーしておくこと。必須 YAML の存在確認は {@link Zeloria#onEnable()} が行う。
      */
     public synchronized void loadAll() {
         createConfigFolder();
         createMessageFolder();
-        saveDefaultMessages();
-        saveDefaultConfigs();
         reload();
     }
 
@@ -513,56 +448,6 @@ public class YamlLoader {
         } catch (IOException e) {
             plugin.getLogger().severe("メッセージフォルダの作成に失敗しました: " + e.getMessage());
             return false;
-        }
-    }
-
-    /**
-     * 同梱の既定メッセージファイルを、未配置のものだけ {@code config/MessageData/} へ展開する。
-     * <p>
-     * サーバー管理者による編集内容を上書きしないよう、既存ファイルには触れない。
-     */
-    private void saveDefaultMessages() {
-        for (String fileName : DEFAULT_MESSAGE_FILES) {
-            Path target = messageFolder.resolve(fileName);
-            if (Files.exists(target)) {
-                continue;
-            }
-            try {
-                plugin.saveResource(CONFIG_DIR_NAME + "/" + MESSAGE_DIR_NAME + "/" + fileName, false);
-            } catch (IllegalArgumentException e) {
-                // 開発実行などで同梱リソースが無い場合は、空のファイルを作らずスキップする。
-                plugin.getLogger().fine(
-                        "既定メッセージファイルを展開できませんでした: " + fileName + " (" + e.getMessage() + ")");
-            }
-        }
-    }
-
-    /**
-     * 同梱の既定設定ファイル（{@code config/gui/*.yml}）を、未配置のものだけ
-     * {@code config/} へ展開する。
-     * <p>
-     * サーバー管理者による編集内容を上書きしないよう、既存ファイルには触れない。
-     */
-    private void saveDefaultConfigs() {
-        for (String relativePath : DEFAULT_CONFIG_FILES) {
-            Path target = configFolder.resolve(relativePath).normalize();
-            if (!target.startsWith(configFolder) || Files.exists(target)) {
-                continue;
-            }
-            try {
-                Path parent = target.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
-                }
-                plugin.saveResource(CONFIG_DIR_NAME + "/" + relativePath.replace('\\', '/'), false);
-            } catch (IllegalArgumentException e) {
-                // 開発実行などで同梱リソースが無い場合は、空のファイルを作らずスキップする。
-                plugin.getLogger().fine(
-                        "既定設定ファイルを展開できませんでした: " + relativePath + " (" + e.getMessage() + ")");
-            } catch (IOException e) {
-                plugin.getLogger().warning(
-                        "既定設定ファイルの展開に失敗しました: " + relativePath + " (" + e.getMessage() + ")");
-            }
         }
     }
 

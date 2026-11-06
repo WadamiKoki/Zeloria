@@ -84,6 +84,9 @@ public final class SpawnerManager {
     /** 基準座標からずらして安全地点を探す最大距離（ブロック）。 */
     private static final int SPAWN_SPREAD = 4;
 
+    /** 基準座標から上下にずらして安全地点を探す最大距離（ブロック）。 */
+    private static final int SPAWN_Y_RANGE = 4;
+
     /** 複数スポナーの初回判定をずらす最大 tick 数。 */
     private static final int MAX_STAGGER_TICKS = 200;
 
@@ -339,26 +342,20 @@ public final class SpawnerManager {
 
     /**
      * 1 スポナー分の判定を行い、条件を満たせばモブをスポーンさせる。
+     * <p>
+     * デバッグログはスポーン成功時と安全地点が見つからなかった時のみ出力する。
      */
     private void runSpawner(World world, ActiveSpawner spawner) {
         SpawnerData data = spawner.data;
         Location center = spawner.location.clone();
 
         if (world.getPlayers().isEmpty()) {
-            debug("プレイヤーが不在のためスポーン判定をスキップします: world=" + world.getName()
-                    + ", spawner=" + data.id());
             return;
         }
         if (!world.isChunkLoaded(center.getBlockX() >> 4, center.getBlockZ() >> 4)) {
-            debug("チャンクが未ロードのためスキップします: spawner=" + data.id()
-                    + ", world=" + world.getName()
-                    + ", x=" + format(center.getX()) + ", z=" + format(center.getZ()));
             return;
         }
         if (!hasNearbyPlayer(world, center, data.spawnRadius())) {
-            debug("検知半径内にプレイヤーがいません: spawner=" + data.id()
-                    + ", radius=" + data.spawnRadius()
-                    + ", world=" + world.getName());
             return;
         }
 
@@ -368,7 +365,6 @@ public final class SpawnerManager {
                 : mobConfigService.find(data.mobId());
         if (found.isEmpty()) {
             warnOnce(data.mobId(), "スポナーが参照する MobData が見つかりません: mob=" + data.mobId());
-            debug("MobData が見つかりません: spawner=" + data.id() + ", mob=" + data.mobId());
             return;
         }
 
@@ -377,16 +373,11 @@ public final class SpawnerManager {
         if (!entityType.isSpawnable()) {
             warnOnce(data.mobId(), "スポーンできないエンティティ種別です: mob=" + mob.id()
                     + ", entity=" + entityType.getKey());
-            debug("エンティティ種別がスポーン不可です: spawner=" + data.id()
-                    + ", entity=" + entityType.getKey());
             return;
         }
 
         int alive = countAlive(world, center, mob, data.spawnRadius());
         if (alive >= data.maxAlive()) {
-            debug("maxAlive に達しているためスキップします: spawner=" + data.id()
-                    + ", mob=" + mob.id()
-                    + ", alive=" + alive + "/" + data.maxAlive());
             return;
         }
 
@@ -394,23 +385,14 @@ public final class SpawnerManager {
         for (int i = 0; i < allowed; i++) {
             Location location = findSpawnLocation(world, center);
             if (location == null) {
-                debug("安全なスポーン地点が見つかりませんでした: spawner=" + data.id()
-                        + ", world=" + world.getName()
-                        + ", x=" + format(center.getX())
-                        + ", y=" + format(center.getY())
-                        + ", z=" + format(center.getZ()));
+                plugin.getLogger().info("[Spawner] " + data.id()
+                        + " 安全地点なし center=" + center);
                 return;
             }
 
             spawn(world, location, mob, data.level(), entityType);
-            debug("モブをスポーンしました: spawner=" + data.id()
-                    + ", mob=" + mob.id()
-                    + ", level=" + data.level()
-                    + ", world=" + world.getName()
-                    + ", x=" + format(location.getX())
-                    + ", y=" + format(location.getY())
-                    + ", z=" + format(location.getZ())
-                    + ", alive=" + (alive + i + 1) + "/" + data.maxAlive());
+            plugin.getLogger().info("[Spawner] " + data.id()
+                    + " スポーン成功 loc=" + location + " level=" + data.level());
         }
     }
 
@@ -657,31 +639,34 @@ public final class SpawnerManager {
 
     /**
      * 基準座標の周辺から、足元と頭上に空間があり直下が固体ブロックの地点を探す。
+     * <p>
+     * まず基準座標をそのまま確認し、見つからなければ X / Z をランダムにずらしつつ
+     * Y 座標を {@code -4} ～ {@code +4} まで 1 ブロックずつ変えて確認する。
      *
      * @return スポーン地点。見つからない場合は {@code null}
      */
     private Location findSpawnLocation(World world, Location center) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
-        Location first = center.clone();
-        first.setYaw(random.nextFloat() * 360.0f);
-        if (isSpawnable(first)) {
-            return first;
+        if (isSpawnable(center)) {
+            return center.clone();
         }
 
         for (int attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
-            double offsetX = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1) + 0.5;
-            double offsetZ = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1) + 0.5;
-            Location candidate = new Location(world,
-                    center.getBlockX() + offsetX,
-                    center.getBlockY(),
-                    center.getBlockZ() + offsetZ,
-                    random.nextFloat() * 360.0f, 0.0f);
-            if (!world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)) {
-                continue;
-            }
-            if (isSpawnable(candidate)) {
-                return candidate;
+            int offsetX = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1);
+            int offsetZ = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1);
+            for (int offsetY = -SPAWN_Y_RANGE; offsetY <= SPAWN_Y_RANGE; offsetY++) {
+                Location candidate = new Location(world,
+                        center.getBlockX() + offsetX + 0.5,
+                        center.getBlockY() + offsetY,
+                        center.getBlockZ() + offsetZ + 0.5,
+                        random.nextFloat() * 360.0f, 0.0f);
+                if (!world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)) {
+                    continue;
+                }
+                if (isSpawnable(candidate)) {
+                    return candidate;
+                }
             }
         }
         return null;

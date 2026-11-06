@@ -4,11 +4,15 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -95,15 +99,23 @@ public class DatabaseManager {
             """.formatted(PLAYERS_TABLE);
 
     /**
-     * 既存テーブルにカラムが存在するか確認するクエリ。
+     * {@code players} テーブルに必須のカラム一覧。
      * <p>
-     * {@link java.sql.DatabaseMetaData} はスキーマ名の大文字小文字で挙動が変わる
-     * 環境があるため、MySQL / MariaDB の {@code information_schema} を直接参照する。
+     * {@link com.zeloria.player.PlayerRepository} の SELECT / INSERT が参照する
+     * カラムと一致させている。不足がある場合は自動 ALTER せず起動を中止する
+     * （{@code sql/reset.sql} で再作成する運用）。
      */
-    private static final String COLUMN_EXISTS_SQL = """
-            SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
-            """;
+    public static final List<String> REQUIRED_PLAYERS_COLUMNS = List.of(
+            "uuid", "player_name", "level", "exp", "hp", "mp", "money",
+            "atk", "def", "crit_rate", "crit_dmg", "cdr", "move_speed", "hp_regen", "mp_regen",
+            "current_class_id", "unlocked_classes", "virtual_equipment_base64",
+            "max_health", "current_health", "max_mana", "current_mana",
+            "attack_power", "defense", "defense1", "defense2", "critical_rate", "critical_damage",
+            "accuracy", "evasion", "dodge_cooldown_reduction", "cooldown_reduction",
+            "walk_speed", "health_regen_flat", "health_regen_percent",
+            "mana_regen_flat", "mana_regen_percent", "cooldown_end_at",
+            "last_instance", "last_login", "last_updated"
+    );
 
     private final DatabaseService databaseService;
     private final ExecutorService executor;
@@ -159,7 +171,11 @@ public class DatabaseManager {
     }
 
     /**
-     * {@code players} テーブルを同期的に作成する（非同期基盤用）。
+     * {@code players} テーブルを同期的に作成し、必須カラムを検証する（非同期基盤用）。
+     * <p>
+     * {@code CREATE TABLE IF NOT EXISTS} のみを実行し、既存テーブルへの
+     * 自動 {@code ALTER TABLE} は行わない。必須カラムが不足している場合は
+     * {@link MissingColumnsException} を投げ、呼び出し元がプラグインを無効化する。
      */
     private void createPlayersTable() {
         try (Connection connection = getConnection()) {
@@ -167,46 +183,46 @@ public class DatabaseManager {
                 statement.executeUpdate(CREATE_PLAYERS_TABLE_SQL);
             }
 
-            // 既存インストール向けの後方互換マイグレーション。
-            // CREATE TABLE IF NOT EXISTS では既存テーブルにカラムが追加されないため、
-            // クラス関連カラムが無い場合だけ ALTER TABLE で追加する。
-            ensureColumn(connection, "current_class_id", "VARCHAR(64) NULL");
-            ensureColumn(connection, "unlocked_classes", "TEXT NULL");
-
-            // RPG ステータス（PlayerStats）用カラム。
-            // 既存行は NULL のままにし、読み込み時に旧カラム（hp など）から補完する。
-            ensureColumn(connection, "max_health", "DOUBLE NULL");
-            ensureColumn(connection, "current_health", "DOUBLE NULL");
-            ensureColumn(connection, "max_mana", "DOUBLE NULL");
-            ensureColumn(connection, "current_mana", "DOUBLE NULL");
-            ensureColumn(connection, "attack_power", "DOUBLE NULL");
-            ensureColumn(connection, "defense", "DOUBLE NULL");
-            ensureColumn(connection, "defense1", "DOUBLE NULL");
-            ensureColumn(connection, "defense2", "DOUBLE NULL");
-            ensureColumn(connection, "critical_rate", "DOUBLE NULL");
-            ensureColumn(connection, "critical_damage", "DOUBLE NULL DEFAULT 50.0");
-            ensureColumn(connection, "accuracy", "DOUBLE NULL");
-            ensureColumn(connection, "evasion", "DOUBLE NULL");
-            ensureColumn(connection, "dodge_cooldown_reduction", "DOUBLE NULL");
-            ensureColumn(connection, "cooldown_reduction", "DOUBLE NULL");
-            ensureColumn(connection, "walk_speed", "DOUBLE NULL");
-            ensureColumn(connection, "health_regen_flat", "DOUBLE NULL");
-            ensureColumn(connection, "health_regen_percent", "DOUBLE NULL");
-            ensureColumn(connection, "mana_regen_flat", "DOUBLE NULL");
-            ensureColumn(connection, "mana_regen_percent", "DOUBLE NULL");
-            ensureColumn(connection, "cooldown_end_at", "TEXT NULL");
+            List<String> missingColumns = findMissingColumns(connection);
+            if (!missingColumns.isEmpty()) {
+                throw new MissingColumnsException(missingColumns);
+            }
 
             // defense カラムは旧・新どちらのインストールにも存在する。
             // 新セッションの防具防御力（defense2）が未設定の行だけ旧 defense から移行する。
             migrateDefenseToDefense2(connection);
-
-            // 接続履歴（/admin info 用）。INSERT では更新せず、ログイン時に専用クエリで記録する。
-            ensureColumn(connection, "last_instance", "VARCHAR(128) NULL");
-            ensureColumn(connection, "last_login", "TIMESTAMP NULL");
         } catch (SQLException e) {
             throw new CompletionException(
                     "テーブル " + PLAYERS_TABLE + " の作成に失敗しました。", e);
         }
+    }
+
+    /**
+     * {@code SHOW COLUMNS FROM players} を実行し、必須カラムのうち不足しているものを返す。
+     *
+     * @param connection 対象コネクション
+     * @return 不足しているカラム名（すべて揃っている場合は空リスト）
+     * @throws SQLException カラム一覧の取得に失敗した場合
+     */
+    private List<String> findMissingColumns(Connection connection) throws SQLException {
+        Set<String> existing = new HashSet<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("SHOW COLUMNS FROM " + PLAYERS_TABLE)) {
+            while (rs.next()) {
+                String field = rs.getString("Field");
+                if (field != null && !field.isBlank()) {
+                    existing.add(field.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+
+        List<String> missing = new ArrayList<>();
+        for (String column : REQUIRED_PLAYERS_COLUMNS) {
+            if (!existing.contains(column)) {
+                missing.add(column);
+            }
+        }
+        return missing;
     }
 
     /**
@@ -228,36 +244,26 @@ public class DatabaseManager {
     }
 
     /**
-     * 指定カラムが {@code players} テーブルに存在しない場合のみ追加する。
-     *
-     * @param connection 対象コネクション
-     * @param column     カラム名
-     * @param definition カラム定義（型・NULL 可否）
-     * @throws SQLException 確認・追加に失敗した場合
+     * 必須カラムが不足していることを表す例外。
+     * <p>
+     * 自動 {@code ALTER TABLE} を行わない方針のため、不足時はこの例外を投げて
+     * プラグイン側で無効化する。
      */
-    private void ensureColumn(Connection connection, String column, String definition)
-            throws SQLException {
-        try (PreparedStatement check = connection.prepareStatement(COLUMN_EXISTS_SQL)) {
-            check.setString(1, PLAYERS_TABLE);
-            check.setString(2, column);
-            try (ResultSet rs = check.executeQuery()) {
-                if (rs.next() && rs.getInt(1) > 0) {
-                    return;
-                }
-            }
+    public static final class MissingColumnsException extends RuntimeException {
+
+        private final List<String> missingColumns;
+
+        public MissingColumnsException(List<String> missingColumns) {
+            super("players テーブルの必須カラムが不足しています: "
+                    + String.join(", ", missingColumns));
+            this.missingColumns = List.copyOf(missingColumns);
         }
 
-        try (Statement alter = connection.createStatement()) {
-            try {
-                alter.executeUpdate("ALTER TABLE " + PLAYERS_TABLE
-                        + " ADD COLUMN " + column + " " + definition);
-            } catch (SQLException e) {
-                // 同時実行などで既に追加されていた場合は成功として扱う（MySQL: 1060 / SQLState: 42S21）。
-                if (e.getErrorCode() == 1060 || "42S21".equals(e.getSQLState())) {
-                    return;
-                }
-                throw e;
-            }
+        /**
+         * 不足しているカラム名を取得する。
+         */
+        public List<String> missingColumns() {
+            return missingColumns;
         }
     }
 

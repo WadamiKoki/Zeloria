@@ -1,6 +1,7 @@
 package com.zeloria.gui;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.item.EquipmentService;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerService;
 import com.zeloria.player.PlayerStatsService;
@@ -562,6 +563,16 @@ public final class ClassSelectGUI implements Listener {
             layout.errorSound().play(player);
             player.sendActionBar(Component.text(
                     "プレイヤーデータが読み込まれていません。", NamedTextColor.RED));
+            return;
+        }
+
+        // 装備中のアイテムは旧クラスの武器制限を持つ可能性があるため、
+        // クラス変更前にすべて外してもらう。
+        EquipmentService equipmentService = plugin.getEquipmentService();
+        if (equipmentService != null && equipmentService.hasEquipped(data)) {
+            layout.errorSound().play(player);
+            player.sendActionBar(Component.text(
+                    "装備をすべて外してからクラスを変更してください", NamedTextColor.RED));
             return;
         }
 
