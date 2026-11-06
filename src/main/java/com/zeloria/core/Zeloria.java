@@ -103,9 +103,10 @@ public final class Zeloria extends JavaPlugin {
     private ChannelConfig channelConfig;
 
     /**
-     * 共有設定フォルダ（{@code channel.yml} の {@code shared-config-path} を解決したルート）。
+     * 共有設定フォルダ（{@code channel.yml} の {@code shared-config-path} を解決したパス）。
      * <p>
-     * このフォルダ直下の {@code config/} と {@code sql.yml} を全サーバーで共有する。
+     * このフォルダ自体に YAML 一式（{@code ClassData/} など）と {@code sql.yml} を置き、
+     * 全サーバーで共有する。
      */
     private File sharedConfigFolder;
 
@@ -380,10 +381,20 @@ public final class Zeloria extends JavaPlugin {
 
         this.channelConfig = ChannelConfig.load(channelFile);
 
+        // shared-config-path はサーバールート（paper.jar がある場所）からの相対パスとして解決する。
+        // 絶対パスを許可すると環境ごとに設定を書き換える必要があり、環境非依存の運用が崩れるため禁止する。
+        String sharedConfigPath = this.channelConfig.getSharedConfigPath();
+        if (isAbsolutePath(sharedConfigPath)) {
+            getLogger().severe("shared-config-path には絶対パスを使用しないでください: " + sharedConfigPath);
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
         File resolved;
         try {
-            resolved = new File(getDataFolder().getAbsoluteFile(),
-                    this.channelConfig.getSharedConfigPath()).getCanonicalFile();
+            // getDataFolder() は <server>/plugins/Zeloria/ のため、2 つ上がサーバールート。
+            File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
+            resolved = new File(serverRoot, sharedConfigPath).getCanonicalFile();
         } catch (IOException e) {
             getLogger().severe("共有設定フォルダが見つかりません: " + e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
@@ -396,7 +407,7 @@ public final class Zeloria extends JavaPlugin {
             return false;
         }
 
-        this.sharedConfigFolder = normalizeSharedRoot(resolved);
+        this.sharedConfigFolder = resolved;
         getLogger().info("チャンネル " + this.channelConfig.getChannel()
                 + " で起動します（共有設定フォルダ: "
                 + this.sharedConfigFolder.getAbsolutePath() + "）");
@@ -404,40 +415,40 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
-     * 共有設定フォルダの指定を、{@code config/} と {@code sql.yml} を置くルートへ正規化する。
+     * OS に依存せずに絶対パスか判定する。
      * <p>
-     * {@code shared-config-path} が {@code config} ディレクトリ自体を指している場合は、
-     * その親（サーバールートの親フォルダ）を共有ルートとして扱う。
-     * これにより {@code "../../.."} と {@code "../../../config"} のどちらでも
-     * 同じ {@code config/} と {@code sql.yml} を参照できる。
+     * {@link File#isAbsolute()} は実行 OS の形式のみを判定するため、
+     * Unix 上で {@code C:\\...} のような Windows 形式も絶対パスとして扱う。
      *
-     * @param resolved 解決済みの共有設定パス
-     * @return {@code config/} と {@code sql.yml} を置く共有ルート
+     * @param path 判定対象のパス
+     * @return 絶対パスの場合は {@code true}
      */
-    private static File normalizeSharedRoot(File resolved) {
-        File parent = resolved.getParentFile();
-        if (parent != null
-                && ChannelConfig.SHARED_CONFIG_DIR_NAME.equalsIgnoreCase(resolved.getName())) {
-            return parent;
+    private static boolean isAbsolutePath(String path) {
+        if (new File(path).isAbsolute()) {
+            return true;
         }
-        return resolved;
+        // 実行環境が Windows 以外でもドライブレター形式（C:\ または C:/）を検出する。
+        return path.length() >= 2
+                && Character.isLetter(path.charAt(0))
+                && path.charAt(1) == ':'
+                && (path.length() == 2 || path.charAt(2) == '\\' || path.charAt(2) == '/');
     }
 
     /**
      * 必須 YAML の配置状況を確認し、最初に不足しているパスを返す。
      * <p>
      * ディレクトリ自体が存在しない場合に加え、ディレクトリ内に YAML が 1 つも
-     * 無い場合も「未配置」とみなす。パスは {@code config/} からの相対表記で返す。
+     * 無い場合も「未配置」とみなす。パスは共有設定フォルダからの相対表記で返す。
      *
      * @return 不足しているパス。すべて配置済みの場合は {@code null}
      */
     private String findMissingConfig() {
-        Path configFolder = this.sharedConfigFolder.toPath()
-                .resolve(ChannelConfig.SHARED_CONFIG_DIR_NAME);
+        // sharedConfigFolder は YAML 一式を直接置くフォルダ（例: ZeloriaServer/config）。
+        Path configFolder = this.sharedConfigFolder.toPath();
         for (String directory : REQUIRED_CONFIG_DIRECTORIES) {
             Path path = configFolder.resolve(directory);
             if (!Files.isDirectory(path) || !containsYaml(path)) {
-                return "config/" + directory;
+                return directory;
             }
         }
         return null;
@@ -707,7 +718,7 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
-     * 共有設定フォルダ（{@code config/} と {@code sql.yml} を置くルート）を取得する。
+     * 共有設定フォルダ（YAML 一式と {@code sql.yml} を直接置くフォルダ）を取得する。
      *
      * @return 共有設定フォルダ（onEnable 前は null）
      */

@@ -18,12 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
- * 共有設定フォルダの {@code config/} 配下の YAML ファイルを
+ * 共有設定フォルダ直下の YAML ファイルを
  * 再帰的に読み込み、メモリ上にキャッシュする構成クラス。
  * <p>
  * 読み込み先は {@code channel.yml} の {@code shared-config-path} を解決した
- * 共有設定フォルダ直下の {@code config/} で、全サーバー（チャンネル）が同じ
- * 設定を参照する。キャッシュのキーは {@code config/} からの相対パス
+ * 共有設定フォルダ自体（例: {@code ZeloriaServer/config}）で、全サーバー（チャンネル）が
+ * 同じ設定を参照する。キャッシュのキーは共有設定フォルダからの相対パス
  * （区切り文字は {@code /}）で、例: {@code LayerData/Hub.yml}。
  * {@code getConfig(String)} では相対パスに加えて
  * ファイル名（拡張子なし）や YAML 内の {@code id} でも参照できる。
@@ -61,7 +61,7 @@ public class YamlLoader {
     private final JavaPlugin plugin;
 
     /**
-     * 設定フォルダ: {@code <共有設定フォルダ>/config/}
+     * 設定フォルダ: 共有設定フォルダ自体（例: {@code ZeloriaServer/config}）
      */
     private final Path configFolder;
 
@@ -87,38 +87,43 @@ public class YamlLoader {
 
     public YamlLoader(JavaPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.configFolder = resolveSharedFolder(plugin)
+        this.configFolder = resolveConfigFolder(plugin);
+    }
+
+    /**
+     * YAML を読み込む設定フォルダを解決する。
+     * <p>
+     * {@link Zeloria} では {@code channel.yml} の {@code shared-config-path} を
+     * 解決した共有設定フォルダ自体を設定フォルダとして扱う。
+     * {@link Zeloria} 以外のプラグイン実装では、従来どおりプラグインの
+     * データフォルダ直下の {@code config/} を使用する。
+     *
+     * @param plugin プラグイン
+     * @return 設定フォルダ
+     */
+    private static Path resolveConfigFolder(JavaPlugin plugin) {
+        if (plugin instanceof Zeloria zeloria) {
+            File sharedFolder = zeloria.getSharedConfigFolder();
+            if (sharedFolder != null) {
+                return sharedFolder.toPath()
+                        .toAbsolutePath()
+                        .normalize();
+            }
+        }
+        return plugin.getDataFolder().toPath()
                 .resolve(CONFIG_DIR_NAME)
                 .toAbsolutePath()
                 .normalize();
     }
 
     /**
-     * {@code channel.yml} で指定された共有設定フォルダを取得する。
-     * <p>
-     * {@link Zeloria} 以外のプラグイン実装では、従来どおりプラグインの
-     * データフォルダを共有設定フォルダとして扱う。
-     *
-     * @param plugin プラグイン
-     * @return 共有設定フォルダ
-     */
-    private static Path resolveSharedFolder(JavaPlugin plugin) {
-        if (plugin instanceof Zeloria zeloria) {
-            File sharedFolder = zeloria.getSharedConfigFolder();
-            if (sharedFolder != null) {
-                return sharedFolder.toPath();
-            }
-        }
-        return plugin.getDataFolder().toPath();
-    }
-
-    /**
-     * 共有設定フォルダの {@code config/} 配下のすべての YAML ファイルを読み込む。
+     * 共有設定フォルダ直下のすべての YAML ファイルを読み込む。
      * <p>
      * 同梱リソース（{@code src/main/resources/config/}）はテンプレートであり、
      * 本クラスは書き込み（ファイル作成・{@code saveResource(...)}）を行わない。
-     * 初回起動前に、必要な YAML を手動で共有設定フォルダの {@code config/} へ
-     * コピーしておくこと。必須 YAML の存在確認は {@link Zeloria#onEnable()} が行う。
+     * 初回起動前に、必要な YAML を手動で共有設定フォルダ（例:
+     * {@code ZeloriaServer/config/}）へコピーしておくこと。
+     * 必須 YAML の存在確認は {@link Zeloria#onEnable()} が行う。
      */
     public synchronized void loadAll() {
         reload();

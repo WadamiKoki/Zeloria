@@ -32,8 +32,14 @@ public final class ChannelConfig {
     /** {@code channel} が未指定の場合に使用するチャンネル番号。 */
     public static final int DEFAULT_CHANNEL = 1;
 
-    /** {@code shared-config-path} が未指定の場合に使用する共有設定フォルダ。 */
-    public static final String DEFAULT_SHARED_CONFIG_PATH = "../../../config";
+    /**
+     * {@code shared-config-path} が未指定の場合に使用する共有設定フォルダ。
+     * <p>
+     * サーバールート（{@code paper.jar} がある場所）からの相対パスで、
+     * 既定の {@code "../config"} はサーバールートの親フォルダ直下の
+     * {@code config}（例: {@code ZeloriaServer/config}）を指す。
+     */
+    public static final String DEFAULT_SHARED_CONFIG_PATH = "../config";
 
     /** 共有設定フォルダ内の設定ディレクトリ名。 */
     public static final String SHARED_CONFIG_DIR_NAME = "config";
@@ -45,7 +51,7 @@ public final class ChannelConfig {
      * チャンネル設定を生成する。
      *
      * @param channel          チャンネル番号
-     * @param sharedConfigPath 共有設定フォルダのパス（プラグインデータフォルダからの相対パス）
+     * @param sharedConfigPath 共有設定フォルダのパス（サーバールートからの相対パス）
      */
     public ChannelConfig(int channel, String sharedConfigPath) {
         this.channel = channel;
@@ -81,7 +87,7 @@ public final class ChannelConfig {
     }
 
     /**
-     * 共有設定フォルダのパス（プラグインデータフォルダからの相対パス）を取得する。
+     * 共有設定フォルダのパス（サーバールートからの相対パス）を取得する。
      *
      * @return 共有設定フォルダのパス
      */

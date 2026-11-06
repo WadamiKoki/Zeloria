@@ -13,31 +13,29 @@ Paper サーバー向けの RPG プラグインです。複数のサーバー（
 # このサーバーのチャンネル番号（建築モードは1のみ有効）
 channel: 1
 
-# 共有設定フォルダのパス（プラグインのデータフォルダからの相対パス）
-# 例: "../../../config" → ZeloriaServer/config/
-shared-config-path: "../../../config"
+# 共有設定フォルダのパス（サーバールートからの相対パス。絶対パスは使用禁止）
+# 例: "../config" → <server>/../config = ZeloriaServer/config/
+shared-config-path: "../config"
 ```
 
 - `channel`: このサーバーのチャンネル番号。建築モードを許可するのは **チャンネル 1 のみ** です。
-- `shared-config-path`: 共有設定フォルダのパス。プラグインのデータフォルダ
-  （`plugins/Zeloria/`）からの相対パスで指定します。`../..` はサーバールート
-  （`ZeloriaServer/zeloria/`）の親フォルダを指します。
+- `shared-config-path`: 共有設定フォルダのパス。**サーバールート（`paper.jar` がある場所）**
+  からの相対パスで指定します。`paper.jar` が `ZeloriaServer/zeloria/` にある場合、
+  `../config` は `ZeloriaServer/config/` を指します。
+- 絶対パス（`/Users/...`、`C:\...` など）は使用禁止です。指定した場合は
+  `shared-config-path には絶対パスを使用しないでください: <パス>` を出力して無効化されます。
 
 ### パスの解決
 
-共有設定フォルダは次の式で解決されます。
+共有設定フォルダは、サーバールートを基準に次の式で解決されます。
 
 ```java
-new File(getDataFolder().getAbsoluteFile(), channelConfig.getSharedConfigPath()).getCanonicalFile()
+File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
+File sharedFolder = new File(serverRoot, channelConfig.getSharedConfigPath()).getCanonicalFile();
 ```
 
-`shared-config-path` が `config` ディレクトリ自体を指している場合は、その親を
-共有ルートとして扱います。次の 2 つの指定はどちらも同じ場所を参照します。
-
-```yaml
-shared-config-path: "../../.."          # → ZeloriaServer/
-shared-config-path: "../../../config"   # → ZeloriaServer/（config の親）
-```
+`getDataFolder()` は `<server>/plugins/Zeloria/` を返すため、2 つ上がサーバールートになります。
+パス区切りは `/` で記述してください（`File.separator` には依存しません）。
 
 指定した共有設定フォルダが存在しない場合、プラグインは次のログを出力して無効化されます。
 
@@ -58,19 +56,24 @@ channel.yml が見つかりません。plugins/Zeloria/channel.yml を作成し�
 ```
 ZeloriaServer/
 ├── velocity/
-├── zeloria/                ← チャンネル 1（建築可能）
+├── zeloria/                ← チャンネル 1（建築可能、paper.jar があるサーバールート）
 │   └── plugins/Zeloria/
-│       └── channel.yml     （channel: 1）
+│       └── channel.yml     （channel: 1, shared-config-path: "../config"）
 ├── zeloria2/               ← チャンネル 2（将来）
 │   └── plugins/Zeloria/
-│       └── channel.yml     （channel: 2）
-├── config/                 ← 全サーバー共有（YAML 設定）
-└── sql.yml                 ← 全サーバー共有（DB 接続情報）
+│       └── channel.yml     （channel: 2, shared-config-path: "../config"）
+└── config/                 ← 全サーバー共有（YAML 設定と sql.yml）
+    ├── ClassData/
+    ├── SkillData/
+    ├── ...
+    └── sql.yml             ← DB 接続情報（共有設定フォルダ直下）
 ```
 
-- `config/` と `sql.yml` は **全サーバーで共有** します。設定変更は 1 箇所の編集で全サーバーに反映されます
-  （反映には各サーバーで `/admin reload` を実行してください）。
-- DB 接続情報も `sql.yml` の 1 箇所で管理します。
+- `config/` 配下の YAML と `config/sql.yml` は **全サーバーで共有** します。設定変更は 1 箇所の編集で
+  全サーバーに反映されます（反映には各サーバーで `/admin reload` を実行してください）。
+- DB 接続情報も共有設定フォルダ直下の `sql.yml`（`<server>/config/sql.yml`、例:
+  `ZeloriaServer/config/sql.yml`）1 箇所で管理します。ここでの `<server>` は
+  `ZeloriaServer` のような共有ルートを指します。
 - 全サーバーが同じ DB を参照するため、プレイヤーデータは自動的に一元管理されます。
   サーバー A からサーバー B へ移動しても、同じプレイヤーデータが引き継がれます。
 
@@ -79,9 +82,12 @@ ZeloriaServer/
 - `config/` 配下の YAML は `YamlLoader` が起動時に読み込みます。
   `/admin reload`、`SpawnerManager.reload()`、`NpcManager.reload()` など、
   再読み込み処理もすべて共有設定フォルダから読み込みます。
-- `sql.yml` は `DatabaseService` が起動時に読み込みます。
+- `sql.yml` は `DatabaseService` が起動時に共有設定フォルダ直下（`new File(sharedConfigFolder, "sql.yml")`）
+  から読み込みます。
 - プラグインは共有設定フォルダへの **書き込みを行いません**（ファイル作成・`saveResource` なし）。
   必要な YAML は `src/main/resources/config/` のテンプレートを手動でコピーしてください。
+- Mac / Ubuntu のどちらでも、`ZeloriaServer/config/` という同じフォルダ構成であれば
+  同じ `channel.yml` のまま動作します（OS 固有のホームディレクトリは参照しません）。
 
 ### コネクションプールの注意
 
@@ -142,11 +148,15 @@ ZeloriaServer/
 
 ## インストール
 
-1. `channel.yml` を作成し、`plugins/Zeloria/channel.yml` に配置します。
-2. 共有設定フォルダに `config/` と `sql.yml` を配置します
-   （`src/main/resources/config/` の内容と `src/main/resources/sql.yml` をコピー）。
-3. 各サーバーを起動します。必須 YAML が不足している場合は次のログを出力して無効化されます。
+1. `channel.yml` を作成し、`plugins/Zeloria/channel.yml` に配置します
+   （`shared-config-path: "../config"` を指定）。
+2. サーバールートの親フォルダ（`<server>/../config/`、例: `ZeloriaServer/config/`）へ
+   `src/main/resources/config/` の内容をコピーします。
+3. `src/main/resources/sql.yml` を共有設定フォルダ直下（`<server>/config/sql.yml`、例:
+   `ZeloriaServer/config/sql.yml`。ここでの `<server>` は共有ルート）へコピーして
+   DB 情報を記入します。
+4. 各サーバーを起動します。必須 YAML が不足している場合は次のログを出力して無効化されます。
 
 ```
-必須YAMLが見つかりません: config/<不足しているディレクトリ>
+必須YAMLが見つかりません: <不足しているディレクトリ>
 ```

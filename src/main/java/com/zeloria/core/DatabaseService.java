@@ -10,8 +10,9 @@ import java.io.File;
 /**
  * HikariCP を用いたデータベース接続管理クラス。
  * <p>
- * {@code channel.yml} の {@code shared-config-path} が指す共有設定フォルダ直下の
- * {@code sql.yml} を読み込み、MySQL へのコネクションプールを管理する。
+ * {@code channel.yml} の {@code shared-config-path} が指す共有設定フォルダ直下
+ * （例: {@code ZeloriaServer/config/sql.yml}）の {@code sql.yml} を読み込み、
+ * MySQL へのコネクションプールを管理する。
  * 全サーバー（チャンネル）が同じ {@code sql.yml} を参照するため、DB 接続情報は
  * 1 箇所で管理できる。本クラスは {@code sql.yml} の作成・書き込みを行わない。
  */
@@ -43,11 +44,12 @@ public class DatabaseService {
             return;
         }
 
+        // sql.yml は共有設定フォルダ直下（例: <server>/../config/sql.yml）に置く。
         File configFile = new File(sharedFolder, "sql.yml");
         if (!configFile.exists()) {
             // sql.yml は自動生成しない。初回起動前に共有設定フォルダへ手動で配置する運用とする。
             plugin.getLogger().severe("sql.yml が見つかりません: " + configFile.getAbsolutePath()
-                    + "（共有設定フォルダへ手動で配置してください）");
+                    + "（共有設定フォルダ直下へ手動で配置してください）");
             return;
         }
 
