@@ -408,8 +408,15 @@ public final class Zeloria extends JavaPlugin {
         File resolvedShared;
         File resolvedWorldData;
         try {
-            // getDataFolder() は <server>/plugins/Zeloria/ のため、2 つ上がサーバールート。
-            File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
+            // サーバールート（paper.jar や world フォルダがある場所）は Bukkit.getWorldContainer() から解決する。
+            // getDataFolder() は <server>/plugins/Zeloria/ を指すが、データフォルダの配置によっては
+            // 親ディレクトリが存在せず getParentFile() が null を返して NullPointerException になるため、
+            // getDataFolder().getParentFile().getParentFile() による解決は行わない。
+            File worldContainer = Bukkit.getWorldContainer();
+            if (worldContainer == null) {
+                throw new IOException("サーバールート（world container）を取得できませんでした。");
+            }
+            File serverRoot = worldContainer.getCanonicalFile();
             resolvedShared = new File(serverRoot, sharedConfigPath).getCanonicalFile();
             resolvedWorldData = new File(serverRoot, worldDataPath).getCanonicalFile();
         } catch (IOException e) {
