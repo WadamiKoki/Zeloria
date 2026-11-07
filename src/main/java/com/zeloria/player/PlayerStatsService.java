@@ -11,8 +11,6 @@ import org.bukkit.entity.Player;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.DoubleConsumer;
-import java.util.function.DoubleSupplier;
 
 /**
  * プレイヤーの RPG ステータスを Bukkit のプレイヤーへ反映するサービス。
@@ -83,7 +81,8 @@ public final class PlayerStatsService {
      * 指定したプレイヤーデータのステータスを反映する。
      * <p>
      * 反映前に現在のクラス定義の基礎ステータス（{@code baseStats}）と
-     * レベルアップ成長率（{@code levelUpPercent}）を再計算する。
+     * レベルアップ成長率（{@code levelUpPercent}）を再計算し、ツリー効果
+     * （永続化されない補正）も再適用する。
      *
      * @param player 対象プレイヤー
      * @param data   プレイヤーデータ
@@ -92,114 +91,104 @@ public final class PlayerStatsService {
         if (player == null || data == null) {
             return;
         }
+        // refreshClassStats が基礎値の再計算とツリー効果の再適用まで行う。
         refreshClassStats(data);
-        applyClassTreeStats(data);
         apply(player, data.getStats());
     }
 
     /**
-     * 解放済みツリーノードの {@code statEffects} を基礎ステータスへ加算する。
+     * 解放済みツリーノードの {@code statEffects} を「永続化されない補正（{@code treeBonuses}）」として
+     * 適用する。
      * <p>
-     * 計算順序は「基礎値 → 装備補正 → ツリー固定値 → ツリー割合」。
-     * 割合キーは {@code <項目名>Percent}（例: {@code attackPowerPercent}）。
-     * 装備補正は {@link PlayerStats.Bonuses} に分離されているため、ここでは
-     * 基礎値に対して割合を計算し、基礎値側へ上乗せする（基礎値が 0 の項目のみ
-     * 装備補正込みの現在値を基準にする）。
+     * 計算順序は Wynncraft 式の加算プールに合わせ、次のとおり。
+     * <ol>
+     *     <li>基礎値（クラス基礎値 × レベル成長）</li>
+     *     <li>ツリー効果を加算プールとして適用
+     *         （{@code 基礎値 + flat + 基礎値 × percent / 100}）</li>
+     *     <li>装備補正を加算（{@link PlayerStats} の取得メソッドで合算）</li>
+     * </ol>
+     * 割合キーは {@code <項目名>Percent}（例: {@code attackPowerPercent}）で、複数の割合効果は
+     * 合算してから基礎値へ 1 回だけ掛ける。ツリー効果は基礎値へ直接書き込まず
+     * {@link PlayerStats#applyTreeBonuses(PlayerStats.Bonuses)} で別枠に保持するため、
+     * DB に保存される基礎値（{@code getBase*}）には混入しない。
+     *
+     * @param data  対象のプレイヤーデータ
+     * @param stats 対象のステータス（基礎値の再計算済みであること）
      */
-    private void applyClassTreeStats(PlayerData data) {
+    private void applyClassTreeStats(PlayerData data, PlayerStats stats) {
         ClassTreeService classTreeService = plugin.getClassTreeService();
         if (classTreeService == null) {
+            stats.clearTreeBonuses();
             return;
         }
         String classId = data.getClassData().currentClassIdOrNull();
         if (classId == null || classId.isBlank()) {
-            return;
-        }
-        ClassManager classManager = plugin.getClassManager();
-        if (classManager == null
-                || classManager.current(data.getClassData()).isEmpty()) {
-            // refreshClassStats が基礎値を更新できていない場合は、
-            // ツリー効果を重複加算しないよう何もしない。
+            stats.clearTreeBonuses();
             return;
         }
 
         Map<String, Double> effects = classTreeService.getAggregatedStatEffects(data, classId);
         if (effects.isEmpty()) {
+            stats.clearTreeBonuses();
             return;
         }
 
-        PlayerStats stats = data.getStats();
-        applyTreeEffect(effects, "maxHealth",
-                stats::getBaseMaxHealth, stats::getMaxHealth, stats::setMaxHealth);
-        applyTreeEffect(effects, "maxMana",
-                stats::getBaseMaxMana, stats::getMaxMana, stats::setMaxMana);
-        applyTreeEffect(effects, "attackPower",
-                stats::getBaseAttackPower, stats::getAttackPower, stats::setAttackPower);
-        applyTreeEffect(effects, "defense1",
-                stats::getBaseDefense1, stats::getDefense1, stats::setDefense1);
-        applyTreeEffect(effects, "defense2",
-                stats::getBaseDefense2, stats::getDefense2, stats::setDefense2);
-        applyTreeEffect(effects, "criticalRate",
-                stats::getBaseCriticalRate, stats::getCriticalRate, stats::setCriticalRate);
-        applyTreeEffect(effects, "criticalDamage",
-                stats::getBaseCriticalDamage, stats::getCriticalDamage, stats::setCriticalDamage);
-        applyTreeEffect(effects, "accuracy",
-                stats::getBaseAccuracy, stats::getAccuracy, stats::setAccuracy);
-        applyTreeEffect(effects, "evasion",
-                stats::getBaseEvasion, stats::getEvasion, stats::setEvasion);
-        applyTreeEffect(effects, "dodgeCooldownReduction",
-                stats::getBaseDodgeCooldownReduction, stats::getDodgeCooldownReduction,
-                stats::setDodgeCooldownReduction);
-        applyTreeEffect(effects, "cooldownReduction",
-                stats::getBaseCooldownReduction, stats::getCooldownReduction,
-                stats::setCooldownReduction);
-        applyTreeEffect(effects, "moveSpeed",
-                stats::getBaseMoveSpeed, stats::getMoveSpeed, stats::setMoveSpeed);
-        applyTreeEffect(effects, "healthRegenFlat",
-                stats::getBaseHealthRegenFlat, stats::getHealthRegenFlat,
-                stats::setHealthRegenFlat);
-        applyTreeEffect(effects, "healthRegenPercent",
-                stats::getBaseHealthRegenPercent, stats::getHealthRegenPercent,
-                stats::setHealthRegenPercent);
-        applyTreeEffect(effects, "manaRegenFlat",
-                stats::getBaseManaRegenFlat, stats::getManaRegenFlat,
-                stats::setManaRegenFlat);
-        applyTreeEffect(effects, "manaRegenPercent",
-                stats::getBaseManaRegenPercent, stats::getManaRegenPercent,
-                stats::setManaRegenPercent);
-        applyTreeEffect(effects, "armorPenetration",
-                stats::getBaseArmorPenetration, stats::getArmorPenetration,
-                stats::setArmorPenetration);
-        applyTreeEffect(effects, "lifesteal",
-                stats::getBaseLifesteal, stats::getLifesteal, stats::setLifesteal);
+        // 加算プール: 固定値と割合を合算した「基礎値に対する差分」を項目ごとに算出する。
+        stats.applyTreeBonuses(new PlayerStats.Bonuses(
+                treeValue(effects, "maxHealth", stats.getBaseMaxHealth()),
+                treeValue(effects, "maxMana", stats.getBaseMaxMana()),
+                treeValue(effects, "attackPower", stats.getBaseAttackPower()),
+                treeValue(effects, "defense1", stats.getBaseDefense1()),
+                treeValue(effects, "defense2", stats.getBaseDefense2()),
+                treeValue(effects, "criticalRate", stats.getBaseCriticalRate()),
+                treeValue(effects, "criticalDamage", stats.getBaseCriticalDamage()),
+                treeValue(effects, "accuracy", stats.getBaseAccuracy()),
+                treeValue(effects, "evasion", stats.getBaseEvasion()),
+                treeValue(effects, "dodgeCooldownReduction", stats.getBaseDodgeCooldownReduction()),
+                treeValue(effects, "cooldownReduction", stats.getBaseCooldownReduction()),
+                treeValue(effects, "moveSpeed", stats.getBaseMoveSpeed()),
+                treeValue(effects, "healthRegenFlat", stats.getBaseHealthRegenFlat()),
+                treeValue(effects, "healthRegenPercent", stats.getBaseHealthRegenPercent()),
+                treeValue(effects, "manaRegenFlat", stats.getBaseManaRegenFlat()),
+                treeValue(effects, "manaRegenPercent", stats.getBaseManaRegenPercent()),
+                treeValue(effects, "armorPenetration", stats.getBaseArmorPenetration()),
+                treeValue(effects, "lifesteal", stats.getBaseLifesteal())));
     }
 
     /**
-     * 1 項目分の固定値・割合効果を適用する。
+     * 1 項目分のツリー効果（固定値 + 割合）を加算プールとして算出する。
+     * <p>
+     * Wynncraft 式に合わせ、複数の割合効果は合算済みの {@code percent} を使って
+     * {@code flat + 基礎値 × percent / 100} を 1 回だけ計算する。装備補正は含めない。
+     *
+     * @param effects 集計済みのツリー効果
+     * @param key     項目名
+     * @param base    基礎値（クラス基礎値 × レベル成長）
+     * @return 基礎値へ加算する差分（効果がない場合は 0）
      */
-    private static void applyTreeEffect(Map<String, Double> effects,
-                                        String key,
-                                        DoubleSupplier baseValue,
-                                        DoubleSupplier currentValue,
-                                        DoubleConsumer setter) {
+    private static double treeValue(Map<String, Double> effects, String key, double base) {
         double flat = effects.getOrDefault(key, 0.0);
         double percent = effects.getOrDefault(key + "Percent", 0.0);
         if (flat == 0.0 && percent == 0.0) {
-            return;
+            return 0.0;
         }
-        double base = baseValue.getAsDouble();
-        double percentBase = base != 0.0 ? base : currentValue.getAsDouble();
-        setter.accept(base + flat + percentBase * percent / 100.0);
+        return flat + base * percent / 100.0;
     }
 
     /**
-     * 現在のクラスとレベルから基礎ステータスを再計算し、{@link PlayerStats} へ上書きする。
+     * 現在のクラスとレベルから基礎ステータスを再計算し、{@link PlayerStats} へ上書きしたうえで
+     * ツリー効果（永続化されない補正）を再適用する。
      * <p>
      * 計算式は {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。レベル 0 と 1 は
-     * {@code baseStats} のみとなる。装備補正は {@link PlayerStats#getBonuses()} に
-     * 分離して保持されるため、ここでは基礎値だけを更新する。
+     * {@code baseStats} のみとなる。
      * <p>
-     * クラス未選択、またはクラス定義が見つからない場合は何もしない。
+     * ツリー効果の割合は基礎値を基準に計算するため、基礎値を上書きした直後に
+     * {@link #applyClassTreeStats(PlayerData, PlayerStats)} で毎回再計算する。
+     * 装備補正は {@link PlayerStats#getBonuses()}、ツリー補正は
+     * {@link PlayerStats#getTreeBonuses()} に分離して保持されるため、ここで更新するのは
+     * 基礎値のみである（DB 保存値にツリー効果は含まれない）。
+     * <p>
+     * クラス未選択、またはクラス定義が見つからない場合はツリー補正のみ解除する。
      * メインスレッドから呼び出すこと。
      *
      * @param data 対象のプレイヤーデータ（{@code null} は何もしない）
@@ -212,14 +201,19 @@ public final class PlayerStatsService {
         if (classManager == null) {
             return;
         }
+
+        PlayerStats stats = data.getStats();
         ZeloriaClass definition = classManager.current(data.getClassData()).orElse(null);
         if (definition == null) {
+            // クラス定義が無い場合はツリー補正も無効化する（基礎値はそのまま維持）。
+            stats.clearTreeBonuses();
             return;
         }
 
-        PlayerStats stats = data.getStats();
         ClassStats effective = definition.statsAtLevel(stats.getLevel());
         effective.applyTo(stats);
+        // 基礎値の上書き後にツリー効果（加算プール）を再適用する。
+        applyClassTreeStats(data, stats);
     }
 
     /**

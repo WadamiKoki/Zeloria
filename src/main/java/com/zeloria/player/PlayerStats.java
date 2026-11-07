@@ -4,8 +4,12 @@ package com.zeloria.player;
  * プレイヤーの RPG ステータスを保持するモデルクラス。
  * <p>
  * 値はすべて可変で、{@link com.zeloria.player.PlayerData} が 1 プレイヤーにつき
- * 1 インスタンスを保持する。装備補正・スキル・ダメージ計算は本クラスの責務ではなく、
- * 現時点では各フィールドを保持するだけに留める。
+ * 1 インスタンスを保持する。
+ * <p>
+ * 最終値は <b>基礎値 + ツリー補正 + 装備補正</b> で算出する。基礎値（{@code getBase*} 系）は
+ * 「クラス基礎値 + レベル成長」のみを表し、DB へはこの値だけを保存する。ツリー補正
+ * （{@link #getTreeBonuses()}）と装備補正（{@link #getBonuses()}）は永続化せず、
+ * ログイン時や装備変更時に再計算して適用する。
  * <p>
  * 入力値のうち次の項目は仕様に従ってクランプする。
  * <ul>
@@ -109,6 +113,16 @@ public class PlayerStats {
      * 装備補正を適用する前の状態が基礎値のため、そのまま永続化できる。
      */
     private Bonuses bonuses = Bonuses.NONE;
+
+    /**
+     * 解放済みアビリティツリーによる補正値（<b>永続化しない</b>）。
+     * <p>
+     * ツリー効果は基礎値へ直接書き込まず、装備補正（{@link #bonuses}）と同じく
+     * 別枠で保持する。DB へ保存する基礎値（{@code getBase*} 系）には含まれず、
+     * {@link com.zeloria.player.PlayerStatsService#refreshClassStats(PlayerData)}
+     * が基礎値を再計算するたびに再適用される（ログイン時に毎回再計算される）。
+     */
+    private Bonuses treeBonuses = Bonuses.NONE;
 
     private double maxHealth = DEFAULT_MAX_HEALTH;
     private double currentHealth = DEFAULT_MAX_HEALTH;
@@ -224,12 +238,41 @@ public class PlayerStats {
         this.bonuses = Bonuses.NONE;
     }
 
+    /**
+     * ツリー効果による補正値を取得する（永続化対象外）。
+     *
+     * @return 現在適用中のツリー補正値（未適用の場合は {@link Bonuses#NONE}）
+     */
+    public synchronized Bonuses getTreeBonuses() {
+        return treeBonuses;
+    }
+
+    /**
+     * ツリー効果による補正値を適用する（永続化対象外）。
+     * <p>
+     * 基礎値は変更せず、取得メソッドのみが基礎値・ツリー補正・装備補正を合算して返す。
+     * クラス基礎値の再計算時（{@code refreshClassStats}）は毎回このメソッドで
+     * 補正値を差し替える。
+     *
+     * @param treeBonuses 補正値（{@code null} は補正なし）
+     */
+    public synchronized void applyTreeBonuses(Bonuses treeBonuses) {
+        this.treeBonuses = treeBonuses == null ? Bonuses.NONE : treeBonuses;
+    }
+
+    /**
+     * ツリー効果による補正値を解除する。
+     */
+    public synchronized void clearTreeBonuses() {
+        this.treeBonuses = Bonuses.NONE;
+    }
+
     /* ------------------------------------------------------------------
-     * 基本ステータス（取得値は基礎値 + 装備補正）
+     * 基本ステータス（取得値は最終値 = 基礎値 + ツリー補正 + 装備補正）
      * ------------------------------------------------------------------ */
 
     public synchronized double getMaxHealth() {
-        return Math.max(MIN_MAX_HEALTH, maxHealth + bonuses.maxHealth());
+        return Math.max(MIN_MAX_HEALTH, maxHealth + treeBonuses.maxHealth() + bonuses.maxHealth());
     }
 
     /**
@@ -278,7 +321,7 @@ public class PlayerStats {
     }
 
     public synchronized double getMaxMana() {
-        return Math.max(0.0, maxMana + bonuses.maxMana());
+        return Math.max(0.0, maxMana + treeBonuses.maxMana() + bonuses.maxMana());
     }
 
     /**
@@ -325,7 +368,7 @@ public class PlayerStats {
     }
 
     public synchronized double getAttackPower() {
-        return attackPower + bonuses.attackPower();
+        return attackPower + treeBonuses.attackPower() + bonuses.attackPower();
     }
 
     /**
@@ -349,7 +392,7 @@ public class PlayerStats {
      * @return 第 1 段階の防御力（装備補正込み）
      */
     public synchronized double getDefense1() {
-        return Math.max(0.0, defense1 + bonuses.defense1());
+        return Math.max(0.0, defense1 + treeBonuses.defense1() + bonuses.defense1());
     }
 
     /**
@@ -374,7 +417,7 @@ public class PlayerStats {
      * @return 第 2 段階の防御力（装備補正込み）
      */
     public synchronized double getDefense2() {
-        return Math.max(0.0, defense2 + bonuses.defense2());
+        return Math.max(0.0, defense2 + treeBonuses.defense2() + bonuses.defense2());
     }
 
     /**
@@ -419,13 +462,14 @@ public class PlayerStats {
     /**
      * 防御貫通率（0.0〜1.0）を取得する。
      * <p>
-     * クラス基礎値と装備補正を合算して返す。スキル側の防御貫通は
+     * クラス基礎値・ツリー補正・装備補正を合算して返す。スキル側の防御貫通は
      * {@link com.zeloria.combat.CombatService} で加算される。
      *
      * @return 防御貫通率
      */
     public synchronized double getArmorPenetration() {
-        return clamp(armorPenetration + bonuses.armorPenetration(), 0.0, 1.0);
+        return clamp(armorPenetration + treeBonuses.armorPenetration() + bonuses.armorPenetration(),
+                0.0, 1.0);
     }
 
     /**
@@ -449,13 +493,13 @@ public class PlayerStats {
     /**
      * 吸血率（0.0〜1.0）を取得する。
      * <p>
-     * クラス基礎値と装備補正を合算して返す。スキル側の吸血率は
+     * クラス基礎値・ツリー補正・装備補正を合算して返す。スキル側の吸血率は
      * {@link com.zeloria.combat.CombatService} で加算される。
      *
      * @return 吸血率
      */
     public synchronized double getLifesteal() {
-        return clamp(lifesteal + bonuses.lifesteal(), 0.0, 1.0);
+        return clamp(lifesteal + treeBonuses.lifesteal() + bonuses.lifesteal(), 0.0, 1.0);
     }
 
     /**
@@ -482,7 +526,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getCriticalRate() {
-        return clamp(criticalRate + bonuses.criticalRate(), MIN_PERCENT, MAX_PERCENT);
+        return clamp(criticalRate + treeBonuses.criticalRate() + bonuses.criticalRate(),
+                MIN_PERCENT, MAX_PERCENT);
     }
 
     /**
@@ -504,7 +549,7 @@ public class PlayerStats {
     }
 
     public synchronized double getCriticalDamage() {
-        return criticalDamage + bonuses.criticalDamage();
+        return criticalDamage + treeBonuses.criticalDamage() + bonuses.criticalDamage();
     }
 
     /**
@@ -530,7 +575,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getAccuracy() {
-        return clamp(accuracy + bonuses.accuracy(), MIN_PERCENT, MAX_PERCENT);
+        return clamp(accuracy + treeBonuses.accuracy() + bonuses.accuracy(),
+                MIN_PERCENT, MAX_PERCENT);
     }
 
     /**
@@ -552,7 +598,8 @@ public class PlayerStats {
     }
 
     public synchronized double getEvasion() {
-        return clamp(evasion + bonuses.evasion(), MIN_PERCENT, MAX_PERCENT);
+        return clamp(evasion + treeBonuses.evasion() + bonuses.evasion(),
+                MIN_PERCENT, MAX_PERCENT);
     }
 
     /**
@@ -574,7 +621,8 @@ public class PlayerStats {
     }
 
     public synchronized double getDodgeCooldownReduction() {
-        return clamp(dodgeCooldownReduction + bonuses.dodgeCooldownReduction(),
+        return clamp(dodgeCooldownReduction + treeBonuses.dodgeCooldownReduction()
+                        + bonuses.dodgeCooldownReduction(),
                 MIN_REDUCTION, MAX_REDUCTION);
     }
 
@@ -602,7 +650,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getCooldownReduction() {
-        return clamp(cooldownReduction + bonuses.cooldownReduction(),
+        return clamp(cooldownReduction + treeBonuses.cooldownReduction()
+                        + bonuses.cooldownReduction(),
                 MIN_REDUCTION, MAX_REDUCTION);
     }
 
@@ -630,7 +679,7 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getMoveSpeed() {
-        return Math.max(0.0, moveSpeed + bonuses.moveSpeed());
+        return Math.max(0.0, moveSpeed + treeBonuses.moveSpeed() + bonuses.moveSpeed());
     }
 
     /**
@@ -655,7 +704,7 @@ public class PlayerStats {
     }
 
     public synchronized double getHealthRegenFlat() {
-        return healthRegenFlat + bonuses.healthRegenFlat();
+        return healthRegenFlat + treeBonuses.healthRegenFlat() + bonuses.healthRegenFlat();
     }
 
     /**
@@ -677,7 +726,7 @@ public class PlayerStats {
     }
 
     public synchronized double getHealthRegenPercent() {
-        return healthRegenPercent + bonuses.healthRegenPercent();
+        return healthRegenPercent + treeBonuses.healthRegenPercent() + bonuses.healthRegenPercent();
     }
 
     /**
@@ -701,7 +750,7 @@ public class PlayerStats {
     }
 
     public synchronized double getManaRegenFlat() {
-        return manaRegenFlat + bonuses.manaRegenFlat();
+        return manaRegenFlat + treeBonuses.manaRegenFlat() + bonuses.manaRegenFlat();
     }
 
     /**
@@ -723,7 +772,7 @@ public class PlayerStats {
     }
 
     public synchronized double getManaRegenPercent() {
-        return manaRegenPercent + bonuses.manaRegenPercent();
+        return manaRegenPercent + treeBonuses.manaRegenPercent() + bonuses.manaRegenPercent();
     }
 
     /**
@@ -751,7 +800,7 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     /**
-     * 装備などによる補正値。
+     * 加算で合成する補正値（装備補正・ツリー補正で共用）。
      * <p>
      * 各値は {@link PlayerStats} の取得メソッドと同じ単位で保持する
      * （割合系は比率、会心率などは % ポイント）。

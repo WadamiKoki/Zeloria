@@ -288,8 +288,9 @@ public record ClassStats(
     /**
      * この値をプレイヤーの基礎ステータスへ反映する。
      * <p>
-     * 装備補正は {@link PlayerStats#applyBonuses(PlayerStats.Bonuses)} 側で
-     * 別途保持されるため、ここでは基礎値のみを上書きする。
+     * 装備補正は {@link PlayerStats#applyBonuses(PlayerStats.Bonuses)}、ツリー補正は
+     * {@link PlayerStats#applyTreeBonuses(PlayerStats.Bonuses)} 側で別途保持されるため、
+     * ここでは基礎値のみを上書きする。
      *
      * @param stats 対象ステータス（{@code null} は何もしない）
      */

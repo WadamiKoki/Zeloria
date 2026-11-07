@@ -24,11 +24,11 @@ import java.util.Objects;
  * {@code CombatListener} 側でキャンセルする。
  * カスタムモブ（{@link MobStats} を持つエンティティ）以外は対象外とし、
  * バニラモブや他プラグインのモブには干渉しない。
+ * <p>
+ * 計算結果が 0 以下のダメージは「無効（0 ダメージ）」として扱い、HP を減らさない
+ * （防御力が攻撃力を上回る場合はダメージが通らない）。
  */
 public final class CombatService {
-
-    /** 最小ダメージ。 */
-    public static final double MIN_DAMAGE = 1.0;
 
     /** バニラの体力バーの最大値（ハート 10 個分）。 */
     private static final double VANILLA_MAX_HEALTH = 20.0;
@@ -85,7 +85,7 @@ public final class CombatService {
                 true);
 
         markCombat(attacker);
-        if (!result.evaded()) {
+        if (!result.evaded() && result.damage() > 0.0) {
             applyDamage(victim, result.damage(), attacker);
             heal(attacker, attackerStats, result.damage() * totalLifesteal);
         }
@@ -170,7 +170,10 @@ public final class CombatService {
         if (victim instanceof Player player) {
             markCombat(player);
         }
-        applyDamage(victim, result.damage(), null);
+        // 0 以下のダメージは無効（HP を減らさない）。バニラ側のキャンセルのため結果は返す。
+        if (result.damage() > 0.0) {
+            applyDamage(victim, result.damage(), null);
+        }
         return result;
     }
 
@@ -237,6 +240,11 @@ public final class CombatService {
     }
 
     private void applyDamage(LivingEntity victim, double damage, Player attacker) {
+        // 0 以下のダメージは無効。被弾音・HP 減少・キラー設定のいずれも行わない。
+        if (victim == null || damage <= 0.0) {
+            return;
+        }
+
         double remaining = Math.max(0.0, victim.getHealth() - damage);
 
         if (attacker != null) {

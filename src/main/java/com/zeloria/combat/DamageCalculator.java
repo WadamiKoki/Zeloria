@@ -11,10 +11,12 @@ import java.util.concurrent.ThreadLocalRandom;
  *     <li>クリティカル判定（ダメージへ {@code criticalDamage%} を加算）</li>
  *     <li>第 1 段階防御力による軽減（{@code 100 / (100 + defense1)}）</li>
  *     <li>防御貫通を適用した第 2 段階防御力による軽減</li>
- *     <li>最低 1.0 ダメージを保証</li>
  * </ol>
  * 防御軽減は {@code d / (d + 100)} の曲線を使うため、防御力が高いほど
  * 1 点あたりの効果は逓減する。
+ * <p>
+ * 最低ダメージの保証は行わない。計算結果が 0 以下の場合はそのまま返し、
+ * 適用側（{@link CombatService}）が「無効（0 ダメージ）」として HP を減らさない。
  */
 public final class DamageCalculator {
 
@@ -66,10 +68,8 @@ public final class DamageCalculator {
         double effectiveDefense2 = Math.max(0.0, defense2) * (1.0 - penetration);
         damage *= reductionFactor(effectiveDefense2);
 
-        if (damage <= 0.0) {
-            return new DamageResult(0.0, critical, false);
-        }
-        return new DamageResult(Math.max(1.0, damage), critical, false);
+        // 最低ダメージは保証しない。0 以下のダメージは適用側で無効として扱う。
+        return new DamageResult(damage, critical, false);
     }
 
     /**
