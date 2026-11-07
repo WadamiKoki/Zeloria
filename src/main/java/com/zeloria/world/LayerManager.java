@@ -540,7 +540,6 @@ public class LayerManager {
                     "dimensionKey");
             WorldCreator creator = WorldCreator.ofKey(dimensionKey)
                     .environment(World.Environment.CUSTOM)
-                    .customEnvironmentKey(dimensionKey)
                     // スポーン位置を常時ロードしない（新規生成時の負荷・競合を避ける）。
                     .keepSpawnLoaded(TriState.FALSE)
                     .generateStructures(false)
