@@ -81,7 +81,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *         （{@code WeaponData/archer/test} のような階層パス指定にも対応）</li>
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - MobData を指定してモブをスポーンする</li>
- *     <li>{@code /admin build <templateId>|info|save|unsave} - チャンネル 1 の建築ワールドを操作する</li>
+ *     <li>{@code /admin create <templateId>} / {@code /admin join <templateId>} - 建築ワールドを作成／参加する</li>
+ *     <li>{@code /admin build list|info|save|unsave} - チャンネル 1 の建築ワールドを管理する</li>
  *     <li>{@code /admin stop} - プレイヤーデータ保存・レイヤー破棄・ワールド保存を行ってから安全に停止する</li>
  * </ul>
  * 実行結果のメッセージは {@code config/MessageData/admin.yml} で一元管理する。
@@ -169,7 +170,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|create|join|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -204,7 +205,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         String sub = args[0].toLowerCase(Locale.ROOT);
 
         // 建築モードはチャンネル 1 専用。サブコマンドの解析より前に判定する。
-        if (BUILD.equals(sub) && !isBuildChannel()) {
+        if ((BUILD.equals(sub) || CREATE.equals(sub) || JOIN.equals(sub)) && !isBuildChannel()) {
             send(sender, message("build.channel_only", Map.of(),
                     "<red>建築モードはチャンネル1でのみ使用できます</red>"));
             return true;
@@ -228,6 +229,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case GIVE -> handleGive(sender, args);
             case INFO -> handleInfo(sender, args);
             case GUI -> handleGui(sender, args);
+            case CREATE -> handleCreateCommand(sender, args);
+            case JOIN -> handleJoinCommand(sender, args);
             case BUILD -> handleBuild(sender, args);
             case LAYER -> handleLayer(sender, args);
             default -> {
@@ -261,6 +264,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(LAYER);
                 if (isBuildChannel() && plugin.getBuildManager() != null) {
                     candidates.add(BUILD);
+                    if (sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                        candidates.add(CREATE);
+                        candidates.add(JOIN);
+                    }
                 }
             }
             if (sender.hasPermission(STOP_PERMISSION)) {
@@ -309,6 +316,21 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             }
             YamlLoader loader = plugin.getYamlLoader();
             return loader == null ? List.of() : partial(args[1], idsOf(loader, "gui"));
+        }
+
+        if (CREATE.equalsIgnoreCase(args[0]) || JOIN.equalsIgnoreCase(args[0])) {
+            BuildManager buildManager = plugin.getBuildManager();
+            if (!isBuildChannel()
+                    || buildManager == null
+                    || !sender.hasPermission(BuildManager.BUILD_PERMISSION)
+                    || args.length != 2) {
+                return List.of();
+            }
+            // config/LayerData/ 配下のテンプレート ID を候補にする。
+            if (CREATE.equalsIgnoreCase(args[0])) {
+                return partial(args[1], buildManager.listTemplateIds());
+            }
+            return partial(args[1], buildManager.getOpenTemplateIds());
         }
 
         if (BUILD.equalsIgnoreCase(args[0])) {
@@ -815,15 +837,69 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
+     * {@code /admin create <templateId>}: テンプレートから建築ワールドを新規作成して入場する。
+     * <p>
+     * 建築モードの主要コマンド。内部的には
+     * {@link BuildManager#createBuildWorldAsync(String, Player)} を呼び出す。
+     *
+     * @param sender 実行者
+     * @param args   コマンド引数
+     */
+    private void handleCreateCommand(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
+            return;
+        }
+        if (args.length != 2) {
+            send(sender, buildUsage());
+            return;
+        }
+        BuildManager buildManager = plugin.getBuildManager();
+        if (buildManager == null) {
+            send(sender, message("build.channel_only", Map.of(),
+                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+            return;
+        }
+        handleBuildCreate(sender, buildManager, args[1]);
+    }
+
+    /**
+     * {@code /admin join <templateId>}: 開いている建築ワールドへ参加する。
+     * <p>
+     * 建築モードの主要コマンド。内部的には
+     * {@link BuildManager#joinBuildWorld(String, Player)} を呼び出す。
+     *
+     * @param sender 実行者
+     * @param args   コマンド引数
+     */
+    private void handleJoinCommand(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
+            return;
+        }
+        if (args.length != 2) {
+            send(sender, buildUsage());
+            return;
+        }
+        BuildManager buildManager = plugin.getBuildManager();
+        if (buildManager == null) {
+            send(sender, message("build.channel_only", Map.of(),
+                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+            return;
+        }
+        handleBuildJoin(sender, buildManager, args[1]);
+    }
+
+    /**
      * {@code /admin build}: チャンネル 1 の建築モードを操作する。
      * <ul>
-     *     <li>{@code /admin build create <templateId>} - テンプレートから建築ワールドを新規作成する</li>
-     *     <li>{@code /admin build join <templateId>} - 開いている建築ワールドへ参加する</li>
+     *     <li>{@code /admin create <templateId>} - テンプレートから建築ワールドを新規作成する（主要）</li>
+     *     <li>{@code /admin join <templateId>} - 開いている建築ワールドへ参加する（主要）</li>
      *     <li>{@code /admin build list} - 開いている建築ワールドを一覧表示する</li>
      *     <li>{@code /admin build info [templateId]} - 建築ワールドの状態を表示する</li>
      *     <li>{@code /admin build save [templateId] [force]} - 保存して Hub へ戻る</li>
      *     <li>{@code /admin build unsave [templateId] [force]} - 保存せずに破棄して Hub へ戻る</li>
-     *     <li>{@code /admin build <templateId>} - 開いていれば参加、無ければ作成する（後方互換）</li>
+     *     <li>{@code /admin build <templateId>} - {@code /admin create <templateId>} と同じ動作（後方互換）</li>
      * </ul>
      * 建築モードは {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
      */
@@ -908,17 +984,12 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        // 後方互換: /admin build <templateId> は開いていれば参加、無ければ作成する。
-        String templateId = args[1];
-        if (buildManager.isBuildWorldOpen(templateId)) {
-            handleBuildJoin(sender, buildManager, templateId);
-        } else {
-            handleBuildCreate(sender, buildManager, templateId);
-        }
+        // 後方互換: /admin build <templateId> は /admin create <templateId> と同じ動作にする。
+        handleBuildCreate(sender, buildManager, args[1]);
     }
 
     /**
-     * {@code /admin build create <templateId>}: 建築ワールドを新規作成して入場する。
+     * {@code /admin create <templateId>}: 建築ワールドを新規作成して入場する。
      *
      * @param sender       実行者
      * @param buildManager 建築モード管理
@@ -937,7 +1008,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (buildManager.isBuildWorldOpen(templateId)) {
             send(sender, message("build.already_open", Map.of("template", esc(templateId)),
                     "<yellow>建築ワールド '<white>{template}</white>' は既に開かれています。"
-                            + "/admin build join <white>{template}</white> で参加してください。</yellow>"));
+                            + "/admin join <white>{template}</white> で参加してください。</yellow>"));
             return;
         }
 
@@ -957,7 +1028,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin build join <templateId>}: 開いている建築ワールドへ参加する。
+     * {@code /admin join <templateId>}: 開いている建築ワールドへ参加する。
      *
      * @param sender       実行者
      * @param buildManager 建築モード管理
@@ -976,7 +1047,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (!buildManager.joinBuildWorld(templateId, player)) {
             send(sender, message("build.not_open", Map.of("template", esc(templateId)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
         send(sender, message("build.joined", Map.of("template", esc(templateId)),
@@ -989,8 +1060,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private String buildUsage() {
         return message("build.usage", Map.of(),
-                "<gray>使い方:</gray> <white>/admin build create <templateId></white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build join <templateId></white> "
+                "<gray>使い方:</gray> <white>/admin create <templateId></white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin join <templateId></white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build list</white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build info [templateId]</white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build save [templateId] [force]</white> "
@@ -1054,7 +1125,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (!buildManager.isBuildWorldOpen(templateId)) {
             send(sender, message("build.not_open", Map.of("template", esc(templateId)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
         if (!force && buildManager.hasOtherPlayers(templateId, executor)) {
@@ -1171,7 +1242,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (world == null) {
             send(sender, message("build.not_open", Map.of("template", esc(templateId)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
 

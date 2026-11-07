@@ -14,6 +14,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
+import org.bukkit.Chunk;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -224,7 +225,8 @@ public class PortalListener implements Listener {
                 + ", destination=" + destination
                 + ", world=" + (destination != null && destination.getWorld() != null
                         ? destination.getWorld().getName() : "null"));
-        plugin.getLogger().info("[PortalDebug] teleport result: success=" + success
+        plugin.getLogger().info("[TransferDebug] teleport result: success=" + success
+                + ", player=" + player.getName()
                 + ", throwable=" + (throwable != null ? throwable.getMessage() : "none")
                 + ", to=" + (destination != null && destination.getWorld() != null
                         ? destination.getWorld().getName() : "null"));
@@ -304,7 +306,7 @@ public class PortalListener implements Listener {
     }
 
     /**
-     * 転送先のチャンクを明示的にロードする。
+     * 転送先のチャンクを同期的に強制ロードする。
      * <p>
      * 未ロードチャンクへのテレポートは {@code success=false} となるため、
      * 転送直前に呼び出して転送先を確実に用意する。失敗は警告に留める。
@@ -316,7 +318,10 @@ public class PortalListener implements Listener {
             return;
         }
         try {
-            destination.getChunk().load();
+            Chunk chunk = destination.getChunk();
+            if (!chunk.isLoaded()) {
+                chunk.load(true);
+            }
         } catch (RuntimeException e) {
             logWarning("転送先チャンクのロードに失敗: " + formatLocation(destination)
                     + ", world=" + destination.getWorld().getName()

@@ -4,8 +4,8 @@ import com.zeloria.core.Zeloria;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -1005,13 +1005,11 @@ public class BuildManager {
                 world = findLoadedWorld(templateId);
                 newlyCreated = world == null;
                 if (newlyCreated) {
-                    WorldCreator creator = WorldCreator.ofKey(keyOf(templateId))
+                    NamespacedKey buildKey = NamespacedKey.minecraft(templateId + BUILD_WORLD_SUFFIX);
+                    WorldCreator creator = WorldCreator.ofKey(buildKey)
                             .environment(World.Environment.NORMAL)
-                            .generateStructures(false)
-                            // 建築ワールドのスポーン位置を常時ロードし、テレポート先の
-                            // チャンク未ロードによる転送失敗を防ぐ。
-                            // Paper 26.3 では boolean 版が無いため TriState を使用する。
-                            .keepSpawnLoaded(TriState.TRUE);
+                            .generateStructures(false);
+                    // keepSpawnLoaded(TriState) は Paper 26.x で非推奨・無機能のため設定しない。
                     world = Bukkit.createWorld(creator);
                 }
             } catch (RuntimeException e) {
@@ -1028,8 +1026,13 @@ public class BuildManager {
                 return;
             }
 
-            // 生成直後はスポーン位置のチャンクが未ロードのことがあるため、明示的にロードする。
-            loadDestinationChunk(world.getSpawnLocation());
+            // ワールド作成直後はスポーン位置のチャンクが未ロードのことがあるため、
+            // 同期的に強制ロードしてからテレポートする。
+            Location spawn = world.getSpawnLocation();
+            Chunk spawnChunk = spawn.getChunk();
+            if (!spawnChunk.isLoaded()) {
+                spawnChunk.load(true);
+            }
 
             buildWorlds.put(templateId, world);
             buildWorldLastActive.put(templateId, System.currentTimeMillis());
@@ -1109,32 +1112,44 @@ public class BuildManager {
             if (!player.isOnline()) {
                 return;
             }
-            // 転送先（建築ワールドのスポーン）のチャンクが未ロードだと teleport が
-            // success=false を返すため、転送直前に明示的にロードする。
+            // 転送先（建築ワールドのスポーン）のチャンクが未ロードだと teleportAsync が
+            // success=false を返すため、転送直前に同期的にロードする。
             loadDestinationChunk(spawn);
-            if (player.teleport(spawn)) {
-                return;
-            }
 
-            plugin.getLogger().warning(
-                    "建築ワールドへの同期転送に失敗したため、非同期転送へフォールバックします: "
-                            + player.getName() + " -> " + world.getName());
-            player.teleportAsync(spawn).whenComplete((success, throwable) -> {
-                if (throwable == null && Boolean.TRUE.equals(success)) {
-                    return;
-                }
-                plugin.getLogger().warning(
-                        "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
-                                + world.getName()
-                                + " (" + (throwable != null ? rootMessage(throwable) : "success=false") + ")");
+            // teleportAsync の Future を join() / get() するとデッドロックするため、
+            // 結果は必ずコールバックで受け取り、メインスレッドへ戻して処理する。
+            player.teleportAsync(spawn).thenAccept(success -> {
+                plugin.getLogger().info("[TransferDebug] teleport result: success=" + success
+                        + ", player=" + player.getName()
+                        + ", world=" + world.getName()
+                        + ", destination=" + spawn);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (Boolean.TRUE.equals(success)) {
+                        return;
+                    }
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    plugin.getLogger().warning(
+                            "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
+                                    + world.getName() + " (success=false)");
+                    notifyTeleportFailure(player);
+                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
+                    restoreGameMode(player);
+                });
+            }).exceptionally(throwable -> {
+                plugin.getLogger().info("[TransferDebug] teleport result: success=false"
+                        + ", player=" + player.getName()
+                        + ", world=" + world.getName()
+                        + ", error=" + rootMessage(throwable));
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) {
                         return;
                     }
                     notifyTeleportFailure(player);
-                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
                     restoreGameMode(player);
                 });
+                return null;
             });
         }, delay);
     }
@@ -1164,7 +1179,7 @@ public class BuildManager {
     }
 
     /**
-     * テレポート先のチャンクを明示的にロードする。
+     * テレポート先のチャンクを同期的に強制ロードする。
      * <p>
      * 未ロードチャンクへのテレポートは {@code success=false} となるため、
      * 転送直前に呼び出して転送先を確実に用意する。失敗は警告に留める。
@@ -1176,7 +1191,10 @@ public class BuildManager {
             return;
         }
         try {
-            location.getChunk().load();
+            Chunk chunk = location.getChunk();
+            if (!chunk.isLoaded()) {
+                chunk.load(true);
+            }
         } catch (RuntimeException e) {
             plugin.getLogger().warning(
                     "テレポート先のチャンクをロードできませんでした: " + location
