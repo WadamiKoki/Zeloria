@@ -40,6 +40,9 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
+    /** 頭上ステータス表示の Y オフセット（ブロック単位）。 */
+    private static final float DISPLAY_Y_OFFSET = 0.65f;
+
     private final Zeloria plugin;
 
     /** プレイヤー UUID → 頭上表示エンティティ。 */
@@ -117,7 +120,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
         // passenger として乗せた状態でも頭と重ならないよう、表示位置を頭上へ持ち上げる。
         display.setTransformation(new Transformation(
-                new Vector3f(0.0f, 0.45f, 0.0f),
+                new Vector3f(0.0f, DISPLAY_Y_OFFSET, 0.0f),
                 new Quaternionf(),
                 new Vector3f(1.0f, 1.0f, 1.0f),
                 new Quaternionf()));

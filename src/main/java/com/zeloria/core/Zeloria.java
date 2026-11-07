@@ -65,6 +65,7 @@ import com.zeloria.skill.SkillSlotService;
 import com.zeloria.world.PortalListener;
 import com.zeloria.world.PortalParticleTask;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -364,9 +365,17 @@ public final class Zeloria extends JavaPlugin {
         }
 
         // 退出イベントが間に合わなかったプレイヤーのデータを保存してから切断する。
+        // 読み込み未完了のプレイヤーも saveOrCreate で新規データとして保存される。
+        int savedPlayers = Bukkit.getOnlinePlayers().size();
         if (this.playerService != null) {
-            this.playerService.saveAllBlocking(10);
+            try {
+                this.playerService.saveAllBlocking(10);
+            } catch (RuntimeException e) {
+                getLogger().log(java.util.logging.Level.SEVERE,
+                        "[StopDebug] [1/4] プレイヤーデータ保存中に例外が発生しました。", e);
+            }
         }
+        getLogger().info("[StopDebug] [1/4] プレイヤー退避完了: " + savedPlayers + " 人");
 
         // レイヤーワールド削除前に NPC を明示的に除去する。
         if (this.npcManager != null) {
@@ -383,11 +392,33 @@ public final class Zeloria extends JavaPlugin {
             this.buildManager.shutdown();
         }
 
+        int deletedLayers = 0;
         if (this.layerManager != null) {
-            this.layerManager.unloadAllAndDelete();
+            try {
+                deletedLayers = this.layerManager.unloadAllAndDelete();
+            } catch (RuntimeException e) {
+                getLogger().log(java.util.logging.Level.SEVERE,
+                        "[StopDebug] [2/4] テンポラリレイヤー削除中に例外が発生しました。", e);
+            }
             cleanupOrphanedInstances("終了時");
             this.layerManager.shutdown();
         }
+        getLogger().info("[StopDebug] [2/4] テンポラリレイヤー削除完了: "
+                + deletedLayers + " 件（Hub含む）");
+
+        // ワールドのブロックデータは停止時の自動保存に任せ、手動 save は行わない。
+        int autoSaveWorlds = 0;
+        for (World world : Bukkit.getWorlds()) {
+            try {
+                world.setAutoSave(true);
+                autoSaveWorlds++;
+            } catch (RuntimeException e) {
+                getLogger().log(java.util.logging.Level.SEVERE,
+                        "[StopDebug] [3/4] ワールドの自動保存設定に失敗しました: " + world.getName(), e);
+            }
+        }
+        getLogger().info("[StopDebug] [3/4] 永続ワールド保存完了: " + autoSaveWorlds + " 件");
+        getLogger().info("[StopDebug] [4/4] 停止処理開始");
 
         // 保存が完了しなかったプレイヤーデータが残らないよう、キャッシュを破棄する。
         PlayerData.clearCache();

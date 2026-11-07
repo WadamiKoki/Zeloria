@@ -67,6 +67,9 @@ public final class ClassTreeGUI implements Listener {
     /** 固定ボタン列を埋める背景アイテム。 */
     private static final Material FILLER_MATERIAL = Material.GRAY_STAINED_GLASS_PANE;
 
+    /** 固定装飾として常に灰色ガラスを配置する列。 */
+    private static final int FIXED_UI_COLUMN = 7;
+
     /** リセット確認 GUI のサイズ（3 行チェスト）。 */
     private static final int RESET_CONFIRM_SIZE = 27;
 
@@ -204,10 +207,10 @@ public final class ClassTreeGUI implements Listener {
         inventory.clear();
 
         // 固定UI列（col 7）を灰色ガラスで埋める。スクロールの影響を受けない。
-        if (tree.fixedColumn() >= 0 && tree.fixedColumn() <= 8) {
+        {
             ItemStack filler = createFiller();
             for (int row = 0; row < tree.rows(); row++) {
-                int slot = row * 9 + tree.fixedColumn();
+                int slot = row * 9 + FIXED_UI_COLUMN;
                 if (slot >= 0 && slot < inventory.getSize()) {
                     inventory.setItem(slot, filler);
                 }
@@ -225,7 +228,7 @@ public final class ClassTreeGUI implements Listener {
             }
             // 固定UI列（col 7）はスクロールの影響を受けない灰色ガラス専用。
             // 計算結果がその列になるノードは描画しない。
-            if (tree.fixedColumn() >= 0 && slot % 9 == tree.fixedColumn()) {
+            if (slot % 9 == FIXED_UI_COLUMN) {
                 continue;
             }
             inventory.setItem(slot, createNodeItem(data, classId, classTree, node, shape));

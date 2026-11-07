@@ -59,6 +59,11 @@ public class PlayerService {
     private final Map<UUID, CompletableFuture<Void>> pendingSaves = new ConcurrentHashMap<>();
 
     /**
+     * UUID ごとの進行中の読み込み。退出・停止時に読み込み完了を待って保存するために使う。
+     */
+    private final Map<UUID, CompletableFuture<PlayerData>> loadingPlayers = new ConcurrentHashMap<>();
+
+    /**
      * UUID ごとのデータ世代。読み込み（キャッシュ登録）のたびに更新する。
      * 保存完了時のキャッシュ破棄が、別セッションのデータを誤って消さないための照合に使う。
      */
@@ -93,7 +98,7 @@ public class PlayerService {
         Objects.requireNonNull(uuid, "uuid");
         String playerName = name == null ? "" : name;
 
-        return afterPendingSave(uuid).thenCompose(ignored -> {
+        CompletableFuture<PlayerData> loadFuture = afterPendingSave(uuid).thenCompose(ignored -> {
             PlayerData retained = unsavedPlayers.contains(uuid) ? PlayerData.getCached(uuid) : null;
             if (retained != null) {
                 retained.setName(playerName);
@@ -120,6 +125,11 @@ public class PlayerService {
                         return data;
                     });
         });
+
+        // 退出・停止時に読み込み完了を待てるよう、進行中の読み込みとして登録する。
+        loadingPlayers.put(uuid, loadFuture);
+        loadFuture.whenComplete((ignored, throwable) -> loadingPlayers.remove(uuid, loadFuture));
+        return loadFuture;
     }
 
     /**
@@ -211,6 +221,58 @@ public class PlayerService {
      * @return 保存の完了を表す future
      */
     public CompletableFuture<Void> saveAndEvict(UUID uuid, String name) {
+        return persistCached(uuid, name, true);
+    }
+
+    /**
+     * 読み込みの完了を待ってから保存する（退出・サーバー停止用）。
+     * <p>
+     * DB からの読み込みが完了していないプレイヤーでも、進行中の読み込みが終わるのを待って
+     * 保存する。読み込みに失敗した場合や読み込みが開始されていない場合は、
+     * キャッシュ済みデータ（または新規データ）を {@code INSERT ... ON DUPLICATE KEY UPDATE}
+     * で保存し、次回ログイン時にデータが失われないようにする。
+     *
+     * @param uuid プレイヤー UUID
+     * @param name プレイヤー名
+     * @return 保存の完了を表す future
+     */
+    public CompletableFuture<Void> saveOrCreate(UUID uuid, String name) {
+        Objects.requireNonNull(uuid, "uuid");
+        CompletableFuture<PlayerData> loading = loadingPlayers.get(uuid);
+        if (loading != null && !loading.isDone()) {
+            // 読み込み完了（または失敗）後に、最新のキャッシュ内容を保存する。
+            return loading.handle((ignored, throwable) -> null)
+                    .thenCompose(ignored -> persistCachedOrCreate(uuid, name));
+        }
+        return persistCachedOrCreate(uuid, name);
+    }
+
+    /**
+     * キャッシュが存在すれば、読み込み未完了でも保存する。
+     */
+    private CompletableFuture<Void> persistCachedOrCreate(UUID uuid, String name) {
+        if (PlayerData.getCached(uuid) == null) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null) {
+                plugin.getLogger().warning(
+                        "保存対象のプレイヤーデータが存在しないため、保存をスキップしました: " + name);
+                return CompletableFuture.completedFuture(null);
+            }
+            // 読み込みが開始されていない場合も、新規データとして保存できるようキャッシュを作る。
+            PlayerData created = createDefault(uuid, name == null ? player.getName() : name);
+            PlayerData.cache(created);
+            markGeneration(uuid);
+        }
+
+        if (!loadedPlayers.contains(uuid)) {
+            // 読み込み失敗・未完了のまま保存する（次回ログイン時のデータ消失を防ぐ）。
+            plugin.getLogger().warning(
+                    "読み込み未完了のプレイヤーデータを新規データとして保存します: " + name);
+            log(LoggerService.Level.WARN,
+                    "プレイヤーデータ新規保存（読み込み未完了）: player=" + name);
+            loadedPlayers.add(uuid);
+        }
+
         return persistCached(uuid, name, true);
     }
 
@@ -364,7 +426,7 @@ public class PlayerService {
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             scheduled.add(player.getUniqueId());
-            saves.add(save(player.getUniqueId(), player.getName())
+            saves.add(saveOrCreate(player.getUniqueId(), player.getName())
                     .exceptionally(throwable -> {
                         plugin.getLogger().warning(
                                 "プレイヤーデータの保存に失敗しました: " + player.getName()

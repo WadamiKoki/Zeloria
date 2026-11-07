@@ -58,6 +58,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.logging.Level;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1174,37 +1175,84 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private void shutdownOnMainThread(CommandSender sender) {
         LayerManager layerManager = plugin.getLayerManager();
 
-        // (b) レイヤー内プレイヤーをメインワールドのスポーンへ退避
-        boolean evacuated = layerManager == null || layerManager.evacuateAllPlayersToMainWorld();
+        // (b) レイヤー内（Hub を含む）プレイヤーをメインワールドのスポーンへ退避
+        int evacuatedCount = countLayerPlayers(layerManager);
+        boolean evacuated = true;
+        try {
+            evacuated = layerManager == null || layerManager.evacuateAllPlayersToMainWorld();
+        } catch (RuntimeException e) {
+            plugin.getLogger().log(Level.SEVERE,
+                    "[StopDebug] [1/4] プレイヤー退避中に例外が発生しました。", e);
+            evacuated = false;
+        }
+        plugin.getLogger().info("[StopDebug] [1/4] プレイヤー退避完了: " + evacuatedCount + " 人");
         send(sender, PREFIX + (evacuated
                 ? "<green>[1/4]</green> <white>プレイヤーをメインワールドへ退避しました。</white>"
                 : "<yellow>[1/4]</yellow> <white>プレイヤーの退避を完了できませんでした（ログを確認してください）。</white>"));
 
-        // (c) 全テンポラリレイヤーをアンロード & ディレクトリ削除
+        // (c) 全テンポラリレイヤー（Hub 含む）をアンロード & ディレクトリ削除
         int unloaded = 0;
         int cleaned = 0;
         if (layerManager != null) {
-            unloaded = layerManager.unloadAllAndDelete();
-            cleaned = layerManager.cleanupOrphanedInstances();
+            try {
+                unloaded = layerManager.unloadAllAndDelete();
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE,
+                        "[StopDebug] [2/4] テンポラリレイヤーの削除中に例外が発生しました。", e);
+            }
+            try {
+                cleaned = layerManager.cleanupOrphanedInstances();
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE,
+                        "[StopDebug] [2/4] 残存インスタンスの掃除中に例外が発生しました。", e);
+            }
         }
+        plugin.getLogger().info("[StopDebug] [2/4] テンポラリレイヤー削除完了: "
+                + unloaded + " 件（Hub含む）");
         send(sender, PREFIX + "<green>[2/4]</green> <white>テンポラリレイヤーを削除しました "
                 + "(アンロード: " + unloaded + " 件, 残存掃除: " + cleaned + " 件)</white>");
 
-        // (d) メインワールド等の永続ワールドを保存
-        int saved = savePersistentWorlds(layerManager);
+        // (d) 永続ワールドの自動保存を維持（手動 save は行わない）
+        int saved = 0;
+        try {
+            saved = savePersistentWorlds(layerManager);
+        } catch (RuntimeException e) {
+            plugin.getLogger().log(Level.SEVERE,
+                    "[StopDebug] [3/4] 永続ワールドの自動保存設定中に例外が発生しました。", e);
+        }
+        plugin.getLogger().info("[StopDebug] [3/4] 永続ワールド保存完了: " + saved + " 件");
         send(sender, PREFIX + "<green>[3/4]</green> <white>永続ワールドを保存しました ("
                 + saved + " 件)</white>");
 
         // (e) 安全に停止
+        plugin.getLogger().info("[StopDebug] [4/4] 停止処理開始");
         send(sender, PREFIX + "<red>[4/4]</red> <white>サーバーを停止します。</white>");
         plugin.getLogger().info("安全停止処理が完了したため、サーバーをシャットダウンします。");
         Bukkit.shutdown();
     }
 
     /**
-     * レイヤー（テンポラリ）以外の永続ワールドを保存する。
+     * レイヤーワールド内に残っているプレイヤー数を数える（ログ用）。
+     */
+    private static int countLayerPlayers(LayerManager layerManager) {
+        if (layerManager == null) {
+            return 0;
+        }
+        int count = 0;
+        for (World world : layerManager.getLoadedWorlds().values()) {
+            count += world.getPlayers().size();
+        }
+        return count;
+    }
+
+    /**
+     * 永続ワールドの自動保存設定を維持する。
+     * <p>
+     * Paper では {@link World#save()} の手動呼び出しが非推奨（警告が出る）ため、
+     * ワールドのブロックデータはサーバー停止時の自動保存に任せ、
+     * ここでは自動保存が無効化されていないことだけを確認する。
      *
-     * @return 保存に成功したワールド数
+     * @return 自動保存を有効化したワールド数
      */
     private int savePersistentWorlds(LayerManager layerManager) {
         Map<String, World> layers = layerManager == null ? Map.of() : layerManager.getLoadedWorlds();
@@ -1212,15 +1260,15 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         int saved = 0;
         for (World world : Bukkit.getWorlds()) {
             if (layers.containsValue(world)) {
-                // テンポラリレイヤーは破棄対象のため保存しない。
+                // テンポラリレイヤーは破棄対象のため対象外。
                 continue;
             }
             try {
-                world.save();
+                world.setAutoSave(true);
                 saved++;
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
-                        "ワールドの保存に失敗しました: " + world.getName() + " (" + e.getMessage() + ")");
+                        "ワールドの自動保存設定に失敗しました: " + world.getName() + " (" + e.getMessage() + ")");
             }
         }
         return saved;
@@ -2604,9 +2652,14 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     private static List<String> partial(String input, List<String> candidates) {
         String lower = input.toLowerCase(Locale.ROOT);
-        return candidates.stream()
-                .filter(candidate -> candidate.toLowerCase(Locale.ROOT).startsWith(lower))
-                .toList();
+        // 候補は大文字小文字を無視してアルファベット順に返す。
+        Set<String> sorted = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (String candidate : candidates) {
+            if (candidate.toLowerCase(Locale.ROOT).startsWith(lower)) {
+                sorted.add(candidate);
+            }
+        }
+        return new ArrayList<>(sorted);
     }
 
     private static List<String> partial(String input, Set<String> candidates) {

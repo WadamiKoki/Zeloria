@@ -864,14 +864,22 @@ public class LayerManager {
                 return false;
             }
 
+            // 退避後もプレイヤーが残っている場合は、クライアント側の不整合を避けるため削除しない。
+            if (!world.getPlayers().isEmpty()) {
+                plugin.getLogger().severe(
+                        "レイヤー '" + instanceId + "' にプレイヤーが残っているため、削除をスキップしました: "
+                                + world.getPlayers().size() + " 人");
+                return false;
+            }
+
             // アンロード直前でスポーン判定を停止し、削除中のモブ生成を防ぐ。
             SpawnerManager spawnerManager = plugin.getSpawnerManager();
             if (spawnerManager != null) {
                 spawnerManager.stopFor(instanceId);
             }
 
-            // ディレクトリごと破棄するため、アンロード時のセーブは行わない。
-            if (!Bukkit.unloadWorld(world, false)) {
+            // ディレクトリ削除前の最終状態を保存しつつアンロードする（Hub も同じ経路で削除する）。
+            if (!Bukkit.unloadWorld(world, true)) {
                 plugin.getLogger().severe("レイヤーワールドのアンロードに失敗しました: " + bukkitWorldName);
                 // ワールドが残るため、停止したスポーン判定を再開しておく。
                 if (spawnerManager != null) {
@@ -952,11 +960,17 @@ public class LayerManager {
      */
     public synchronized int unloadAllAndDelete() {
         int deleted = 0;
-        for (String instanceId : new ArrayList<>(loadedWorlds.keySet())) {
+        List<String> targets = new ArrayList<>(loadedWorlds.keySet());
+        // Hub を含む全レイヤーを削除対象とする（Hub は起動時に WorldData/hub から再生成される）。
+        plugin.getLogger().info(
+                "全レイヤーワールドの削除を開始します (対象: " + targets.size() + " 件, Hub含む)");
+        for (String instanceId : targets) {
             if (unloadAndDeleteLayer(instanceId)) {
                 deleted++;
             }
         }
+        plugin.getLogger().info(
+                "全レイヤーワールドの削除が完了しました (削除: " + deleted + " 件, Hub含む)");
         return deleted;
     }
 

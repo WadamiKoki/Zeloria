@@ -1,6 +1,8 @@
 package com.zeloria.world;
 
 import com.zeloria.core.Zeloria;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -707,6 +709,7 @@ public class BuildManager {
                                     + "先に /admin build save で保存してください"));
                     return;
                 }
+                debugEnterBuildWorld(player, existing);
                 enterBuildWorld(player, existing);
                 result.complete(existing);
                 return;
@@ -742,14 +745,17 @@ public class BuildManager {
             currentTemplateId = templateId;
             emptySince = 0L;
 
-            // プレイヤー転送の失敗はワールドのロード自体を失敗とせず、
-            // 管理者が手動でテレポートできるよう警告に留める。
+            // プレイヤー転送に失敗してもワールドのロード自体は成功扱いにし、
+            // 管理者が手動で移動できるようエラーメッセージとフォールバックを行う。
             try {
+                debugEnterBuildWorld(player, world);
                 enterBuildWorld(player, world);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "建築ワールドへのプレイヤー転送に失敗しました: template=" + templateId
                                 + " (" + rootMessage(e) + ")");
+                notifyTeleportFailure(player);
+                fallbackTeleport(player, world);
             }
 
             plugin.getLogger().info(
@@ -785,18 +791,83 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
+        Location spawn = buildSpawn(world, player);
+        player.teleportAsync(spawn).whenComplete((success, throwable) -> {
+            if (throwable == null && Boolean.TRUE.equals(success)) {
+                return;
+            }
+            // teleportAsync が失敗した場合は同期テレポートへフォールバックする。
+            plugin.getLogger().warning(
+                    "建築ワールドへの非同期転送に失敗したため、同期転送へフォールバックします: "
+                            + player.getName() + " -> " + world.getName()
+                            + " (" + (throwable != null ? rootMessage(throwable) : "success=false") + ")");
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                if (!player.teleport(spawn)) {
+                    plugin.getLogger().warning(
+                            "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
+                                    + world.getName());
+                    notifyTeleportFailure(player);
+                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
+                    restoreGameMode(player);
+                }
+            });
+        });
+    }
+
+    /**
+     * 建築ワールド入場前に、対象プレイヤー・ワールド・スポーン座標をログへ出力する。
+     */
+    private void debugEnterBuildWorld(Player player, World world) {
+        if (player == null || world == null) {
+            return;
+        }
+        plugin.getLogger().info("[BuildDebug] enterBuildWorld: player=" + player.getName()
+                + ", world=" + world.getName() + ", spawn=" + buildSpawn(world, player));
+    }
+
+    /**
+     * 建築ワールドのスポーン地点を、プレイヤーの向きを引き継いで生成する。
+     */
+    private static Location buildSpawn(World world, Player player) {
         Location spawn = world.getSpawnLocation().toBlockLocation();
         spawn.add(0.5, 0.0, 0.5);
-        spawn.setYaw(player.getLocation().getYaw());
-        spawn.setPitch(player.getLocation().getPitch());
+        if (player != null) {
+            spawn.setYaw(player.getLocation().getYaw());
+            spawn.setPitch(player.getLocation().getPitch());
+        }
+        return spawn;
+    }
+
+    /**
+     * 転送に失敗したことをプレイヤーへ通知する。
+     */
+    private static void notifyTeleportFailure(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        player.sendMessage(Component.text(
+                "建築ワールドへの転送に失敗しました。管理者に連絡してください。",
+                NamedTextColor.RED));
+    }
+
+    /**
+     * 建築ワールドのスポーンへ同期テレポートする（最終フォールバック）。
+     */
+    private void fallbackTeleport(Player player, World world) {
+        if (player == null || world == null || !player.isOnline()) {
+            return;
+        }
+        Location spawn = buildSpawn(world, player);
         if (!player.teleport(spawn)) {
             plugin.getLogger().warning(
-                    "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
-                            + world.getName());
-            // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
-            restoreGameMode(player);
+                    "建築ワールドへのフォールバック転送にも失敗しました: player=" + player.getName()
+                            + ", world=" + world.getName() + ", spawn=" + spawn);
         }
     }
+
 
     /**
      * 建築ワールドの内容でテンプレートを上書き保存する。

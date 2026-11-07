@@ -26,6 +26,9 @@ public final class TreeDataService {
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
 
+    /** 固定UI（灰色ガラス）専用の列。ノード配置は常に拒否する。 */
+    private static final int FIXED_UI_COLUMN = 7;
+
     /** 読み込み済みの共通形状（不変・差し替え式）。 */
     private volatile TreeData tree = TreeData.defaults();
 
@@ -83,9 +86,9 @@ public final class TreeDataService {
                                     + "' (row=" + row + ", column=" + column + ")");
                     continue;
                 }
-                if (column == fixedColumn) {
+                if (column == FIXED_UI_COLUMN || column == fixedColumn) {
                     plugin.getLogger().warning(
-                            "固定ボタン列にはノードを配置できません: '" + rawId
+                            "固定UI列（col 7）にはノードを配置できません: '" + rawId
                                     + "' (column=" + column + ")");
                     continue;
                 }

@@ -137,7 +137,7 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        playerService.saveAndEvict(uuid, player.getName())
+        playerService.saveOrCreate(uuid, player.getName())
                 .exceptionally(throwable -> {
                     // PlayerService 側でログ出力済み。ここでは最終防衛の警告のみ行う。
                     plugin.getLogger().warning(
@@ -146,7 +146,7 @@ public class PlayerListener implements Listener {
                     return null;
                 });
 
-        // saveAndEvict はスナップショットを同期的に作成してから非同期保存するため、
+        // saveOrCreate はスナップショットを同期的に作成してから非同期保存するため、
         // この位置で破棄しても保存内容には影響しない。
         if (plugin.getCooldownService() != null) {
             plugin.getCooldownService().clear(uuid);

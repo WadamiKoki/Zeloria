@@ -195,23 +195,45 @@ public class PortalListener implements Listener {
                                       String targetTemplate, String targetName,
                                       World targetWorld, World sourceWorld, String sourceLayer,
                                       Location destination, Boolean success, Throwable throwable) {
+        plugin.getLogger().info("[PortalDebug] teleport result: success=" + success
+                + ", throwable=" + (throwable != null ? throwable.getMessage() : "none")
+                + ", to=" + (destination != null && destination.getWorld() != null
+                        ? destination.getWorld().getName() : "null"));
+
         if (!player.isOnline()) {
             return;
         }
 
-        if (throwable != null) {
+        // 転送先ワールドが破棄済み等で座標が無効な場合は、転送先の生成失敗として扱う。
+        if (destination == null || destination.getWorld() == null) {
             cooldowns.remove(player.getUniqueId());
-            messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
-            logWarning("ポータル転送エラー: player=" + player.getName()
-                    + ", portal=" + portal.id() + ", error=" + rootMessage(throwable));
-            return;
-        }
-        if (Boolean.FALSE.equals(success)) {
-            cooldowns.remove(player.getUniqueId());
-            messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
-            logWarning("ポータル転送失敗: player=" + player.getName()
+            messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
+                    Map.of("layer_name", targetName));
+            logWarning("ポータル転送先が無効です: player=" + player.getName()
                     + ", portal=" + portal.id() + ", target=" + targetTemplate);
             return;
+        }
+
+        if (throwable != null) {
+            // teleportAsync が例外で失敗した場合も、同期テレポートで復旧を試みる。
+            logWarning("ポータル転送エラー: player=" + player.getName()
+                    + ", portal=" + portal.id() + ", error=" + rootMessage(throwable));
+            if (!player.teleport(destination)) {
+                cooldowns.remove(player.getUniqueId());
+                messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
+                return;
+            }
+        } else if (Boolean.FALSE.equals(success)) {
+            // teleportAsync が false を返した場合は同期テレポートへフォールバックする。
+            logWarning("ポータル転送失敗（同期テレポートへフォールバック）: player=" + player.getName()
+                    + ", portal=" + portal.id() + ", target=" + targetTemplate);
+            if (!player.teleport(destination)) {
+                cooldowns.remove(player.getUniqueId());
+                messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
+                logWarning("ポータル転送フォールバックにも失敗: player=" + player.getName()
+                        + ", portal=" + portal.id() + ", target=" + targetTemplate);
+                return;
+            }
         }
 
         // 転送成功時は全ポータル共通の固定サウンドを再生する。
