@@ -228,7 +228,10 @@ public class PlayerListener implements Listener {
         if (playerService == null) {
             return;
         }
-        String instance = player.getWorld() == null ? "" : player.getWorld().getName();
+        World world = player.getWorld();
+        // レイヤーインスタンスのワールド名は zeloria_build:<instanceId> のため、
+        // 名前空間を除いたキー（= インスタンス ID）を記録する。
+        String instance = world == null ? "" : world.getKey().getKey();
         playerService.getRepository().updateLastLogin(player.getUniqueId(), instance)
                 .exceptionally(throwable -> {
                     plugin.getLogger().warning(

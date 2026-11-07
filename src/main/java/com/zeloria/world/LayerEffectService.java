@@ -47,7 +47,7 @@ public class LayerEffectService {
         if (player == null || world == null) {
             return;
         }
-        playEntry(player, world.getName());
+        playEntry(player, world.getKey().getKey());
     }
 
     /**

@@ -737,7 +737,7 @@ public class BuildManager {
 
             World world;
             // ロード済みでない場合は、これからテンプレートから新規生成されるワールド。
-            // 新規生成時はチャンク準備に時間がかかるため、転送遅延を長めに取る。
+            // 新規生成かどうかはログ出力用に保持する（転送遅延は常に 20 tick）。
             boolean newlyCreated;
             try {
                 world = findLoadedWorld(templateId);
@@ -803,8 +803,8 @@ public class BuildManager {
      *
      * @param player       対象プレイヤー（{@code null} またはオフラインの場合は何もしない）
      * @param world        建築ワールド
-     * @param newlyCreated {@code true} の場合はワールドを新規生成した直後
-     *                     （チャンク準備待ちの遅延を長めに取る）
+     * @param newlyCreated {@code true} の場合はワールドを新規生成した直後（ログ用。
+     *                     転送遅延は常に 20 tick）
      */
     private void enterBuildWorld(Player player, World world, boolean newlyCreated) {
         if (player == null || !player.isOnline()) {
@@ -824,9 +824,9 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
-        // 新規生成直後はチャンクの準備に時間がかかり、テレポートが false で失敗しやすい。
-        // そのため新規生成時は 20 tick（1 秒）、既にロード済みなら 5 tick（0.25 秒）待つ。
-        long delay = newlyCreated ? 20L : 5L;
+        // 新規生成かどうかに関わらず、チャンク準備とクライアント側の同期を待つため
+        // 常に 20 tick（1 秒）待ってから転送する。
+        long delay = 20L;
         player.sendActionBar(TRANSFER_PREPARING);
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {

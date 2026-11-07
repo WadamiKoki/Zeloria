@@ -38,13 +38,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * 転送音は全ポータル共通で {@code block.amethyst_block.chime}（volume 1.0 / pitch 1.0）に固定する。
  * <p>
- * 連続発動を防ぐためプレイヤーごとにクールダウン（既定 2 秒）を設け、
+ * 連続発動を防ぐためプレイヤーごとにクールダウン（5 秒）を設け、
  * クールタイム中の操作には {@code MessageData/gate.yml} のメッセージを表示する。
+ * <p>
+ * 転移はしゃがみ開始と同時には行わず、20 tick（1 秒）しゃがみ続けたことを確認してから実行する。
  */
 public class PortalListener implements Listener {
 
     /** ポータル再発動までのクールダウン（ミリ秒）。 */
-    private static final long COOLDOWN_MILLIS = 2_000L;
+    private static final long COOLDOWN_MILLIS = 5_000L;
+
+    /** しゃがみ開始から転移を実行するまでの待機 tick（20 tick = 1 秒）。 */
+    private static final long SNEAK_HOLD_TICKS = 20L;
 
     private static final String MESSAGE_FILE = "gate";
 
@@ -92,8 +97,10 @@ public class PortalListener implements Listener {
         long last = cooldowns.getOrDefault(player.getUniqueId(), 0L);
         long remainingMillis = COOLDOWN_MILLIS - (now - last);
         if (remainingMillis > 0) {
-            long remainingSeconds = (remainingMillis + 999L) / 1000L;
-            actionBar(player, "portal.cooldown", Map.of("time", String.valueOf(remainingSeconds)));
+            if (player.isOnline()) {
+                long remainingSeconds = (remainingMillis + 999L) / 1000L;
+                actionBar(player, "portal.cooldown", Map.of("time", String.valueOf(remainingSeconds)));
+            }
             return;
         }
 
@@ -116,109 +123,79 @@ public class PortalListener implements Listener {
             return;
         }
 
-        // 転送先ワールドは非同期で用意する（未生成の場合はテンプレート複製が走る）。
+        // しゃがみ開始時点でクールダウンを消費し、対象インスタンスの生成を開始する。
+        cooldowns.put(player.getUniqueId(), now);
+        actionBar(player, "portal.creating", Map.of("layer_name", targetName));
+
         CompletableFuture<World> worldFuture;
         try {
             worldFuture = layerManager.getOrCreateInstanceAsync(targetTemplate);
         } catch (RuntimeException e) {
+            cooldowns.remove(player.getUniqueId());
             failCreation(player, portal, targetTemplate, targetName, e.getMessage());
             return;
         }
 
-        // 生成が完了していない＝この転送のために新規生成されたインスタンス。
-        // 新規生成直後はチャンク準備に時間がかかり teleportAsync が失敗しやすいため、
-        // 転送側で遅延を長めに取れるようフラグを引き継ぐ。
-        boolean newlyCreated = !worldFuture.isDone();
+        // しゃがみ開始から 20 tick（1 秒）後に、まだしゃがんでいる場合のみ転移する。
+        // 立ち上がっていた場合は転移だけをキャンセルし、インスタンス生成は継続させる。
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline() || !player.isSneaking()) {
+                return;
+            }
 
-        if (newlyCreated) {
-            // 複製・生成中は待機メッセージを出し、連続発動を防ぐためクールダウンを先に消費する。
-            cooldowns.put(player.getUniqueId(), now);
-            actionBar(player, "portal.creating", Map.of("layer_name", targetName));
-        }
-
-        worldFuture.whenComplete((targetWorld, error) -> {
-            // 完了コールバックの実行スレッドは保証されないため、必ずメインスレッドへ戻す。
-            Runnable task = () -> {
-                if (error != null || targetWorld == null) {
-                    cooldowns.remove(player.getUniqueId());
+            worldFuture.whenComplete((targetWorld, error) -> {
+                // 完了コールバックの実行スレッドは保証されないため、必ずメインスレッドへ戻す。
+                Runnable task = () -> {
+                    if (error != null || targetWorld == null) {
+                        cooldowns.remove(player.getUniqueId());
+                        if (!player.isOnline()) {
+                            return;
+                        }
+                        messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
+                                Map.of("layer_name", targetName));
+                        logWarning("ポータル転送先の生成失敗: player=" + player.getName()
+                                + ", portal=" + portal.id() + ", target=" + targetTemplate
+                                + ", error=" + (error != null ? rootMessage(error) : "world-not-created"));
+                        return;
+                    }
                     if (!player.isOnline()) {
                         return;
                     }
-                    messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
-                            Map.of("layer_name", targetName));
-                    logWarning("ポータル転送先の生成失敗: player=" + player.getName()
-                            + ", portal=" + portal.id() + ", target=" + targetTemplate
-                            + ", error=" + (error != null ? rootMessage(error) : "world-not-created"));
-                    return;
+                    beginWarp(player, portal, portalMatch, targetTemplate, targetName, targetWorld);
+                };
+                if (Bukkit.isPrimaryThread()) {
+                    task.run();
+                } else {
+                    Bukkit.getScheduler().runTask(plugin, task);
                 }
-                if (!player.isOnline()) {
-                    return;
-                }
-                beginWarp(player, portal, portalMatch, targetTemplate, targetName,
-                        targetWorld, now, newlyCreated);
-            };
-            if (Bukkit.isPrimaryThread()) {
-                task.run();
-            } else {
-                Bukkit.getScheduler().runTask(plugin, task);
-            }
-        });
+            });
+        }, SNEAK_HOLD_TICKS);
     }
 
     /**
      * 転送先ワールドの準備が完了した後に、転送先座標の算出とテレポートを開始する（メインスレッド専用）。
-     *
-     * @param newlyCreated {@code true} の場合は転送先ワールドを新規生成した直後
-     *                     （チャンク準備待ちの遅延を長めに取る）
+     * <p>
+     * しゃがみ継続の確認（20 tick）は呼び出し側で完了しているため、ここでは追加の遅延を挟まず
+     * 転送を実行する。
      */
     private void beginWarp(Player player, PortalDefinition portal, LayerConfigService.PortalMatch portalMatch,
-                           String targetTemplate, String targetName, World targetWorld, long now,
-                           boolean newlyCreated) {
-        cooldowns.put(player.getUniqueId(), now);
+                           String targetTemplate, String targetName, World targetWorld) {
         actionBar(player, "portal.warping", Map.of("layer_name", targetName));
 
         Location destination = buildDestination(player, portal, targetWorld);
         World sourceWorld = player.getWorld();
         String sourceLayer = portalMatch.layer().getId();
 
-        // 新規生成直後はチャンク準備に時間がかかり teleportAsync が false を返すことがある。
-        // そのため新規生成時は 20 tick（1 秒）、既にロード済みなら 5 tick（0.25 秒）待つ。
-        LayerManager layerManager = plugin.getLayerManager();
-        boolean fresh = newlyCreated
-                || (layerManager != null && layerManager.isNewlyCreated(instanceIdOf(targetWorld)));
-        long delay = fresh ? 20L : 5L;
-        if (fresh) {
-            // 遅延中であることをプレイヤーへ明示する。
-            player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
-        }
+        // インスタンス生成待ちでチャンク準備が遅れる場合があるため、待機中であることを明示する。
+        player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
 
         // teleportAsync の完了コールバックは実行スレッドが保証されないため、
         // プレイヤー操作を伴う処理はメインスレッドへ戻してから実行する。
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) {
-                return;
-            }
-            player.teleportAsync(destination).whenComplete((success, throwable) ->
-                    Bukkit.getScheduler().runTask(plugin, () -> handleTeleportResult(
-                            player, portal, targetTemplate, targetName,
-                            targetWorld, sourceWorld, sourceLayer, destination,
-                            success, throwable)));
-        }, delay);
-    }
-
-    /**
-     * ワールド名からインスタンス ID 部分（名前空間接頭辞を除いた値）を取り出す。
-     * <p>
-     * レイヤーインスタンスは {@code zeloria_build:<instanceId>} という名前でロードされるため、
-     * {@link LayerManager#isNewlyCreated(String)} へ渡す前に接頭辞を除去する。
-     *
-     * @param world 対象ワールド
-     * @return インスタンス ID
-     */
-    private static String instanceIdOf(World world) {
-        String name = world.getName();
-        int separator = name.indexOf(':');
-        return separator >= 0 ? name.substring(separator + 1) : name;
+        player.teleportAsync(destination).whenComplete((success, throwable) ->
+                Bukkit.getScheduler().runTask(plugin, () -> handleTeleportResult(
+                        player, portal, targetTemplate, targetName,
+                        targetWorld, sourceWorld, sourceLayer, destination,
+                        success, throwable)));
     }
 
     /**

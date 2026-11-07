@@ -158,7 +158,9 @@ public class LayerConfigService {
         }
 
         World world = location.getWorld();
-        String worldName = world.getName();
+        // レイヤーインスタンスは zeloria_build:<instanceId> というキーでロードされるため、
+        // 名前空間を除いたキー（= インスタンス ID）で照合する。
+        String worldName = world.getKey().getKey();
 
         for (LayerData layer : layers) {
             if (!layer.matchesWorld(worldName)) {
