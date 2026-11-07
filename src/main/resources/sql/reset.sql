@@ -33,6 +33,9 @@ CREATE TABLE players (
     class_tree_points_json LONGTEXT NULL,
     allocated_class_nodes_json LONGTEXT NULL,
     virtual_equipment_base64 LONGTEXT NULL,
+    virtual_inventory_json LONGTEXT NULL,
+    virtual_equipment_json LONGTEXT NULL,
+    virtual_material_json LONGTEXT NULL,
     max_health DOUBLE NULL,
     current_health DOUBLE NULL,
     max_mana DOUBLE NULL,
@@ -58,3 +61,15 @@ CREATE TABLE players (
         ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (uuid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 既存環境向けマイグレーション（DROP TABLE を実行せずに列だけ追加する場合）
+-- ----------------------------------------------------------------------------
+-- 上記 CREATE TABLE は開発用の再作成用です。既存データを残す場合は、
+-- 以下の ALTER 文、または sql/migrate_virtual_inventory.sql を 1 度だけ
+-- 実行してください。
+-- ============================================================================
+-- ALTER TABLE players
+--     ADD COLUMN virtual_inventory_json LONGTEXT NULL AFTER virtual_equipment_base64,
+--     ADD COLUMN virtual_equipment_json LONGTEXT NULL AFTER virtual_inventory_json,
+--     ADD COLUMN virtual_material_json LONGTEXT NULL AFTER virtual_equipment_json;

@@ -2,8 +2,11 @@ package com.zeloria.combat;
 
 import com.destroystokyo.paper.event.entity.EntityKnockbackByEntityEvent;
 import com.zeloria.core.Zeloria;
+import com.zeloria.item.ItemService;
 import com.zeloria.item.VirtualItem;
+import com.zeloria.item.WeaponData;
 import com.zeloria.mob.MobStatsService;
+import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
 import com.zeloria.skill.ClassManager;
 import com.zeloria.skill.SkillCastNotifier;
@@ -13,9 +16,12 @@ import com.zeloria.skill.SkillManager;
 import com.zeloria.player.PlayerClassData;
 import com.zeloria.skill.Skill;
 import com.zeloria.player.ZeloriaClass;
+import io.papermc.paper.event.player.PlayerArmSwingEvent;
+import org.bukkit.Material;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.NamespacedKey;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -24,6 +30,8 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -148,6 +156,36 @@ public final class CombatListener implements Listener {
     }
 
     /**
+     * 左クリック（腕振り）による通常攻撃を処理する。
+     * <p>
+     * 戦闘モード中かつメインハンドに武器（またはスキルパレット）を持っている場合のみ
+     * 発動する。実際の攻撃判定・ダメージ計算・クールダウンは
+     * {@link CombatService#performNormalAttack(Player, WeaponData)} に委譲する。
+     */
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onPlayerArmSwing(PlayerArmSwingEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        CombatModeService modeService = plugin.getCombatModeService();
+        if (modeService == null || !modeService.isActive(player)) {
+            return;
+        }
+
+        WeaponData weapon = resolveHeldWeapon(player);
+        if (weapon == null) {
+            return;
+        }
+
+        CombatService combatService = plugin.getCombatService();
+        if (combatService != null) {
+            combatService.performNormalAttack(player, weapon);
+        }
+    }
+
+    /**
      * 右クリックによるスキル発動を処理する。
      */
     @EventHandler(priority = EventPriority.NORMAL)
@@ -158,6 +196,14 @@ public final class CombatListener implements Listener {
 
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+
+        // 弓は左クリックのみで発射する。右クリックでの射撃・スキル発動を封印する。
+        Player interactPlayer = event.getPlayer();
+        ItemStack interacted = event.getItem();
+        if (isBow(interactPlayer, interacted)) {
+            event.setCancelled(true);
             return;
         }
 
@@ -221,6 +267,30 @@ public final class CombatListener implements Listener {
     }
 
     /**
+     * 弓のバニラ射撃を禁止する（通常攻撃は左クリックで処理する）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onEntityShootBow(EntityShootBowEvent event) {
+        if (!(event.getEntity() instanceof Player player)) {
+            return;
+        }
+        if (isBow(player, event.getBow())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * 通常攻撃の投射物が着弾したときの処理を {@link CombatService} へ委譲する。
+     */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onProjectileHit(ProjectileHitEvent event) {
+        CombatService combatService = plugin.getCombatService();
+        if (combatService != null) {
+            combatService.handleProjectileHit(event);
+        }
+    }
+
+    /**
      * すべてのダメージをカスタム計算へ置き換える。
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -240,6 +310,17 @@ public final class CombatListener implements Listener {
                 return;
             }
             event.setCancelled(true);
+        }
+
+        // 通常攻撃の投射物は ProjectileHitEvent 側でカスタムダメージを適用するため、
+        // バニラの投射物ダメージは常にキャンセルして二重ヒットを防ぐ。
+        if (event instanceof EntityDamageByEntityEvent byEntity
+                && byEntity.getDamager() instanceof Projectile projectile) {
+            CombatService combatService = plugin.getCombatService();
+            if (combatService != null && combatService.isCustomProjectile(projectile)) {
+                event.setCancelled(true);
+                return;
+            }
         }
 
         // プレイヤーのバニラ環境ダメージは無効化する（落下・炎・溶岩・溺れなど）。
@@ -340,6 +421,13 @@ public final class CombatListener implements Listener {
             Entity damager) {
         Player playerAttacker = CombatService.resolvePlayer(damager);
         if (playerAttacker != null) {
+            // バニラの近接攻撃は常にキャンセルし、通常攻撃は PlayerArmSwingEvent に
+            // よるプラグイン側のダメージ計算へ一本化する。
+            if (event.getCause() == DamageCause.ENTITY_ATTACK) {
+                event.setCancelled(true);
+                return true;
+            }
+
             DamageResult result = combatService.playerAttack(
                     playerAttacker, victim, 1.0, 0.0, 0.0);
             if (result != null) {
@@ -387,6 +475,70 @@ public final class CombatListener implements Listener {
                 && plugin.getMobStatsService().get(victim) != null) {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * メインハンドまたは装備中のメイン武器から武器定義を解決する。
+     * <p>
+     * 戦闘モード中はホットバー slot 1〜5 がスキルパレット表示になるため、
+     * その場合は実際に装備しているメイン武器を参照する。
+     *
+     * @param player 対象プレイヤー
+     * @return 武器定義。武器を持っていない場合は {@code null}
+     */
+    private WeaponData resolveHeldWeapon(Player player) {
+        ItemService itemService = plugin.getItemService();
+        if (itemService == null) {
+            return null;
+        }
+
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (VirtualItem.isSkillSlot(mainHand)) {
+            PlayerData data = PlayerData.getCached(player.getUniqueId());
+            if (data == null) {
+                return null;
+            }
+            return asWeapon(itemService, data.getEquipment(EquipSlot.MAIN_WEAPON));
+        }
+        return asWeapon(itemService, mainHand);
+    }
+
+    /**
+     * {@link ItemStack} を {@link WeaponData} へ解決する。
+     */
+    private static WeaponData asWeapon(ItemService itemService, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        return itemService.findItem(stack)
+                .filter(WeaponData.class::isInstance)
+                .map(WeaponData.class::cast)
+                .orElse(null);
+    }
+
+    /**
+     * 弓（バニラの BOW、または武器種 BOW のカスタム武器）か判定する。
+     */
+    private boolean isBow(Player player, ItemStack item) {
+        ItemStack stack = item == null || item.getType().isAir()
+                ? player.getInventory().getItemInMainHand()
+                : item;
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        if (stack.getType() == Material.BOW) {
+            return true;
+        }
+
+        ItemService itemService = plugin.getItemService();
+        if (itemService == null) {
+            return false;
+        }
+        return itemService.findItem(stack)
+                .filter(WeaponData.class::isInstance)
+                .map(WeaponData.class::cast)
+                .map(weapon -> weapon.weaponTypes().contains("BOW"))
+                .orElse(false);
     }
 
     private boolean isPendingDeath(Player player) {

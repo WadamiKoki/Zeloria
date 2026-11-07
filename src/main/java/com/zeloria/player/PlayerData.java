@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *         命中 / 回避・クールダウン短縮・移動速度・リジェネ）</li>
  *     <li>クラス状態: 現在のクラス・解放済みクラス</li>
  *     <li>仮想装備（{@link EquipSlot} ごとの {@link ItemStack}）</li>
+ *     <li>仮想インベントリ（通常・装備・素材の 3 タブ。{@link VirtualItemEntry}）</li>
  * </ul>
  * ログイン中のプレイヤーデータはクラス内のオンメモリキャッシュで共有する。
  * GUI からの読み書きはメインスレッドで行われるが、非同期保存と競合しないよう
@@ -48,8 +49,17 @@ public class PlayerData {
     /** RPG ステータス（HP / MP・攻撃力・クリティカル・リジェネなど）。 */
     private final PlayerStats stats = new PlayerStats();
 
-    /** 仮想装備（防具 4 部位 + メイン武器 + オフハンド）。 */
-    private final Map<EquipSlot, ItemStack> virtualEquipment = new EnumMap<>(EquipSlot.class);
+    /** 装備中アイテム（防具 4 部位 + メイン武器 + オフハンド）。 */
+    private final Map<EquipSlot, ItemStack> equippedItems = new EnumMap<>(EquipSlot.class);
+
+    /** 通常インベントリタブの仮想アイテム。 */
+    private final Map<String, VirtualItemEntry> virtualInventory = new LinkedHashMap<>();
+
+    /** 装備インベントリタブの仮想アイテム（武器・防具）。 */
+    private final Map<String, VirtualItemEntry> virtualEquipment = new LinkedHashMap<>();
+
+    /** 素材インベントリタブの仮想アイテム（素材・消耗品）。 */
+    private final Map<String, VirtualItemEntry> virtualMaterial = new LinkedHashMap<>();
 
     /** クラス状態（現在のクラス・解放済みクラス）。 */
     private final PlayerClassData classData = new PlayerClassData();
@@ -152,7 +162,10 @@ public class PlayerData {
                 ClassProgressJson.encodeLongMap(classExps),
                 ClassProgressJson.encodeIntMap(classTreePoints),
                 ClassProgressJson.encodeSetMap(allocatedClassNodes),
-                InventorySerializer.encodeEquipment(virtualEquipment),
+                InventorySerializer.encodeEquipment(equippedItems),
+                VirtualInventoryJson.encode(virtualInventory),
+                VirtualInventoryJson.encode(virtualEquipment),
+                VirtualInventoryJson.encode(virtualMaterial),
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
                 stats.getBaseMaxMana(),
@@ -225,7 +238,10 @@ public class PlayerData {
         data.ensureClassProgress(snapshot.currentClassId());
         data.mirrorCurrentClassProgress();
 
-        data.virtualEquipment.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
+        data.equippedItems.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
+        data.virtualInventory.putAll(VirtualInventoryJson.decode(snapshot.virtualInventoryJson()));
+        data.virtualEquipment.putAll(VirtualInventoryJson.decode(snapshot.virtualEquipmentJson()));
+        data.virtualMaterial.putAll(VirtualInventoryJson.decode(snapshot.virtualMaterialJson()));
 
         return data;
     }
@@ -244,7 +260,7 @@ public class PlayerData {
         if (slot == null) {
             return null;
         }
-        ItemStack item = virtualEquipment.get(slot);
+        ItemStack item = equippedItems.get(slot);
         return item == null || item.isEmpty() ? null : item.clone();
     }
 
@@ -259,9 +275,9 @@ public class PlayerData {
             return;
         }
         if (item == null || item.isEmpty()) {
-            virtualEquipment.remove(slot);
+            equippedItems.remove(slot);
         } else {
-            virtualEquipment.put(slot, item.clone());
+            equippedItems.put(slot, item.clone());
         }
     }
 
@@ -270,11 +286,109 @@ public class PlayerData {
      */
     public synchronized Map<EquipSlot, ItemStack> getVirtualEquipment() {
         Map<EquipSlot, ItemStack> copy = new EnumMap<>(EquipSlot.class);
-        virtualEquipment.forEach((slot, item) -> {
+        equippedItems.forEach((slot, item) -> {
             if (item != null && !item.isEmpty()) {
                 copy.put(slot, item.clone());
             }
         });
+        return Collections.unmodifiableMap(copy);
+    }
+
+    /* ------------------------------------------------------------------
+     * 仮想インベントリ（通常・装備・素材タブ）
+     * ------------------------------------------------------------------ */
+
+    /**
+     * 通常インベントリタブのコピーを取得する。
+     */
+    public synchronized Map<String, VirtualItemEntry> getVirtualInventory() {
+        return copyEntries(virtualInventory);
+    }
+
+    /**
+     * 装備インベントリタブのコピーを取得する。
+     */
+    public synchronized Map<String, VirtualItemEntry> getVirtualEquipmentItems() {
+        return copyEntries(virtualEquipment);
+    }
+
+    /**
+     * 素材インベントリタブのコピーを取得する。
+     */
+    public synchronized Map<String, VirtualItemEntry> getVirtualMaterial() {
+        return copyEntries(virtualMaterial);
+    }
+
+    /**
+     * 指定タブの仮想インベントリのコピーを取得する。
+     *
+     * @param tab タブ
+     * @return キー → エントリのコピー
+     */
+    public synchronized Map<String, VirtualItemEntry> getVirtualBag(VirtualInventoryTab tab) {
+        return copyEntries(bagOf(tab));
+    }
+
+    /**
+     * 指定タブの 1 枠を取得する。
+     *
+     * @param tab タブ
+     * @param key 枠キー
+     * @return エントリ。存在しない場合は {@code null}
+     */
+    public synchronized VirtualItemEntry getVirtualBagEntry(VirtualInventoryTab tab, String key) {
+        if (key == null) {
+            return null;
+        }
+        return bagOf(tab).get(key);
+    }
+
+    /**
+     * 指定タブの 1 枠を設定する。
+     *
+     * @param tab   タブ
+     * @param key   枠キー
+     * @param entry エントリ（{@code null} で削除）
+     */
+    public synchronized void putVirtualBagEntry(VirtualInventoryTab tab, String key,
+                                                VirtualItemEntry entry) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        if (entry == null || entry.amount() <= 0 || entry.itemId().isBlank()) {
+            bagOf(tab).remove(key);
+        } else {
+            bagOf(tab).put(key, entry);
+        }
+    }
+
+    /**
+     * 指定タブの 1 枠を削除する。
+     *
+     * @param tab タブ
+     * @param key 枠キー
+     * @return 削除されたエントリ。存在しない場合は {@code null}
+     */
+    public synchronized VirtualItemEntry removeVirtualBagEntry(VirtualInventoryTab tab, String key) {
+        if (key == null) {
+            return null;
+        }
+        return bagOf(tab).remove(key);
+    }
+
+    private Map<String, VirtualItemEntry> bagOf(VirtualInventoryTab tab) {
+        if (tab == null) {
+            return virtualInventory;
+        }
+        return switch (tab) {
+            case INVENTORY -> virtualInventory;
+            case EQUIPMENT -> virtualEquipment;
+            case MATERIAL -> virtualMaterial;
+        };
+    }
+
+    private static Map<String, VirtualItemEntry> copyEntries(Map<String, VirtualItemEntry> source) {
+        Map<String, VirtualItemEntry> copy = new LinkedHashMap<>(source);
         return Collections.unmodifiableMap(copy);
     }
 

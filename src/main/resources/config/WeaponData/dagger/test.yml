@@ -1,14 +1,17 @@
-id: "rogue_test_hoe"
-name: "<white>ローグ用武器テンプレート（短剣）"
+id: "dagger_test_dagger"
+name: "<white>短剣用武器テンプレート"
 material: IRON_HOE
 lore:
-  - "<gray>ローグ用の武器テンプレート。"
-  - "<gray>stats の数値を編集して使用してください。"
+  - "<gray>短剣（DAGGER）の武器テンプレート。"
+  - "<gray>攻撃パラメータは武器種単位で管理します。"
 sell_price: 0
 weaponTypes: [DAGGER]
-baseDamage: 0.0
-attackRange: 0.0
-attackAngle: 0.0
+# 武器種共通の通常攻撃パラメータ
+attackSpeedTicks: 16
+attackRange: 2.5
+attackAngle: 60.0
+attackParticle: SWEEP_ATTACK
+attackSound: ENTITY_PLAYER_ATTACK_SWEEP
 requiredLevel: 0
 stats:
   maxHealth: 0
@@ -29,4 +32,3 @@ stats:
   manaRegenPercent: 0
   armorPenetration: 0
   lifesteal: 0
-

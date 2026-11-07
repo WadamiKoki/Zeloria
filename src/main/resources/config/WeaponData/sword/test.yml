@@ -1,0 +1,34 @@
+id: "sword_test_sword"
+name: "<white>剣用武器テンプレート"
+material: IRON_SWORD
+lore:
+  - "<gray>剣（SWORD）の武器テンプレート。"
+  - "<gray>攻撃パラメータは武器種単位で管理します。"
+sell_price: 0
+weaponTypes: [SWORD]
+# 武器種共通の通常攻撃パラメータ
+attackSpeedTicks: 32
+attackRange: 3.5
+attackAngle: 90.0
+attackParticle: SWEEP_ATTACK
+attackSound: ENTITY_PLAYER_ATTACK_SWEEP
+requiredLevel: 0
+stats:
+  maxHealth: 0
+  maxMana: 0
+  attackPower: 0
+  defense1: 0
+  defense2: 0
+  criticalRate: 0
+  criticalDamage: 0
+  accuracy: 0
+  evasion: 0
+  dodgeCooldownReduction: 0
+  cooldownReduction: 0
+  moveSpeed: 0
+  healthRegenFlat: 0
+  healthRegenPercent: 0
+  manaRegenFlat: 0
+  manaRegenPercent: 0
+  armorPenetration: 0
+  lifesteal: 0

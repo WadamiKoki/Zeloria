@@ -1,14 +1,17 @@
-id: "vanguard_test_axe"
-name: "<white>ヴァンガード用武器テンプレート（大斧）"
-material: IRON_AXE
+id: "staff_test_staff"
+name: "<white>杖用武器テンプレート"
+material: STICK
 lore:
-  - "<gray>ヴァンガード用の武器テンプレート。"
-  - "<gray>stats の数値を編集して使用してください。"
+  - "<gray>杖（STAFF）の武器テンプレート。"
+  - "<gray>攻撃パラメータは武器種単位で管理します。"
 sell_price: 0
-weaponTypes: [AXE]
-baseDamage: 0.0
-attackRange: 0.0
+weaponTypes: [STAFF]
+# 武器種共通の通常攻撃パラメータ
+attackSpeedTicks: 32
+attackRange: 8.0
 attackAngle: 0.0
+attackParticle: FLAME
+attackSound: ENTITY_BLAZE_SHOOT
 requiredLevel: 0
 stats:
   maxHealth: 0
@@ -29,4 +32,3 @@ stats:
   manaRegenPercent: 0
   armorPenetration: 0
   lifesteal: 0
-

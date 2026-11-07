@@ -1,14 +1,17 @@
-id: "knight_test_sword"
-name: "<white>ナイト用武器テンプレート（剣）"
-material: IRON_SWORD
+id: "axe_test_axe"
+name: "<white>大斧用武器テンプレート"
+material: IRON_AXE
 lore:
-  - "<gray>ナイト用の武器テンプレート。"
-  - "<gray>stats の数値を編集して使用してください。"
+  - "<gray>大斧（AXE）の武器テンプレート。"
+  - "<gray>攻撃パラメータは武器種単位で管理します。"
 sell_price: 0
-weaponTypes: [SWORD]
-baseDamage: 0.0
-attackRange: 0.0
+weaponTypes: [AXE]
+# 武器種共通の通常攻撃パラメータ
+attackSpeedTicks: 64
+attackRange: 5.0
 attackAngle: 0.0
+attackParticle: CRIT
+attackSound: ENTITY_PLAYER_ATTACK_CRIT
 requiredLevel: 0
 stats:
   maxHealth: 0
@@ -29,4 +32,3 @@ stats:
   manaRegenPercent: 0
   armorPenetration: 0
   lifesteal: 0
-

@@ -91,9 +91,11 @@ public class ItemService {
     private final NamespacedKey cdrKey;
     private final NamespacedKey moveSpeedKey;
     private final NamespacedKey weaponTypeKey;
-    private final NamespacedKey baseDamageKey;
+    private final NamespacedKey attackSpeedTicksKey;
     private final NamespacedKey attackRangeKey;
     private final NamespacedKey attackAngleKey;
+    private final NamespacedKey attackParticleKey;
+    private final NamespacedKey attackSoundKey;
 
     public ItemService(Zeloria plugin, YamlLoader yamlLoader) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -116,9 +118,11 @@ public class ItemService {
         this.cdrKey = new NamespacedKey(plugin, "cdr");
         this.moveSpeedKey = new NamespacedKey(plugin, "move_speed");
         this.weaponTypeKey = new NamespacedKey(plugin, "weapon_type");
-        this.baseDamageKey = new NamespacedKey(plugin, "base_damage");
+        this.attackSpeedTicksKey = new NamespacedKey(plugin, "attack_speed_ticks");
         this.attackRangeKey = new NamespacedKey(plugin, "attack_range");
         this.attackAngleKey = new NamespacedKey(plugin, "attack_angle");
+        this.attackParticleKey = new NamespacedKey(plugin, "attack_particle");
+        this.attackSoundKey = new NamespacedKey(plugin, "attack_sound");
 
         reload();
     }
@@ -408,8 +412,9 @@ public class ItemService {
             meta.lore(lore);
         }
 
-        // バニラの攻撃力・防御力表示は独自ステータスと重複するため隠す。
-        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+        // すべてのカスタムアイテムを耐久無限にし、ツールチップの属性・Unbreakable 表示を隠す。
+        meta.setUnbreakable(true);
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE);
 
         // Paper 1.21.4+ の item_model コンポーネントは、YAML で明示された場合のみ適用する。
         // 未指定時に zeloria:<id> を自動付与すると、リソースパック未導入環境で
@@ -540,9 +545,11 @@ public class ItemService {
             pdc.set(requiredLevelKey, PersistentDataType.INTEGER, armor.requiredLevel());
         } else if (data instanceof WeaponData weapon) {
             pdc.set(weaponTypeKey, PersistentDataType.STRING, String.join(",", weapon.weaponTypes()));
-            pdc.set(baseDamageKey, PersistentDataType.DOUBLE, weapon.baseDamage());
+            pdc.set(attackSpeedTicksKey, PersistentDataType.INTEGER, weapon.attackSpeedTicks());
             pdc.set(attackRangeKey, PersistentDataType.DOUBLE, weapon.attackRange());
             pdc.set(attackAngleKey, PersistentDataType.DOUBLE, weapon.attackAngle());
+            pdc.set(attackParticleKey, PersistentDataType.STRING, weapon.attackParticle());
+            pdc.set(attackSoundKey, PersistentDataType.STRING, weapon.attackSound());
             pdc.set(requiredLevelKey, PersistentDataType.INTEGER, weapon.requiredLevel());
         }
     }
@@ -646,7 +653,7 @@ public class ItemService {
         } else if (data instanceof WeaponData weapon) {
             bonus = weapon.statBonus();
             lines.add("<gray>武器種別: <white>" + String.join(", ", weapon.weaponTypes()) + "</white></gray>");
-            addStat(lines, "基礎ダメージ", weapon.baseDamage());
+            lines.add("<gray>攻撃速度: <white>" + seconds(weapon.attackSpeedTicks()) + "秒</white></gray>");
             addStat(lines, "攻撃範囲", weapon.attackRange());
             addStat(lines, "攻撃角度", weapon.attackAngle());
         } else {
@@ -695,6 +702,11 @@ public class ItemService {
 
     private static String number(double value) {
         return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
+    }
+
+    /** tick 数を秒表示へ変換する（20 tick = 1 秒）。 */
+    private static String seconds(int ticks) {
+        return number(Math.max(1, ticks) / 20.0);
     }
 
     private static String fileNameOf(String key) {

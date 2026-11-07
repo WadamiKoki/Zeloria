@@ -1,14 +1,17 @@
-id: "archer_test_bow"
-name: "<white>アーチャー用武器テンプレート（弓）"
+id: "bow_test_bow"
+name: "<white>弓用武器テンプレート"
 material: BOW
 lore:
-  - "<gray>アーチャー用の武器テンプレート。"
-  - "<gray>stats の数値を編集して使用してください。"
+  - "<gray>弓（BOW）の武器テンプレート。"
+  - "<gray>攻撃パラメータは武器種単位で管理します。"
 sell_price: 0
 weaponTypes: [BOW]
-baseDamage: 5.0
-attackRange: 0.0
+# 武器種共通の通常攻撃パラメータ
+attackSpeedTicks: 32
+attackRange: 12.0
 attackAngle: 0.0
+attackParticle: CRIT
+attackSound: ENTITY_ARROW_SHOOT
 requiredLevel: 1
 stats:
   maxHealth: 0
@@ -29,4 +32,3 @@ stats:
   manaRegenPercent: 0
   armorPenetration: 0
   lifesteal: 0
-

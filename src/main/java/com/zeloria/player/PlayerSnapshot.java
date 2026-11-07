@@ -22,7 +22,10 @@ import java.util.UUID;
  * @param classExpsJson          クラス ID → クラス別経験値（JSON）
  * @param classTreePointsJson    クラス ID → 未使用ツリーポイント（JSON）
  * @param allocatedClassNodesJson クラス ID → 解放済みツリーノード ID（JSON）
- * @param virtualEquipmentBase64  仮想装備の Base64 データ
+ * @param virtualEquipmentBase64  装備中アイテムの Base64 データ
+ * @param virtualInventoryJson    通常インベントリタブ（JSON）
+ * @param virtualEquipmentJson    装備インベントリタブ（JSON）
+ * @param virtualMaterialJson     素材インベントリタブ（JSON）
  * @param maxHealth               最大 HP
  * @param currentHealth           現在 HP
  * @param maxMana                 最大 MP
@@ -56,6 +59,9 @@ public record PlayerSnapshot(
         String classTreePointsJson,
         String allocatedClassNodesJson,
         String virtualEquipmentBase64,
+        String virtualInventoryJson,
+        String virtualEquipmentJson,
+        String virtualMaterialJson,
         double maxHealth,
         double currentHealth,
         double maxMana,
@@ -106,6 +112,9 @@ public record PlayerSnapshot(
         allocatedClassNodesJson = allocatedClassNodesJson == null || allocatedClassNodesJson.isBlank()
                 ? "{}" : allocatedClassNodesJson;
         virtualEquipmentBase64 = virtualEquipmentBase64 == null ? InventorySerializer.EMPTY : virtualEquipmentBase64;
+        virtualInventoryJson = blankToEmptyObject(virtualInventoryJson);
+        virtualEquipmentJson = blankToEmptyObject(virtualEquipmentJson);
+        virtualMaterialJson = blankToEmptyObject(virtualMaterialJson);
         cooldownEndAt = cooldownEndAt == null ? "" : cooldownEndAt;
     }
 
@@ -130,6 +139,9 @@ public record PlayerSnapshot(
                 "{}",
                 "{}",
                 InventorySerializer.EMPTY,
+                "{}",
+                "{}",
+                "{}",
                 PlayerStats.DEFAULT_MAX_HEALTH,
                 PlayerStats.DEFAULT_MAX_HEALTH,
                 PlayerStats.DEFAULT_MAX_MANA,
@@ -163,10 +175,15 @@ public record PlayerSnapshot(
                 currentClassId, unlockedClasses,
                 classLevelsJson, classExpsJson, classTreePointsJson, allocatedClassNodesJson,
                 virtualEquipmentBase64,
+                virtualInventoryJson, virtualEquipmentJson, virtualMaterialJson,
                 maxHealth, currentHealth, maxMana, currentMana,
                 attackPower, defense1, defense2, criticalRate, criticalDamage,
                 accuracy, evasion, dodgeCooldownReduction, cooldownReduction,
                 walkSpeed, healthRegenFlat, healthRegenPercent,
                 manaRegenFlat, manaRegenPercent, cooldownEndAt);
+    }
+
+    private static String blankToEmptyObject(String value) {
+        return value == null || value.isBlank() ? "{}" : value;
     }
 }

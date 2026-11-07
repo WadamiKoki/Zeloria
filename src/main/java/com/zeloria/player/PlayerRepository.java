@@ -30,6 +30,7 @@ public class PlayerRepository {
             current_class_id, unlocked_classes,
             class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
             virtual_equipment_base64,
+            virtual_inventory_json, virtual_equipment_json, virtual_material_json,
             max_health, current_health, max_mana, current_mana,
             attack_power, defense1, defense2, critical_rate, critical_damage,
             accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -59,6 +60,7 @@ public class PlayerRepository {
                 current_class_id, unlocked_classes,
                 class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
                 virtual_equipment_base64,
+                virtual_inventory_json, virtual_equipment_json, virtual_material_json,
                 max_health, current_health, max_mana, current_mana,
                 attack_power, defense1, defense2, critical_rate, critical_damage,
                 accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -69,7 +71,7 @@ public class PlayerRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, CURRENT_TIMESTAMP)
+                      ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
                 level = VALUES(level),
@@ -82,6 +84,9 @@ public class PlayerRepository {
                 class_tree_points_json = VALUES(class_tree_points_json),
                 allocated_class_nodes_json = VALUES(allocated_class_nodes_json),
                 virtual_equipment_base64 = VALUES(virtual_equipment_base64),
+                virtual_inventory_json = VALUES(virtual_inventory_json),
+                virtual_equipment_json = VALUES(virtual_equipment_json),
+                virtual_material_json = VALUES(virtual_material_json),
                 max_health = VALUES(max_health),
                 current_health = VALUES(current_health),
                 max_mana = VALUES(max_mana),
@@ -287,8 +292,8 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 31 columns（last_updated を除く）, 31 placeholders,
-            // max bind index 31。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 34 columns（last_updated を除く）, 34 placeholders,
+            // max bind index 34。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
@@ -302,6 +307,9 @@ public class PlayerRepository {
             statement.setString(index++, snapshot.classTreePointsJson());
             statement.setString(index++, snapshot.allocatedClassNodesJson());
             statement.setString(index++, snapshot.virtualEquipmentBase64());
+            statement.setString(index++, snapshot.virtualInventoryJson());
+            statement.setString(index++, snapshot.virtualEquipmentJson());
+            statement.setString(index++, snapshot.virtualMaterialJson());
             statement.setDouble(index++, snapshot.maxHealth());
             statement.setDouble(index++, snapshot.currentHealth());
             statement.setDouble(index++, snapshot.maxMana());
@@ -340,6 +348,9 @@ public class PlayerRepository {
                 rs.getString("class_tree_points_json"),
                 rs.getString("allocated_class_nodes_json"),
                 rs.getString("virtual_equipment_base64"),
+                rs.getString("virtual_inventory_json"),
+                rs.getString("virtual_equipment_json"),
+                rs.getString("virtual_material_json"),
                 statOr(rs, "max_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "current_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "max_mana", PlayerStats.DEFAULT_MAX_MANA),

@@ -5,7 +5,10 @@ import org.bukkit.Registry;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.EntityType;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -26,6 +29,10 @@ import java.util.Objects;
  * expReward: 15
  * moneyReward: 5
  * alwaysShowName: true  # 頭上に表示名を常時表示する（省略時は true）
+ * drops:                # 撃破時の仮想インベントリ直送ドロップ（任意）
+ *   - itemId: "goblin_ear"
+ *     amount: 1
+ *     chance: 0.5
  * </pre>
  * {@code entityType} は {@code zombie} / {@code minecraft:zombie} / {@code ZOMBIE} の
  * いずれの表記も受け付ける。
@@ -44,6 +51,7 @@ import java.util.Objects;
  * @param expReward      撃破時経験値
  * @param moneyReward    撃破時報酬
  * @param alwaysShowName 頭上に表示名を常時表示するか
+ * @param drops          撃破時のドロップ定義
  */
 public record MobData(
         String id,
@@ -59,7 +67,8 @@ public record MobData(
         double evasion,
         int expReward,
         int moneyReward,
-        boolean alwaysShowName
+        boolean alwaysShowName,
+        List<MobDrop> drops
 ) {
 
     /** {@code entityType} が未指定のときに使用する既定のエンティティ種別。 */
@@ -81,6 +90,7 @@ public record MobData(
         evasion = Math.max(0.0, Math.min(100.0, evasion));
         expReward = Math.max(expReward, 0);
         moneyReward = Math.max(moneyReward, 0);
+        drops = drops == null ? List.of() : List.copyOf(drops);
     }
 
     /**
@@ -111,8 +121,54 @@ public record MobData(
                 config.getDouble("evasion", MobStats.DEFAULT_EVASION),
                 config.getInt("expReward", 0),
                 config.getInt("moneyReward", 0),
-                config.getBoolean("alwaysShowName", true)
+                config.getBoolean("alwaysShowName", true),
+                readDrops(config)
         );
+    }
+
+    /**
+     * YAML の {@code drops} セクションを読み取る。
+     */
+    private static List<MobDrop> readDrops(FileConfiguration config) {
+        List<Map<?, ?>> source = config.getMapList("drops");
+        if (source.isEmpty()) {
+            return List.of();
+        }
+
+        List<MobDrop> drops = new ArrayList<>();
+        for (Map<?, ?> entry : source) {
+            if (entry == null) {
+                continue;
+            }
+            Object rawId = entry.containsKey("itemId")
+                    ? entry.get("itemId")
+                    : entry.get("item_id");
+            if (rawId == null) {
+                continue;
+            }
+            String itemId = String.valueOf(rawId).trim();
+            if (itemId.isEmpty()) {
+                continue;
+            }
+            long amount = number(entry.get("amount"), 1L).longValue();
+            double chance = number(entry.get("chance"), 1.0D).doubleValue();
+            drops.add(new MobDrop(itemId, amount, chance));
+        }
+        return List.copyOf(drops);
+    }
+
+    private static Number number(Object value, Number fallback) {
+        if (value instanceof Number number) {
+            return number;
+        }
+        if (value != null) {
+            try {
+                return Double.valueOf(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                // 不正な値は既定値へフォールバックする。
+            }
+        }
+        return fallback;
     }
 
     /**

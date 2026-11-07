@@ -8,19 +8,21 @@ import java.util.List;
 /**
  * {@code config/WeaponData/*.yml} から読み込んだ武器アイテム定義。
  * <p>
- * 基本フォーマット（{@link ItemData}）に加えて、武器種別・基礎ダメージ・
- * 攻撃範囲・攻撃角度を保持する。
+ * 基本フォーマット（{@link ItemData}）に加えて、武器種別と武器種共通の通常攻撃
+ * パラメータ（攻撃速度・攻撃範囲・攻撃角度・パーティクル・サウンド）を保持する。
  * <pre>
- * id: "knight_test_sword"
- * name: "&lt;white&gt;ナイト用武器テンプレート（剣）"
+ * id: "sword_test_sword"
+ * name: "&lt;white&gt;剣用武器テンプレート"
  * material: IRON_SWORD
  * lore:
- *   - "&lt;gray&gt;ナイト用の武器テンプレート。"
+ *   - "&lt;gray&gt;剣の武器テンプレート。"
  * sell_price: 0
- * weaponTypes: ["SWORD", "AXE"]
- * baseDamage: 10.0
- * attackRange: 3.0
+ * weaponTypes: ["SWORD"]
+ * attackSpeedTicks: 32
+ * attackRange: 3.5
  * attackAngle: 90.0
+ * attackParticle: SWEEP_ATTACK
+ * attackSound: ENTITY_PLAYER_ATTACK_SWEEP
  * requiredLevel: 0
  * stats:
  *   attackPower: 4
@@ -30,28 +32,35 @@ import java.util.List;
 public final class WeaponData extends ItemData {
 
     private final List<String> weaponTypes;
-    private final double baseDamage;
+    private final int attackSpeedTicks;
     private final double attackRange;
     private final double attackAngle;
+    private final String attackParticle;
+    private final String attackSound;
     private final ItemStatBonus statBonus;
 
     public WeaponData(String id, String name, Material material, List<String> lore,
                       long sellPrice, String sourceKey, List<String> weaponTypes,
-                      double baseDamage, double attackRange, double attackAngle,
+                      int attackSpeedTicks, double attackRange, double attackAngle,
+                      String attackParticle, String attackSound,
                       ItemStatBonus statBonus) {
         this(id, name, material, lore, sellPrice, sourceKey, weaponTypes,
-                baseDamage, attackRange, attackAngle, statBonus, null);
+                attackSpeedTicks, attackRange, attackAngle, attackParticle, attackSound,
+                statBonus, null);
     }
 
     public WeaponData(String id, String name, Material material, List<String> lore,
                       long sellPrice, String sourceKey, List<String> weaponTypes,
-                      double baseDamage, double attackRange, double attackAngle,
+                      int attackSpeedTicks, double attackRange, double attackAngle,
+                      String attackParticle, String attackSound,
                       ItemStatBonus statBonus, String itemModel) {
         super(id, name, material, lore, sellPrice, sourceKey, itemModel);
         this.weaponTypes = normalizeWeaponTypes(weaponTypes);
-        this.baseDamage = baseDamage;
-        this.attackRange = attackRange;
-        this.attackAngle = attackAngle;
+        this.attackSpeedTicks = Math.max(1, attackSpeedTicks);
+        this.attackRange = Math.max(0.0, attackRange);
+        this.attackAngle = Math.max(0.0, Math.min(360.0, attackAngle));
+        this.attackParticle = normalizeText(attackParticle);
+        this.attackSound = normalizeText(attackSound);
         this.statBonus = statBonus == null ? ItemStatBonus.NONE : statBonus;
     }
 
@@ -78,6 +87,9 @@ public final class WeaponData extends ItemData {
             }
         }
 
+        // 武器種共通の既定値。個別の武器 YAML で未指定の場合はここで補完する。
+        WeaponType primaryType = WeaponType.primary(weaponTypes);
+
         return new WeaponData(
                 id,
                 name,
@@ -86,9 +98,11 @@ public final class WeaponData extends ItemData {
                 config.getLong("sell_price", 0L),
                 sourceKey,
                 weaponTypes,
-                config.getDouble("baseDamage", 0.0),
-                config.getDouble("attackRange", 0.0),
-                config.getDouble("attackAngle", 0.0),
+                config.getInt("attackSpeedTicks", primaryType.attackSpeedTicks()),
+                config.getDouble("attackRange", primaryType.attackRange()),
+                config.getDouble("attackAngle", primaryType.attackAngle()),
+                config.getString("attackParticle", primaryType.attackParticle()),
+                config.getString("attackSound", primaryType.attackSound()),
                 ItemStatBonus.fromConfig(config),
                 config.getString("item_model")
         );
@@ -119,8 +133,8 @@ public final class WeaponData extends ItemData {
         return normalized.isEmpty() ? List.of("SWORD") : normalized;
     }
 
-    public double baseDamage() {
-        return baseDamage;
+    public int attackSpeedTicks() {
+        return attackSpeedTicks;
     }
 
     public double attackRange() {
@@ -129,6 +143,21 @@ public final class WeaponData extends ItemData {
 
     public double attackAngle() {
         return attackAngle;
+    }
+
+    public String attackParticle() {
+        return attackParticle;
+    }
+
+    public String attackSound() {
+        return attackSound;
+    }
+
+    /**
+     * 文字列の前後空白を除去する（{@code null} は空文字）。
+     */
+    private static String normalizeText(String value) {
+        return value == null ? "" : value.trim();
     }
 
     /**

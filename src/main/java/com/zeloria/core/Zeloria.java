@@ -3,11 +3,13 @@ package com.zeloria.core;
 import com.zeloria.command.AdminCommand;
 import com.zeloria.command.MenuCommand;
 import com.zeloria.combat.CombatService;
+import com.zeloria.combat.DamageIndicatorService;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.core.DatabaseManager;
 import com.zeloria.core.DatabaseService;
 import com.zeloria.item.EquipmentListener;
 import com.zeloria.item.EquipmentService;
+import com.zeloria.item.CustomItemCraftListener;
 import com.zeloria.item.VirtualInventoryListener;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.gui.GuiConfigService;
@@ -173,6 +175,9 @@ public final class Zeloria extends JavaPlugin {
     /** カスタムダメージの計算・適用。 */
     private CombatService combatService;
 
+    /** 被弾時に頭上へフローティングダメージテキストを表示するサービス。 */
+    private DamageIndicatorService damageIndicatorService;
+
     /** スキル発動の検証・コスト消費・効果適用。 */
     private SkillCastService skillCastService;
 
@@ -279,6 +284,7 @@ public final class Zeloria extends JavaPlugin {
         this.npcManager = new NpcManager(this, this.yamlLoader);
         this.mobStatsService = new MobStatsService(this);
         this.combatService = new CombatService(this);
+        this.damageIndicatorService = new DamageIndicatorService(this);
         this.guiConfigService = new GuiConfigService(this, this.yamlLoader);
         this.itemService = new ItemService(this, this.yamlLoader);
         this.equipmentService = new EquipmentService(this, this.itemService);
@@ -357,6 +363,9 @@ public final class Zeloria extends JavaPlugin {
         }
         if (this.mobStatsService != null) {
             this.mobStatsService.clearAll();
+        }
+        if (this.damageIndicatorService != null) {
+            this.damageIndicatorService.shutdown();
         }
 
         // スキル表示中に停止した場合も、退避した実アイテムをインベントリへ戻す。
@@ -686,6 +695,7 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new CombatListener(this));
         this.listenerRegistrar.register(new CombatStateListener(this));
         this.listenerRegistrar.register(new EquipmentListener(this));
+        this.listenerRegistrar.register(new CustomItemCraftListener(this));
         this.listenerRegistrar.register(new VirtualInventoryListener(this));
         this.listenerRegistrar.register(new SkillSlotListener(this));
         this.listenerRegistrar.register(new CombatModeListener(this));
@@ -1092,6 +1102,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public CombatService getCombatService() {
         return combatService;
+    }
+
+    /**
+     * DamageIndicatorService を取得する。
+     *
+     * @return プラグインの DamageIndicatorService（onEnable 前は null）
+     */
+    public DamageIndicatorService getDamageIndicatorService() {
+        return damageIndicatorService;
     }
 
     /**

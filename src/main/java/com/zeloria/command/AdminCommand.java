@@ -6,6 +6,7 @@ import com.zeloria.core.DatabaseService;
 import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
+import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.world.BuildManager;
 import com.zeloria.world.LayerCleanupTask;
 import com.zeloria.world.LayerConfigService;
@@ -133,7 +134,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final int MAX_SPAWN_COUNT = 32;
 
     /** 1 回のコマンドで付与できるアイテム数の上限。 */
-    private static final int MAX_GIVE_AMOUNT = 9999;
+    private static final int MAX_GIVE_AMOUNT = Integer.MAX_VALUE;
 
     /** フォルダサマリーで 1 フォルダあたりに表示する ID の上限。 */
     private static final int MAX_YAML_SUMMARY_IDS = 8;
@@ -1548,7 +1549,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     /**
      * {@code /admin give <armor|material|weapon> <id> [amount]} のディスパッチ。
      * <p>
-     * アイテム定義は {@link ItemService} から取得し、実行者自身のプレイヤーインベントリへ格納する。
+     * アイテム定義は {@link ItemService} から取得し、実行者自身の仮想インベントリへ格納する。
      */
     private void handleGive(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
@@ -1568,15 +1569,15 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        int amount = 1;
+        long amount = 1L;
         if (args.length >= 4) {
             try {
-                amount = Integer.parseInt(args[3]);
+                amount = Long.parseLong(args[3]);
             } catch (NumberFormatException e) {
                 send(sender, giveInvalidAmount());
                 return;
             }
-            if (amount < 1 || amount > MAX_GIVE_AMOUNT) {
+            if (amount < 1L || amount > MAX_GIVE_AMOUNT) {
                 send(sender, giveInvalidAmount());
                 return;
             }
@@ -1599,41 +1600,20 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * 生成したアイテムをプレイヤーインベントリへ追加する。
+     * 生成したアイテムをプレイヤーの仮想インベントリへ追加する。
      * <p>
-     * バニラのスタック上限ごとに分割して追加し、入りきらなかった個数を溢れとして扱う。
+     * アイテム種別に応じたタブ（通常／装備／素材）へ格納し、
+     * 1 タブ 100 枠を超えた分は溢れとして扱う。
      */
-    private void giveItem(Player player, ItemData definition, int amount) {
-        ItemService itemService = plugin.getItemService();
-        if (itemService == null) {
-            send(player, PREFIX + "<red>ItemService が初期化されていません。</red>");
+    private void giveItem(Player player, ItemData definition, long amount) {
+        VirtualInventoryService virtualInventory = plugin.getVirtualInventoryService();
+        if (virtualInventory == null) {
+            send(player, PREFIX + "<red>VirtualInventoryService が初期化されていません。</red>");
             return;
         }
 
-        ItemStack prototype = itemService.createItem(definition);
-        int maxStack = Math.max(1, prototype.getMaxStackSize());
-        int remaining = amount;
-        int given = 0;
-
-        while (remaining > 0) {
-            int chunk = Math.min(remaining, maxStack);
-            ItemStack stack = prototype.clone();
-            stack.setAmount(chunk);
-
-            int rejected = 0;
-            for (ItemStack overflow : player.getInventory().addItem(stack).values()) {
-                rejected += overflow.getAmount();
-            }
-            given += chunk - rejected;
-            remaining -= chunk;
-
-            if (rejected > 0) {
-                // インベントリが満杯のため、これ以上は入らない。
-                break;
-            }
-        }
-
-        int leftover = amount - given;
+        long given = virtualInventory.addItem(player, definition.id(), amount);
+        long leftover = amount - given;
         Map<String, String> placeholders = Map.of(
                 "item_id", definition.id(),
                 "item_name", MINI.stripTags(definition.name()),
@@ -1644,7 +1624,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         if (given <= 0) {
             send(player, message("give.full", placeholders,
-                    "<red>プレイヤーインベントリに空きがありません。</red>"));
+                    "<red>仮想インベントリに空きがありません。</red>"));
             return;
         }
         if (leftover > 0) {
