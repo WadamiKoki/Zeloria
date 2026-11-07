@@ -2,7 +2,6 @@ package com.zeloria.world;
 
 import com.zeloria.core.Zeloria;
 import com.zeloria.mob.SpawnerManager;
-import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.Location;
@@ -571,9 +570,8 @@ public class LayerManager {
                     "dimensionKey");
             WorldCreator creator = WorldCreator.ofKey(dimensionKey)
                     .environment(World.Environment.NORMAL)
-                    // スポーン位置を常時ロードする。未ロードチャンクへのテレポートは
-                    // Paper に拒否されるため、ロード直後から転送先として使用できるようにする。
-                    .keepSpawnLoaded(TriState.TRUE)
+                    // keepSpawnLoaded は Paper 26.x で非推奨・無機能のため設定しない。
+                    // 転送先のチャンクはテレポート直前に loadChunkSafely で同期ロードする。
                     .generateStructures(false)
                     // 空の ChunkGenerator によりブロック生成を抑止する（Void ワールド）。
                     .generator(new ChunkGenerator() {
