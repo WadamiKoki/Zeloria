@@ -471,6 +471,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (plugin.getMobConfigService() != null) {
             plugin.getMobConfigService().reload();
         }
+        if (plugin.getCollisionManager() != null) {
+            plugin.getCollisionManager().reload();
+        }
         if (plugin.getItemService() != null) {
             plugin.getItemService().reload();
         }

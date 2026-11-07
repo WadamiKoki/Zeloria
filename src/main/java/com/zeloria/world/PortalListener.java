@@ -8,8 +8,6 @@ import com.zeloria.world.LayerManager;
 import com.zeloria.world.PortalDefinition;
 import com.zeloria.core.LoggerService;
 import com.zeloria.core.MessageService;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
@@ -41,15 +39,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * 連続発動を防ぐためプレイヤーごとにクールダウン（5 秒）を設け、
  * クールタイム中の操作には {@code MessageData/gate.yml} のメッセージを表示する。
  * <p>
- * 転移はしゃがみ開始と同時には行わず、20 tick（1 秒）しゃがみ続けたことを確認してから実行する。
+ * 転移はしゃがんだ瞬間（{@link PlayerToggleSneakEvent}）に開始し、待機 tick は設けない。
  */
 public class PortalListener implements Listener {
 
     /** ポータル再発動までのクールダウン（ミリ秒）。 */
     private static final long COOLDOWN_MILLIS = 5_000L;
-
-    /** しゃがみ開始から転移を実行するまでの待機 tick（20 tick = 1 秒）。 */
-    private static final long SNEAK_HOLD_TICKS = 20L;
 
     private static final String MESSAGE_FILE = "gate";
 
@@ -123,9 +118,9 @@ public class PortalListener implements Listener {
             return;
         }
 
-        // しゃがみ開始時点でクールダウンを消費し、対象インスタンスの生成を開始する。
+        // しゃがんだ瞬間に転送処理を開始する。待機 tick は設けない。
+        // 転送先インスタンスの生成は非同期のため、生成完了を待ってからテレポートする。
         cooldowns.put(player.getUniqueId(), now);
-        actionBar(player, "portal.creating", Map.of("layer_name", targetName));
 
         CompletableFuture<World> worldFuture;
         try {
@@ -136,58 +131,44 @@ public class PortalListener implements Listener {
             return;
         }
 
-        // しゃがみ開始から 20 tick（1 秒）後に、まだしゃがんでいる場合のみ転移する。
-        // 立ち上がっていた場合は転移だけをキャンセルし、インスタンス生成は継続させる。
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline() || !player.isSneaking()) {
-                return;
-            }
-
-            worldFuture.whenComplete((targetWorld, error) -> {
-                // 完了コールバックの実行スレッドは保証されないため、必ずメインスレッドへ戻す。
-                Runnable task = () -> {
-                    if (error != null || targetWorld == null) {
-                        cooldowns.remove(player.getUniqueId());
-                        if (!player.isOnline()) {
-                            return;
-                        }
-                        messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
-                                Map.of("layer_name", targetName));
-                        logWarning("ポータル転送先の生成失敗: player=" + player.getName()
-                                + ", portal=" + portal.id() + ", target=" + targetTemplate
-                                + ", error=" + (error != null ? rootMessage(error) : "world-not-created"));
-                        return;
-                    }
+        worldFuture.whenComplete((targetWorld, error) -> {
+            // 完了コールバックの実行スレッドは保証されないため、必ずメインスレッドへ戻す。
+            Runnable task = () -> {
+                if (error != null || targetWorld == null) {
+                    cooldowns.remove(player.getUniqueId());
                     if (!player.isOnline()) {
                         return;
                     }
-                    beginWarp(player, portal, portalMatch, targetTemplate, targetName, targetWorld);
-                };
-                if (Bukkit.isPrimaryThread()) {
-                    task.run();
-                } else {
-                    Bukkit.getScheduler().runTask(plugin, task);
+                    messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
+                            Map.of("layer_name", targetName));
+                    logWarning("ポータル転送先の生成失敗: player=" + player.getName()
+                            + ", portal=" + portal.id() + ", target=" + targetTemplate
+                            + ", error=" + (error != null ? rootMessage(error) : "world-not-created"));
+                    return;
                 }
-            });
-        }, SNEAK_HOLD_TICKS);
+                if (!player.isOnline()) {
+                    return;
+                }
+                beginWarp(player, portal, portalMatch, targetTemplate, targetName, targetWorld);
+            };
+            if (Bukkit.isPrimaryThread()) {
+                task.run();
+            } else {
+                Bukkit.getScheduler().runTask(plugin, task);
+            }
+        });
     }
 
     /**
      * 転送先ワールドの準備が完了した後に、転送先座標の算出とテレポートを開始する（メインスレッド専用）。
      * <p>
-     * しゃがみ継続の確認（{@value #SNEAK_HOLD_TICKS} tick）は呼び出し側で完了している。
      * 転送先のチャンクは転送直前に同期的にロードするため、追加の待機は行わない。
      */
     private void beginWarp(Player player, PortalDefinition portal, LayerConfigService.PortalMatch portalMatch,
                            String targetTemplate, String targetName, World targetWorld) {
-        actionBar(player, "portal.warping", Map.of("layer_name", targetName));
-
         Location destination = buildDestination(player, portal, targetWorld);
         World sourceWorld = player.getWorld();
         String sourceLayer = portalMatch.layer().getId();
-
-        // インスタンス生成待ちでチャンク準備が遅れる場合があるため、待機中であることを明示する。
-        player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
 
         if (!player.isOnline()) {
             return;

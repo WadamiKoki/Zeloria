@@ -20,6 +20,7 @@ import com.zeloria.world.LayerEffectService;
 import com.zeloria.world.LayerEntryListener;
 import com.zeloria.world.BuildManager;
 import com.zeloria.world.BuildWorldGuardListener;
+import com.zeloria.world.CollisionManager;
 import com.zeloria.world.LayerManager;
 import com.zeloria.world.LayerNpcService;
 import com.zeloria.npc.NpcDamageListener;
@@ -160,6 +161,9 @@ public final class Zeloria extends JavaPlugin {
 
     private MobConfigService mobConfigService;
 
+    /** 壁として扱うブロック（{@code config/CollisionData/solid_blocks.yml}）の判定。 */
+    private CollisionManager collisionManager;
+
     /** スポーン済みカスタムモブの実行時ステータス管理。 */
     private MobStatsService mobStatsService;
 
@@ -271,6 +275,7 @@ public final class Zeloria extends JavaPlugin {
         this.messageService = new MessageService(this, this.yamlLoader);
         this.layerConfigService = new LayerConfigService(this, this.yamlLoader);
         this.mobConfigService = new MobConfigService(this, this.yamlLoader);
+        this.collisionManager = new CollisionManager(this, this.yamlLoader);
         this.npcManager = new NpcManager(this, this.yamlLoader);
         this.mobStatsService = new MobStatsService(this);
         this.combatService = new CombatService(this);
@@ -1033,6 +1038,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public MobConfigService getMobConfigService() {
         return mobConfigService;
+    }
+
+    /**
+     * CollisionManager（壁判定）を取得する。
+     *
+     * @return プラグインの CollisionManager（onEnable 前は null）
+     */
+    public CollisionManager getCollisionManager() {
+        return collisionManager;
     }
 
     /**

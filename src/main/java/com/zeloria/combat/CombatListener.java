@@ -225,6 +225,13 @@ public final class CombatListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onEntityDamage(EntityDamageEvent event) {
+        // 落下ダメージはプラグイン側 HP 管理にもバニラ死亡にも繋げない。
+        // 最大 HP を超える落下ダメージで死亡しないよう、常に完全キャンセルする。
+        if (event.getEntity() instanceof Player && event.getCause() == DamageCause.FALL) {
+            event.setCancelled(true);
+            return;
+        }
+
         // 真の HP は PlayerStats#currentHealth のため、プレイヤーへのバニラダメージは
         // すべてキャンセルする。以降のカスタム計算のみが HP を減少させる。
         if (event.getEntity() instanceof Player playerVictim) {

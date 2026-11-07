@@ -5,6 +5,7 @@ import com.zeloria.mob.MobStats;
 import com.zeloria.mob.MobStatsService;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
+import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
@@ -248,11 +249,30 @@ public final class CombatService {
             return;
         }
 
+        // バニラと同様に被弾音を周囲へ再生する（カスタムモブは汎用の被弾音）。
+        playHurtSound(victim);
+
         if (remaining <= 0.0) {
             victim.setHealth(0.0);
             return;
         }
         victim.setHealth(remaining);
+    }
+
+    /**
+     * バニラと同等の被弾音を周囲へ再生する。
+     * <p>
+     * プレイヤーは {@link Sound#ENTITY_PLAYER_HURT}、それ以外（カスタムモブ）は
+     * {@link Sound#ENTITY_GENERIC_HURT} を使用し、音量・ピッチはバニラ既定値（1.0）に揃える。
+     *
+     * @param victim 被弾したエンティティ
+     */
+    private static void playHurtSound(LivingEntity victim) {
+        if (victim == null || !victim.isValid()) {
+            return;
+        }
+        Sound sound = victim instanceof Player ? Sound.ENTITY_PLAYER_HURT : Sound.ENTITY_GENERIC_HURT;
+        victim.getWorld().playSound(victim.getLocation(), sound, 1.0f, 1.0f);
     }
 
     /**
@@ -272,6 +292,7 @@ public final class CombatService {
         }
 
         double nextHealth = stats.getCurrentHealth() - damage;
+        playHurtSound(player);
         stats.setCurrentHealth(Math.max(0.0, nextHealth));
         syncPlayerHealth(player);
 

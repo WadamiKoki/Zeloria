@@ -1,5 +1,6 @@
 package com.zeloria.player;
 
+import com.zeloria.combat.CombatService;
 import com.zeloria.core.Zeloria;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -29,7 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * {@link TextDisplay} をプレイヤーの passenger（乗り物扱い）として装着するため、
  * プレイヤーが移動・テレポートしても表示が追従する。1 秒ごとに
- * {@link PlayerStats} の最新値を読み直し、表示内容を更新する。
+ * {@link PlayerStats} の最新値を読み直し、表示内容を更新する。同じ周期で
+ * バニラの体力バー・満腹度（MP バー）・レベル・経験値バーも強制的に同期する。
  * <p>
  * 死亡中・独自死亡の待機中・データ未読み込みのプレイヤーは表示を消去し、
  * リスポーン後に自動で再生成する。退出時は {@link PlayerQuitEvent} で表示を破棄する。
@@ -103,6 +105,10 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
             return;
         }
 
+        // 空腹・自然減少・バニラのレベル操作などでバニラ側の値がずれるため、
+        // 表示更新の有無に関わらず毎秒強制的に同期する。
+        syncVanillaStatus(player, stats);
+
         TextDisplay display = displays.get(player.getUniqueId());
         if (display == null
                 || !display.isValid()
@@ -121,6 +127,29 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         display.text(format(stats));
         if (!player.getPassengers().contains(display)) {
             player.addPassenger(display);
+        }
+    }
+
+    /**
+     * RPG ステータスをバニラの体力バー・満腹度（MP バー）・レベル・経験値バーへ毎秒反映する。
+     * <p>
+     * バニラの空腹による体力減少や自然回復、レベル操作などでバニラ側の値がずれるため、
+     * ステータス変更の有無に関わらず常に上書きする。
+     *
+     * @param player 対象プレイヤー
+     * @param stats  反映するステータス
+     */
+    private void syncVanillaStatus(Player player, PlayerStats stats) {
+        CombatService combatService = plugin.getCombatService();
+        if (combatService != null) {
+            // 体力バーは「現在 HP / 最大 HP」の割合をバニラ最大 20 へ写す（下限 1.0 で死亡回避）。
+            combatService.syncPlayerHealth(player);
+        }
+
+        PlayerStatsService statsService = plugin.getPlayerStatsService();
+        if (statsService != null) {
+            // 満腹度 = MP 割合、レベル・経験値バー = RPG のレベルと次レベルまでの進捗。
+            statsService.syncVanillaStats(player, stats);
         }
     }
 

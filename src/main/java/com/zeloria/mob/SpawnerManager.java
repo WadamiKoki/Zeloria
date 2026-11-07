@@ -3,6 +3,7 @@ package com.zeloria.mob;
 import com.zeloria.core.MessageService;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.core.Zeloria;
+import com.zeloria.world.CollisionManager;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerData;
 import com.zeloria.world.SpawnerPlacement;
@@ -15,8 +16,6 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
@@ -77,6 +76,9 @@ public final class SpawnerManager {
 
     /** 判定タスクの実行間隔（tick）。 */
     private static final int TICK_INTERVAL = 20;
+
+    /** 奈落と判定する Y 座標。これ以下へ落ちたモブは消滅させる。 */
+    private static final double VOID_DESPAWN_Y = -65.0;
 
     /** 安全なスポーン地点を探す最大試行回数。 */
     private static final int SPAWN_ATTEMPTS = 10;
@@ -370,7 +372,10 @@ public final class SpawnerManager {
 
         MobData mob = found.get();
         EntityType entityType = mob.spawnableEntityType();
-        if (!entityType.isSpawnable()) {
+        // バニラの isSpawnable() は自然湧き／スポーンエッグ可否に依存するため、
+        // カスタムモブが弾かれることがある。LivingEntity として生成できるかだけを確認する。
+        Class<? extends Entity> entityClass = entityType.getEntityClass();
+        if (entityClass == null || !LivingEntity.class.isAssignableFrom(entityClass)) {
             warnOnce(data.mobId(), "スポーンできないエンティティ種別です: mob=" + mob.id()
                     + ", entity=" + entityType.getKey());
             return;
@@ -384,12 +389,6 @@ public final class SpawnerManager {
         int allowed = Math.min(data.spawnLimit(), data.maxAlive() - alive);
         for (int i = 0; i < allowed; i++) {
             Location location = findSpawnLocation(world, center);
-            if (location == null) {
-                plugin.getLogger().info("[Spawner] " + data.id()
-                        + " 安全地点なし center=" + center);
-                return;
-            }
-
             spawn(world, location, mob, data.level(), entityType);
             plugin.getLogger().info("[Spawner] " + data.id()
                     + " スポーン成功 loc=" + location + " level=" + data.level());
@@ -515,6 +514,52 @@ public final class SpawnerManager {
             }
         }
         return false;
+    }
+
+    /**
+     * 奈落・溶岩・壁の中にいる管理対象モブを消滅させる。
+     * <p>
+     * 壁の中の判定は、モブの足元ブロックと頭のブロックが<b>両方とも</b>
+     * {@link CollisionManager#isSolidBlock(Material)} で {@code true} の場合のみ行う。
+     * これにより葉っぱ・水・溶岩・植物の中にいるモブは消滅しない。
+     *
+     * @param world 対象ワールド
+     */
+    private void despawnInvalidMobs(World world) {
+        CollisionManager collisionManager = plugin.getCollisionManager();
+
+        for (LivingEntity living : new ArrayList<>(world.getLivingEntities())) {
+            if (!isManagedMob(living)) {
+                continue;
+            }
+
+            Location location = living.getLocation();
+            if (location.getY() <= VOID_DESPAWN_Y
+                    || location.getBlock().getType() == Material.LAVA
+                    || (collisionManager != null && isInsideWall(location, collisionManager))) {
+                removeManagedMob(living);
+            }
+        }
+    }
+
+    /**
+     * 足元と頭の両方が壁ブロックか判定する。
+     */
+    private static boolean isInsideWall(Location location, CollisionManager collisionManager) {
+        Material feet = location.getBlock().getType();
+        Material head = location.clone().add(0, 1, 0).getBlock().getType();
+        return collisionManager.isSolidBlock(feet) && collisionManager.isSolidBlock(head);
+    }
+
+    /**
+     * 管理対象モブをワールドから除去し、実行時ステータスの登録も破棄する。
+     */
+    private void removeManagedMob(LivingEntity living) {
+        MobStatsService mobStatsService = plugin.getMobStatsService();
+        if (mobStatsService != null) {
+            mobStatsService.remove(living.getUniqueId());
+        }
+        living.remove();
     }
 
     /**
@@ -645,12 +690,16 @@ public final class SpawnerManager {
     }
 
     /**
-     * 基準座標の周辺から、足元と頭上に空間があり直下が固体ブロックの地点を探す。
+     * 基準座標の周辺からスポーン地点を探す。
      * <p>
-     * まず基準座標をそのまま確認し、見つからなければ X / Z をランダムにずらしつつ
-     * Y 座標を {@code -4} ～ {@code +4} まで 1 ブロックずつ変えて確認する。
+     * スポナーからの湧きを復活させるため、足元・頭上の空間や直下の固体ブロックは
+     * 要求しない（空中や壁の中でもスポーンする）。基準座標が有効な Y 範囲内なら
+     * そのまま使用し、範囲外の場合のみ周辺を探索する。探索しても見つからない場合は
+     * 湧きを止めないよう基準座標をそのまま返す。
      *
-     * @return スポーン地点。見つからない場合は {@code null}
+     * @param world  対象ワールド
+     * @param center 基準座標
+     * @return スポーン地点（非 {@code null}）
      */
     private Location findSpawnLocation(World world, Location center) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
@@ -676,21 +725,22 @@ public final class SpawnerManager {
                 }
             }
         }
-        return null;
+
+        return center.clone();
     }
 
     /**
-     * その地点にモブを立たせられるか判定する。
+     * その地点にモブを出現させられるか判定する。
+     * <p>
+     * 空間の有無や直下のブロック種別は要求せず、ワールドの有効 Y 範囲内かどうかだけを確認する。
      */
     private boolean isSpawnable(Location location) {
-        Block feet = location.getBlock();
-        Block head = feet.getRelative(BlockFace.UP);
-        Block ground = feet.getRelative(BlockFace.DOWN);
-        return feet.isPassable() && head.isPassable() && isSolidGround(ground.getType());
-    }
-
-    private static boolean isSolidGround(Material material) {
-        return material.isSolid() && material != Material.LAVA && material != Material.MAGMA_BLOCK;
+        World world = location.getWorld();
+        if (world == null) {
+            return false;
+        }
+        int y = location.getBlockY();
+        return y > world.getMinHeight() && y < world.getMaxHeight() - 1;
     }
 
 
@@ -733,6 +783,9 @@ public final class SpawnerManager {
                 active.remove(entry.getKey());
                 continue;
             }
+
+            // 奈落・溶岩・壁の中にいるモブは毎秒消滅させる（プレイヤー不在でも実行する）。
+            despawnInvalidMobs(world);
 
             boolean hasPlayers = !world.getPlayers().isEmpty();
             if (hasPlayers != layer.mobsAware) {

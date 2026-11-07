@@ -1,0 +1,20 @@
+# 壁として扱うブロック（ホワイトリスト方式）
+#
+# ここに列挙した Material のみが「壁」と判定されます。
+# 葉っぱ（*_LEAVES）、水（WATER）、溶岩（LAVA）、ライトブロック（LIGHT）、
+# 草・シダなどの植物、看板、感圧板、ボタン、レバーは含めないでください。
+# 未配置・空の場合は Java 側の既定値が使用されます。
+solid_blocks:
+  - STONE
+  - DIRT
+  - GRASS_BLOCK
+  - COBBLESTONE
+  - OAK_PLANKS
+  - OAK_LOG
+  - SAND
+  - GRAVEL
+  - IRON_BLOCK
+  - GOLD_BLOCK
+  - DIAMOND_BLOCK
+  - NETHERRACK
+  - END_STONE

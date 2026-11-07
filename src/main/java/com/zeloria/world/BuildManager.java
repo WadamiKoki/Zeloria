@@ -80,6 +80,15 @@ public class BuildManager {
     /** 建築モードの実行権限。 */
     public static final String BUILD_PERMISSION = "zeloria.admin.build";
 
+    /**
+     * 1 テンプレートあたりに同時に開ける建築ワールド数。
+     * <p>
+     * 建築ワールドの上限はテンプレート単位で独立して管理し、
+     * {@code LayerData} の {@code maxInstances}（レイヤーインスタンスの上限）とは共有しない。
+     * 既存レイヤーの数によって建築ワールドの生成が制限されることはない。
+     */
+    public static final int MAX_WORLDS_PER_TEMPLATE = 1;
+
     /** テンプレート／建築ワールド ID に許可する文字種（パストラバーサル防止）。 */
     private static final Pattern ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
@@ -182,9 +191,14 @@ public class BuildManager {
         assertMainThread();
         validateId(templateId, "templateId");
 
-        World existing = findBuildWorld(templateId);
-        if (existing != null) {
-            buildWorlds.put(templateId, existing);
+        // 建築ワールドの上限は「1 テンプレートにつき 1 ワールド」。
+        // buildWorlds はテンプレート ID をキーにした Map のため全体サイズでの上限判定は行わず、
+        // LayerManager の LayerData#maxInstances（レイヤー数上限）とも共有しない。
+        if (getOpenBuildWorldCount(templateId) >= MAX_WORLDS_PER_TEMPLATE) {
+            World existing = findBuildWorld(templateId);
+            if (existing != null) {
+                buildWorlds.put(templateId, existing);
+            }
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "既に開かれています。/admin build join " + templateId + " で参加してください"));
         }
@@ -490,6 +504,20 @@ public class BuildManager {
     }
 
     /**
+     * 指定テンプレートで現在開いている建築ワールド数を返す。
+     * <p>
+     * {@link #buildWorlds} はテンプレート ID をキーとするため、同一テンプレートの
+     * 建築ワールドは常に 1 件以下となり {@link #MAX_WORLDS_PER_TEMPLATE} を超えない。
+     * レイヤーのインスタンス数（{@code LayerData#maxInstances}）は参照しない。
+     *
+     * @param templateId テンプレート ID
+     * @return 開いている建築ワールド数（0 または 1）
+     */
+    public int getOpenBuildWorldCount(String templateId) {
+        return isBuildWorldOpen(templateId) ? 1 : 0;
+    }
+
+    /**
      * 指定テンプレートの建築ワールドを取得する。
      *
      * @param templateId テンプレート ID
@@ -708,6 +736,20 @@ public class BuildManager {
             return false;
         }
         return !LayerManager.isInstanceId(world.getKey().getKey());
+    }
+
+    /**
+     * 指定 ID が建築ワールドのキー名（{@code <templateId>_build}）か判定する。
+     * <p>
+     * レイヤーインスタンス（{@code <templateId>_instance_N}）と建築ワールドは
+     * 同じ {@code minecraft} 名前空間・同じディレクトリを共有するため、
+     * レイヤー側が建築ワールドをインスタンスとして扱わないための識別に使用する。
+     *
+     * @param id 判定対象の ID（レベル名・ディレクトリ名）
+     * @return 建築ワールドの場合は {@code true}
+     */
+    public static boolean isBuildWorldId(String id) {
+        return id != null && id.endsWith(BUILD_WORLD_SUFFIX);
     }
 
     /**

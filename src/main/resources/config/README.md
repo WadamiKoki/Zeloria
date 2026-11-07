@@ -32,6 +32,10 @@ Zeloria は起動時に YAML を自動生成しません（`saveResource(...)` �
 - `MobData/`
 - `gui/`
 
+### 任意ディレクトリ
+
+- `CollisionData/` - `solid_blocks.yml` で壁として扱うブロックを定義（未配置時は既定値を使用）
+
 ### コピー例
 
 ```bash

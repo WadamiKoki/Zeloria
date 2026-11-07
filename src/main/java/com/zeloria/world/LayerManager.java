@@ -669,7 +669,11 @@ public class LayerManager {
         }
 
         // 既に同じテンプレートから生成されたインスタンスがあれば再利用する。
+        // 建築ワールド（<templateId>_build）はレイヤーインスタンスではないため対象外。
         for (Map.Entry<String, String> entry : instanceTemplates.entrySet()) {
+            if (BuildManager.isBuildWorldId(entry.getKey())) {
+                continue;
+            }
             if (!templateId.equalsIgnoreCase(entry.getValue())) {
                 continue;
             }
@@ -722,7 +726,11 @@ public class LayerManager {
         }
 
         // 既に同じテンプレートから生成されたインスタンスがあれば再利用する。
+        // 建築ワールド（<templateId>_build）はレイヤーインスタンスではないため対象外。
         for (Map.Entry<String, String> entry : instanceTemplates.entrySet()) {
+            if (BuildManager.isBuildWorldId(entry.getKey())) {
+                continue;
+            }
             if (!templateId.equalsIgnoreCase(entry.getValue())) {
                 continue;
             }
@@ -869,6 +877,9 @@ public class LayerManager {
 
     /**
      * LayerData から最大インスタンス数を取得する。未設定の場合は既定値を返す。
+     * <p>
+     * この上限はレイヤーインスタンス（{@code <templateId>_instance_N}）にのみ適用され、
+     * 建築ワールド（{@code <templateId>_build}）の生成数には影響しない。
      */
     private int resolveMaxInstances(String templateId) {
         LayerConfigService configService = plugin.getLayerConfigService();
