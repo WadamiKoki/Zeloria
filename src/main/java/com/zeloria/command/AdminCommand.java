@@ -53,6 +53,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -67,6 +68,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -100,6 +102,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String INFO = "info";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
+    private static final String CREATE = "create";
+    private static final String JOIN = "join";
     private static final String LAYER = "layer";
     private static final String ALL = "all";
     private static final String ONLINE = "online";
@@ -255,9 +259,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(INFO);
                 candidates.add(GUI);
                 candidates.add(LAYER);
-                if (isBuildChannel()
-                        && plugin.getBuildManager() != null
-                        && sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                if (isBuildChannel() && plugin.getBuildManager() != null) {
                     candidates.add(BUILD);
                 }
             }
@@ -313,21 +315,49 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             BuildManager buildManager = plugin.getBuildManager();
             if (!isBuildChannel()
                     || !sender.hasPermission(ADMIN_PERMISSION)
-                    || !sender.hasPermission(BuildManager.BUILD_PERMISSION)
                     || buildManager == null) {
                 return List.of();
             }
+
+            boolean canBuild = sender.hasPermission(BuildManager.BUILD_PERMISSION);
+            Set<String> templates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            templates.addAll(buildManager.listTemplateIds());
+            Set<String> openTemplates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            openTemplates.addAll(buildManager.getOpenTemplateIds());
+
             if (args.length == 2) {
-                List<String> candidates = new ArrayList<>();
+                Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                if (canBuild) {
+                    candidates.add(CREATE);
+                    candidates.add(JOIN);
+                    candidates.add(SAVE);
+                    candidates.add(UNSAVE);
+                }
+                candidates.add(LIST);
                 candidates.add(INFO);
-                candidates.add(SAVE);
-                candidates.add(UNSAVE);
-                candidates.addAll(buildManager.listTemplateIds());
+                candidates.addAll(templates);
+                candidates.addAll(openTemplates);
                 return partial(args[1], candidates);
             }
-            if (args.length == 3
+            if (args.length == 3) {
+                String action = args[1];
+                if (CREATE.equalsIgnoreCase(action)) {
+                    return partial(args[2], templates);
+                }
+                if (JOIN.equalsIgnoreCase(action) || INFO.equalsIgnoreCase(action)) {
+                    return partial(args[2], openTemplates);
+                }
+                if (SAVE.equalsIgnoreCase(action) || UNSAVE.equalsIgnoreCase(action)) {
+                    Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    candidates.addAll(openTemplates);
+                    candidates.add(FORCE);
+                    return partial(args[2], candidates);
+                }
+                return List.of();
+            }
+            if (args.length == 4
                     && (SAVE.equalsIgnoreCase(args[1]) || UNSAVE.equalsIgnoreCase(args[1]))) {
-                return partial(args[2], List.of(FORCE));
+                return partial(args[3], List.of(FORCE));
             }
             return List.of();
         }
@@ -787,25 +817,49 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     /**
      * {@code /admin build}: チャンネル 1 の建築モードを操作する。
      * <ul>
-     *     <li>{@code /admin build <templateId>} - テンプレートを複製して建築ワールドを開く</li>
-     *     <li>{@code /admin build info} - 建築モードの状態を表示する</li>
-     *     <li>{@code /admin build save [force]} - 保存して Hub へ戻る</li>
-     *     <li>{@code /admin build unsave [force]} - 保存せずに破棄して Hub へ戻る</li>
+     *     <li>{@code /admin build create <templateId>} - テンプレートから建築ワールドを新規作成する</li>
+     *     <li>{@code /admin build join <templateId>} - 開いている建築ワールドへ参加する</li>
+     *     <li>{@code /admin build list} - 開いている建築ワールドを一覧表示する</li>
+     *     <li>{@code /admin build info [templateId]} - 建築ワールドの状態を表示する</li>
+     *     <li>{@code /admin build save [templateId] [force]} - 保存して Hub へ戻る</li>
+     *     <li>{@code /admin build unsave [templateId] [force]} - 保存せずに破棄して Hub へ戻る</li>
+     *     <li>{@code /admin build <templateId>} - 開いていれば参加、無ければ作成する（後方互換）</li>
      * </ul>
      * 建築モードは {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
      */
     private void handleBuild(CommandSender sender, String[] args) {
-        // info は建築モードの状態確認のみのため、zeloria.admin だけで実行できる。
-        if (args.length >= 2 && INFO.equalsIgnoreCase(args[1])) {
+        // list / info は建築モードの状態確認のみのため、zeloria.admin だけで実行できる。
+        if (args.length >= 2 && (LIST.equalsIgnoreCase(args[1]) || INFO.equalsIgnoreCase(args[1]))) {
             if (!sender.hasPermission(ADMIN_PERMISSION)) {
                 send(sender, noPermission(ADMIN_PERMISSION));
                 return;
             }
-            if (args.length != 2) {
+            BuildManager buildManager = plugin.getBuildManager();
+            if (buildManager == null) {
+                send(sender, message("build.channel_only", Map.of(),
+                        "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+                return;
+            }
+            if (args.length > 3 || (LIST.equalsIgnoreCase(args[1]) && args.length != 2)) {
                 send(sender, buildUsage());
                 return;
             }
-            handleBuildInfo(sender);
+            if (args.length == 2) {
+                if (LIST.equalsIgnoreCase(args[1])) {
+                    handleBuildList(sender, buildManager);
+                    return;
+                }
+                // 後方互換: テンプレート未指定の info は開いている代表ワールドを表示する。
+                String templateId = buildManager.getActiveTemplateId();
+                if (templateId == null) {
+                    send(sender, message("build.not_active", Map.of(),
+                            "<yellow>建築中のワールドはありません。</yellow>"));
+                    return;
+                }
+                handleBuildInfo(sender, buildManager, templateId);
+            } else {
+                handleBuildInfo(sender, buildManager, args[2]);
+            }
             return;
         }
 
@@ -826,13 +880,26 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (SAVE.equalsIgnoreCase(args[1])) {
-            handleBuildSave(sender, buildManager, args, true);
+        if (SAVE.equalsIgnoreCase(args[1]) || UNSAVE.equalsIgnoreCase(args[1])) {
+            handleBuildSave(sender, buildManager, args, SAVE.equalsIgnoreCase(args[1]));
             return;
         }
 
-        if (UNSAVE.equalsIgnoreCase(args[1])) {
-            handleBuildSave(sender, buildManager, args, false);
+        if (CREATE.equalsIgnoreCase(args[1])) {
+            if (args.length != 3) {
+                send(sender, buildUsage());
+                return;
+            }
+            handleBuildCreate(sender, buildManager, args[2]);
+            return;
+        }
+
+        if (JOIN.equalsIgnoreCase(args[1])) {
+            if (args.length != 3) {
+                send(sender, buildUsage());
+                return;
+            }
+            handleBuildJoin(sender, buildManager, args[2]);
             return;
         }
 
@@ -840,6 +907,24 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             send(sender, buildUsage());
             return;
         }
+
+        // 後方互換: /admin build <templateId> は開いていれば参加、無ければ作成する。
+        String templateId = args[1];
+        if (buildManager.isBuildWorldOpen(templateId)) {
+            handleBuildJoin(sender, buildManager, templateId);
+        } else {
+            handleBuildCreate(sender, buildManager, templateId);
+        }
+    }
+
+    /**
+     * {@code /admin build create <templateId>}: 建築ワールドを新規作成して入場する。
+     *
+     * @param sender       実行者
+     * @param buildManager 建築モード管理
+     * @param templateId   テンプレート ID
+     */
+    private void handleBuildCreate(CommandSender sender, BuildManager buildManager, String templateId) {
         if (buildManager.isBusy()) {
             sendBuildBusy(sender);
             return;
@@ -849,50 +934,67 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                     "<red>建築モードを開始するにはプレイヤーとして実行してください。</red>"));
             return;
         }
-
-        String templateId = args[1];
-        String activeTemplate = buildManager.getActiveTemplateId();
-        if (activeTemplate != null) {
-            if (!activeTemplate.equals(templateId)) {
-                send(sender, message("build.other_active", Map.of("template", esc(activeTemplate)),
-                        "<yellow>既に別の建築ワールド（<white>{template}</white>）が開かれています。"
-                                + "先に /admin build save で保存してください</yellow>"));
-                return;
-            }
-            if (buildManager.joinBuildWorld(player)) {
-                send(sender, message("build.joined", Map.of(),
-                        "<green>既存の建築ワールドに参戦しました。</green>"));
-            } else {
-                send(sender, message("build.not_active", Map.of(),
-                        "<yellow>建築中のワールドはありません。</yellow>"));
-            }
+        if (buildManager.isBuildWorldOpen(templateId)) {
+            send(sender, message("build.already_open", Map.of("template", esc(templateId)),
+                    "<yellow>建築ワールド '<white>{template}</white>' は既に開かれています。"
+                            + "/admin build join <white>{template}</white> で参加してください。</yellow>"));
             return;
         }
 
         send(sender, message("build.preparing", Map.of("template", esc(templateId)),
                 "<yellow>建築ワールド '<white>{template}</white>' を準備しています...</yellow>"));
-        buildManager.openBuildWorldAsync(templateId, player).whenComplete((world, error) -> {
+        buildManager.createBuildWorldAsync(templateId, player).whenComplete((world, error) -> {
             if (error != null) {
                 send(sender, message("build.open_failed", Map.of(
                                 "template", esc(templateId),
                                 "error", esc(rootMessage(error))),
                         "<red>建築ワールドを開けませんでした: <white>{error}</white></red>"));
-            } else {
-                send(sender, message("build.opened", Map.of("template", esc(templateId)),
-                        "<green>建築ワールド '<white>{template}</white>' を開きました。</green>"));
+                return;
             }
+            send(sender, message("build.opened", Map.of("template", esc(templateId)),
+                    "<green>建築ワールド '<white>{template}</white>' を開きました。</green>"));
         });
     }
+
+    /**
+     * {@code /admin build join <templateId>}: 開いている建築ワールドへ参加する。
+     *
+     * @param sender       実行者
+     * @param buildManager 建築モード管理
+     * @param templateId   テンプレート ID
+     */
+    private void handleBuildJoin(CommandSender sender, BuildManager buildManager, String templateId) {
+        if (buildManager.isBusy()) {
+            sendBuildBusy(sender);
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            send(sender, message("build.player_only", Map.of(),
+                    "<red>建築モードを開始するにはプレイヤーとして実行してください。</red>"));
+            return;
+        }
+        if (!buildManager.joinBuildWorld(templateId, player)) {
+            send(sender, message("build.not_open", Map.of("template", esc(templateId)),
+                    "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+            return;
+        }
+        send(sender, message("build.joined", Map.of("template", esc(templateId)),
+                "<green>建築ワールド '<white>{template}</white>' に参加しました。</green>"));
+    }
+
 
     /**
      * {@code /admin build} の使用方法メッセージを返す。
      */
     private String buildUsage() {
         return message("build.usage", Map.of(),
-                "<gray>使い方:</gray> <white>/admin build <templateId></white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build info</white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build save [force]</white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build unsave [force]</white>");
+                "<gray>使い方:</gray> <white>/admin build create <templateId></white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build join <templateId></white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build list</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build info [templateId]</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build save [templateId] [force]</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build unsave [templateId] [force]</white>");
     }
 
     /**
@@ -902,41 +1004,80 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private void handleBuildSave(CommandSender sender, BuildManager buildManager,
                                  String[] args, boolean save) {
-        boolean force = args.length == 3 && FORCE.equalsIgnoreCase(args[2]);
-        if (args.length > 3 || (args.length == 3 && !force)) {
+        String templateId = null;
+        boolean force = false;
+        if (args.length == 3) {
+            if (FORCE.equalsIgnoreCase(args[2])) {
+                force = true;
+            } else {
+                templateId = args[2];
+            }
+        } else if (args.length == 4 && FORCE.equalsIgnoreCase(args[3])) {
+            templateId = args[2];
+            force = true;
+        } else if (args.length != 2) {
             send(sender, buildUsage());
             return;
         }
+
         if (buildManager.isBusy()) {
             sendBuildBusy(sender);
             return;
         }
-        String templateId = buildManager.getActiveTemplateId();
-        if (templateId == null) {
-            send(sender, message("build.not_active", Map.of(),
-                    "<yellow>建築中のワールドはありません。</yellow>"));
-            return;
-        }
 
         Player executor = sender instanceof Player player ? player : null;
-        if (!force && buildManager.hasOtherPlayers(executor)) {
-            send(sender, message(save ? "build.others_save" : "build.others_unsave", Map.of(),
-                    save
-                            ? "<yellow>他のプレイヤーが建築ワールドにいます。全員退出するか、"
-                            + "強制保存する場合は /admin build save force を実行してください</yellow>"
-                            : "<yellow>他のプレイヤーが建築ワールドにいます。全員退出するか、"
-                            + "強制破棄する場合は /admin build unsave force を実行してください</yellow>"));
+
+        if (templateId == null) {
+            // テンプレート未指定時は開いているすべての建築ワールドを対象にする（後方互換）。
+            Set<String> templateIds = buildManager.getOpenTemplateIds();
+            if (templateIds.isEmpty()) {
+                send(sender, message("build.not_active", Map.of(),
+                        "<yellow>建築中のワールドはありません。</yellow>"));
+                return;
+            }
+            if (!force) {
+                for (String openTemplate : templateIds) {
+                    if (buildManager.hasOtherPlayers(openTemplate, executor)) {
+                        send(sender, buildOthersMessage(save, openTemplate));
+                        return;
+                    }
+                }
+            }
+            String label = String.join(", ", templateIds);
+            send(sender, buildProgressMessage(save, label));
+            reportBuildResult(sender, save, label, save
+                    ? buildManager.saveAllBuildWorldsAsync()
+                    : buildManager.unsaveAllBuildWorldsAsync());
             return;
         }
 
-        send(sender, message(save ? "build.saving" : "build.discarding", Map.of(),
-                save
-                        ? "<yellow>建築ワールドを保存しています...</yellow>"
-                        : "<yellow>建築ワールドの変更を破棄しています...</yellow>"));
+        if (!buildManager.isBuildWorldOpen(templateId)) {
+            send(sender, message("build.not_open", Map.of("template", esc(templateId)),
+                    "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+            return;
+        }
+        if (!force && buildManager.hasOtherPlayers(templateId, executor)) {
+            send(sender, buildOthersMessage(save, templateId));
+            return;
+        }
 
-        CompletableFuture<Boolean> future = save
-                ? buildManager.saveActiveAsync()
-                : buildManager.unsaveActiveAsync();
+        send(sender, buildProgressMessage(save, templateId));
+        reportBuildResult(sender, save, templateId, save
+                ? buildManager.saveBuildWorldAsync(templateId)
+                : buildManager.unsaveBuildWorldAsync(templateId));
+    }
+
+    /**
+     * 建築ワールドの保存／破棄結果を実行者へ通知する。
+     *
+     * @param sender   実行者
+     * @param save     {@code true} の場合は保存、{@code false} の場合は破棄
+     * @param template 対象テンプレートの表示名
+     * @param future   処理 future
+     */
+    private void reportBuildResult(CommandSender sender, boolean save, String template,
+                                   CompletableFuture<Boolean> future) {
         future.whenComplete((success, error) -> {
             if (error != null) {
                 send(sender, message("build.save_failed", Map.of("error", esc(rootMessage(error))),
@@ -949,40 +1090,134 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         "<red>建築ワールドの処理に失敗しました: <white>{error}</white></red>"));
                 return;
             }
-            if (save) {
-                send(sender, message("build.saved", Map.of("template", esc(templateId)),
-                        "<green>テンプレート <white>{template}</white> を保存しました。"
-                                + "Hubに戻ります</green>"));
-            } else {
-                send(sender, message("build.unsaved", Map.of("template", esc(templateId)),
-                        "<green>テンプレート <white>{template}</white> の変更を破棄しました。"
-                                + "Hubに戻ります</green>"));
-            }
+            send(sender, message(save ? "build.saved" : "build.unsaved",
+                    Map.of("template", esc(template)),
+                    save
+                            ? "<green>テンプレート <white>{template}</white> を保存しました。Hubに戻ります</green>"
+                            : "<green>テンプレート <white>{template}</white> の変更を破棄しました。Hubに戻ります</green>"));
         });
     }
 
     /**
-     * {@code /admin build info}: 建築モードの状態を表示する。
+     * 他のプレイヤーが建築ワールドにいる場合の警告メッセージを返す。
+     *
+     * @param save       {@code true} の場合は保存、{@code false} の場合は破棄
+     * @param templateId テンプレート ID
      */
-    private void handleBuildInfo(CommandSender sender) {
-        BuildManager buildManager = plugin.getBuildManager();
-        String templateId = buildManager == null ? null : buildManager.getActiveTemplateId();
-        if (buildManager == null || templateId == null) {
-            send(sender, message("build.info_inactive", Map.of(),
-                    "<yellow>建築モードは起動していません。</yellow>"));
+    private String buildOthersMessage(boolean save, String templateId) {
+        String command = (save ? SAVE : UNSAVE) + " " + templateId + " " + FORCE;
+        return message(save ? "build.others_save" : "build.others_unsave",
+                Map.of("template", esc(templateId), "command", esc(command)),
+                "<yellow>他のプレイヤーが建築ワールド '<white>{template}</white>' にいます。"
+                        + "全員退出するか、強制する場合は <white>/admin build {command}</white> を実行してください</yellow>");
+    }
+
+    /**
+     * 建築ワールドの保存／破棄中メッセージを返す。
+     *
+     * @param save       {@code true} の場合は保存、{@code false} の場合は破棄
+     * @param templateId テンプレート ID（カンマ区切りの複数指定可）
+     */
+    private String buildProgressMessage(boolean save, String templateId) {
+        return message(save ? "build.saving" : "build.discarding",
+                Map.of("template", esc(templateId)),
+                save
+                        ? "<yellow>建築ワールド '<white>{template}</white>' を保存しています...</yellow>"
+                        : "<yellow>建築ワールド '<white>{template}</white>' の変更を破棄しています...</yellow>");
+    }
+
+    /**
+     * {@code /admin build list}: 開いている建築ワールドを一覧表示する。
+     *
+     * @param sender       実行者
+     * @param buildManager 建築モード管理
+     */
+    private void handleBuildList(CommandSender sender, BuildManager buildManager) {
+        Set<String> templateIds = buildManager.getOpenTemplateIds();
+        if (templateIds.isEmpty()) {
+            send(sender, message("build.list_empty", Map.of(),
+                    "<gray>開いている建築ワールドはありません。</gray>"));
             return;
         }
 
-        World world = buildManager.getCurrentBuildWorld();
-        List<String> playerNames = buildManager.getActivePlayerNames();
+        send(sender, message("build.list_header",
+                Map.of("count", Integer.toString(templateIds.size())),
+                "<green>建築ワールド一覧</green> <gray>(<white>{count}</white> 件)</gray>"));
+        for (String templateId : templateIds) {
+            World world = buildManager.getBuildWorld(templateId);
+            send(sender, message("build.list_entry", Map.of(
+                            "template", esc(templateId),
+                            "world", esc(world == null ? "不明" : world.getName()),
+                            "players", Integer.toString(buildManager.getBuildWorldPlayerCount(templateId)),
+                            "owner", esc(ownerName(buildManager.getBuildWorldOwner(templateId))),
+                            "last_active", esc(formatTimestamp(
+                                    buildManager.getBuildWorldLastActive(templateId)))),
+                    "<gray>-</gray> <white>{template}</white> <dark_gray>({world})</dark_gray> "
+                            + "<gray>プレイヤー: </gray><white>{players}</white> <dark_gray>|</dark_gray> "
+                            + "<gray>作成者: </gray><white>{owner}</white> <dark_gray>|</dark_gray> "
+                            + "<gray>最終操作: </gray><white>{last_active}</white>"));
+        }
+    }
+
+    /**
+     * {@code /admin build info [templateId]}: 建築ワールドの状態を表示する。
+     *
+     * @param sender       実行者
+     * @param buildManager 建築モード管理
+     * @param templateId   テンプレート ID
+     */
+    private void handleBuildInfo(CommandSender sender, BuildManager buildManager, String templateId) {
+        World world = buildManager.getBuildWorld(templateId);
+        if (world == null) {
+            send(sender, message("build.not_open", Map.of("template", esc(templateId)),
+                    "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
+            return;
+        }
+
+        List<String> playerNames = buildManager.getActivePlayerNames(templateId);
         String players = playerNames.isEmpty() ? "なし" : String.join(", ", playerNames);
         send(sender, message("build.info", Map.of(
                         "template", esc(templateId),
-                        "world", esc(world == null ? "不明" : world.getName()),
-                        "players", esc(players)),
+                        "world", esc(world.getName()),
+                        "players", esc(players),
+                        "owner", esc(ownerName(buildManager.getBuildWorldOwner(templateId))),
+                        "last_active", esc(formatTimestamp(
+                                buildManager.getBuildWorldLastActive(templateId)))),
                 "<gray>建築モード:</gray> <white>{template}</white> "
                         + "<dark_gray>|</dark_gray> <gray>ワールド:</gray> <white>{world}</white> "
-                        + "<dark_gray>|</dark_gray> <gray>プレイヤー:</gray> <white>{players}</white>"));
+                        + "<dark_gray>|</dark_gray> <gray>プレイヤー:</gray> <white>{players}</white> "
+                        + "<dark_gray>|</dark_gray> <gray>作成者:</gray> <white>{owner}</white> "
+                        + "<dark_gray>|</dark_gray> <gray>最終操作:</gray> <white>{last_active}</white>"));
+    }
+
+    /**
+     * 建築ワールドの作成者名を取得する。
+     *
+     * @param ownerId 作成者の UUID
+     * @return 表示用の作成者名。記録が無い場合は {@code 不明}
+     */
+    private static String ownerName(UUID ownerId) {
+        if (ownerId == null) {
+            return "不明";
+        }
+        String name = Bukkit.getOfflinePlayer(ownerId).getName();
+        return name == null ? ownerId.toString() : name;
+    }
+
+    /**
+     * エポックミリ秒を表示用の日時文字列へ整形する。
+     *
+     * @param epochMillis エポックミリ秒
+     * @return 整形済みの日時。未記録の場合は {@code 不明}
+     */
+    private static String formatTimestamp(long epochMillis) {
+        if (epochMillis <= 0L) {
+            return "不明";
+        }
+        return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.ofEpochMilli(epochMillis));
     }
 
     /**

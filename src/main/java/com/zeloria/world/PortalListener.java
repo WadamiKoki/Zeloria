@@ -189,6 +189,10 @@ public class PortalListener implements Listener {
         // インスタンス生成待ちでチャンク準備が遅れる場合があるため、待機中であることを明示する。
         player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
 
+        // 未ロードチャンクへの転送は teleportAsync / teleport が success=false を返すため、
+        // 転送先のチャンクを明示的にロードしてから実行する。
+        loadDestinationChunk(destination);
+
         // teleportAsync の完了コールバックは実行スレッドが保証されないため、
         // プレイヤー操作を伴う処理はメインスレッドへ戻してから実行する。
         player.teleportAsync(destination).whenComplete((success, throwable) ->
@@ -250,6 +254,8 @@ public class PortalListener implements Listener {
             }
             plugin.getLogger().info(
                     "[TransferDebug] teleportAsync failed, fallback to teleport: " + destination);
+            // 同期テレポートのフォールバック前にもチャンクをロードしておく。
+            loadDestinationChunk(destination);
             boolean fallback = player.teleport(destination);
             if (!fallback) {
                 cooldowns.remove(player.getUniqueId());
@@ -295,6 +301,27 @@ public class PortalListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         cooldowns.remove(event.getPlayer().getUniqueId());
+    }
+
+    /**
+     * 転送先のチャンクを明示的にロードする。
+     * <p>
+     * 未ロードチャンクへのテレポートは {@code success=false} となるため、
+     * 転送直前に呼び出して転送先を確実に用意する。失敗は警告に留める。
+     *
+     * @param destination 転送先
+     */
+    private void loadDestinationChunk(Location destination) {
+        if (destination == null || destination.getWorld() == null) {
+            return;
+        }
+        try {
+            destination.getChunk().load();
+        } catch (RuntimeException e) {
+            logWarning("転送先チャンクのロードに失敗: " + formatLocation(destination)
+                    + ", world=" + destination.getWorld().getName()
+                    + ", error=" + rootMessage(e));
+        }
     }
 
     private Location buildDestination(Player player, PortalDefinition portal, World targetWorld) {

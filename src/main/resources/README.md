@@ -161,35 +161,41 @@ mv ZeloriaServer/zeloria/plugins/Zeloria/worlds/* ZeloriaServer/WorldData/
 ### 使い方
 
 ```text
-/admin build <templateId>   # テンプレートを複製して建築ワールドを開く／既存ワールドへ参戦
-/admin build info           # 建築モードの状態（テンプレート・ワールド・プレイヤー）を表示
-/admin build save [force]   # 保存して Hub へ戻る（force で他プレイヤーごと退出）
-/admin build unsave [force] # 保存せずに破棄して Hub へ戻る（force で他プレイヤーごと退出）
+/admin build create <templateId>     # テンプレートを複製して建築ワールドを新規作成する
+/admin build join <templateId>       # 開いている建築ワールドへ参加する
+/admin build list                    # 開いている建築ワールドを一覧表示する
+/admin build info [templateId]       # 建築ワールドの状態（テンプレート・ワールド・プレイヤー・作成者）を表示
+/admin build save [templateId] [force]   # 保存して Hub へ戻る（templateId 省略時は開いている全ワールド）
+/admin build unsave [templateId] [force] # 保存せずに破棄して Hub へ戻る（templateId 省略時は開いている全ワールド）
 ```
 
 1. `WorldData/<templateId>`（既定: `ZeloriaServer/WorldData/<templateId>`）に
    建築用のテンプレートワールドを配置します。
 2. 建築権限（`zeloria.admin` と `zeloria.admin.build`）を持つプレイヤーが
-   `/admin build <templateId>` を実行します。テンプレートが
-   `<メインワールド>/dimensions/zeloria_build/<templateId>`（例:
-   `world/dimensions/zeloria_build/<templateId>`）へ複製され、建築ワールドがロードされます。
+   `/admin build create <templateId>` を実行します。テンプレートが
+   `<メインワールド>/dimensions/minecraft/<templateId>_build`（例:
+   `world/dimensions/minecraft/hub_build`）へ複製され、
+   `minecraft:<templateId>_build` として建築ワールドがロードされます。
    実行者はクリエイティブモードで建築ワールドへ転送されます。
-3. 建築を終えたら `/admin build save` を実行します。建築ワールドをセーブしてアンロードし、
-   内容をテンプレートへ上書き保存したうえで、複製先のディレクトリを削除します。
+3. 建築を終えたら `/admin build save <templateId>` を実行します。建築ワールドをセーブして
+   アンロードし、内容をテンプレートへ上書き保存したうえで、複製先のディレクトリを削除します。
    建築ワールドにいた全プレイヤーは Hub のスポーンへ戻り、入場前のゲームモード
    （記録が無い場合はサバイバル）へ復元されます。
 
-- 建築ワールドは常に最大 1 つです。同じテンプレートで `/admin build <templateId>` を
-  再実行すると、実行者は既存の建築ワールドへ参戦します。
-- 別のテンプレートが開かれている場合は自動保存せず、先に `/admin build save` を
-  実行するよう促してキャンセルします。
+- 建築ワールドはテンプレートごとに 1 つ作成され、複数のプレイヤーで共有できます。
+  同じテンプレートで `/admin build join <templateId>` を実行すると、既存の
+  建築ワールドへ参加します（`/admin build <templateId>` も開いていれば参加、
+  無ければ作成として動作します）。
+- 異なるテンプレートの建築ワールドは同時に開けます。`/admin build list` で
+  開いているワールドとプレイヤー数・作成者・最終操作時刻を確認できます。
 - 建築ワールドに他のプレイヤーがいる場合、`save` / `unsave` はキャンセルされます。
-  `save force` / `unsave force` を指定すると、他プレイヤーも Hub へ退避させて実行します。
+  `save <templateId> force` / `unsave <templateId> force` を指定すると、
+  他プレイヤーも Hub へ退避させて実行します。
 - 建築ワールドにプレイヤーがいなくなってから 1 分経過すると、自動的に保存して
   アンロードします（`建築用ワールド <templateId> を自動保存してアンロードしました`）。
 - `/admin build unsave` はテンプレートへ保存せず、建築ワールドのディレクトリを削除します。
 - 通常のレイヤーインスタンスは、プレイヤーがいなくなってから 1 分経過すると
-  自動的にアンロード・削除されます。建築ワールド（`zeloria_build` 名前空間）は
+  自動的にアンロード・削除されます。建築ワールド（`minecraft:<templateId>_build`）は
   この通常削除の対象外です。
 - プラグイン停止時（`onDisable`）も、建築中のワールドは自動的に保存されます。
 - 保存処理中は対象テンプレートがロックされ、新規レイヤーの生成が拒否されます。

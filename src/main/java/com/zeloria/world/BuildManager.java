@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -35,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -43,9 +45,16 @@ import java.util.stream.Stream;
  * <p>
  * 建築ワールドはテンプレート（{@code WorldData/<templateId>}、既定:
  * {@code ZeloriaServer/WorldData/<templateId>}）を
- * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<templateId>}
- * へ複製し、{@code WorldCreator.ofKey(new NamespacedKey("zeloria_build", templateId))}
- * でロードする。
+ * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<templateId>_build}
+ * へ複製し、{@code WorldCreator.ofKey(new NamespacedKey("minecraft", templateId + "_build"))}
+ * を {@link World.Environment#NORMAL} でロードする。
+ * テンプレートごとに 1 つの建築ワールドを複数人で共有でき、異なるテンプレートの
+ * 建築ワールドは同時に開くことができる。
+ * <p>
+ * テンプレートの {@code level.dat} は {@code minecraft:overworld} のディメンション定義しか
+ * 持たないため、独自名前空間のカスタムディメンション（{@code CUSTOM} +
+ * {@code customEnvironmentKey}）としてはロードできない。標準の {@code minecraft}
+ * 名前空間の通常ディメンションとして扱うことで、コピー済みの {@code level.dat} を利用する。
  * <p>
  * 保存時は建築ワールドを {@code Bukkit.unloadWorld(world, true)} でセーブしたうえで、
  * ディメンション側の内容をテンプレートへ上書きコピーし、ディメンション側の
@@ -56,8 +65,22 @@ import java.util.stream.Stream;
  */
 public class BuildManager {
 
-    /** 建築ワールドのネームスペース。 */
-    public static final String BUILD_NAMESPACE = "zeloria_build";
+    /**
+     * 建築ワールドのネームスペース。
+     * <p>
+     * テンプレートの {@code level.dat} が {@code minecraft:overworld} しか定義していないため、
+     * レイヤーインスタンス・建築ワールドはいずれも {@code minecraft} 名前空間でロードする。
+     * ディレクトリも {@code dimensions/minecraft/<key>} となる。
+     */
+    public static final String BUILD_NAMESPACE = "minecraft";
+
+    /**
+     * 建築ワールドのキーに付与するサフィックス。
+     * <p>
+     * 一般レイヤー（{@code <templateId>_instance_N}）と区別するため、
+     * 建築ワールドは {@code minecraft:<templateId>_build} でロードする。
+     */
+    public static final String BUILD_WORLD_SUFFIX = "_build";
 
     /** 建築モードの実行権限。 */
     public static final String BUILD_PERMISSION = "zeloria.admin.build";
@@ -94,15 +117,21 @@ public class BuildManager {
 
     /**
      * 建築ワールドの配置先の親ディレクトリ:
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build}
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft}
      */
     private final Path buildRoot;
 
-    /** 現在開いている建築ワールド。開いていない場合は {@code null}。 */
-    private volatile World currentBuildWorld;
+    /**
+     * 現在開いている建築ワールド（テンプレート ID → ワールド）。
+     * 複数のテンプレートを同時に建築モードで開くことができる。
+     */
+    private final Map<String, World> buildWorlds = new ConcurrentHashMap<>();
 
-    /** 現在開いている建築テンプレート ID。開いていない場合は {@code null}。 */
-    private volatile String currentTemplateId;
+    /** 建築ワールドの作成者（テンプレート ID → 作成者の UUID）。 */
+    private final Map<String, UUID> buildWorldOwners = new ConcurrentHashMap<>();
+
+    /** 建築ワールドの最終アクティブ時刻（テンプレート ID → エポックミリ秒）。 */
+    private final Map<String, Long> buildWorldLastActive = new ConcurrentHashMap<>();
 
     /** 建築ワールド入場前のゲームモード（プレイヤー UUID → 元のゲームモード）。 */
     private final Map<UUID, GameMode> previousGameModes = new ConcurrentHashMap<>();
@@ -116,8 +145,8 @@ public class BuildManager {
     /** アンロード（破棄）処理の実行中フラグ。完了するまで次の建築コマンドを拒否する。 */
     private final AtomicBoolean unloadPending = new AtomicBoolean(false);
 
-    /** 建築ワールドにプレイヤーがいなくなった時刻（ミリ秒）。0 は未計測を表す。 */
-    private volatile long emptySince = 0L;
+    /** 建築ワールドにプレイヤーがいなくなった時刻（テンプレート ID → ミリ秒）。0 は未計測を表す。 */
+    private final Map<String, Long> emptySince = new ConcurrentHashMap<>();
 
     /** ファイルコピー専用のエグゼキュータ。 */
     private final ExecutorService copyExecutor = Executors.newCachedThreadPool(runnable -> {
@@ -146,32 +175,37 @@ public class BuildManager {
     /**
      * 建築ワールドを開く（テンプレートの複製・ロード・プレイヤーの転送まで行う）。
      * <p>
-     * 建築ワールドは常に最大 1 つだけとする。既に同じテンプレートのワールドが
-     * 開かれている場合は複製せず、プレイヤーをそのワールドへ参戦させる。
-     * 別のテンプレートが開かれている場合は保存を促してキャンセルする。
+     * 後方互換用の入口。指定テンプレートの建築ワールドを新規作成する。
+     * 既に同じテンプレートの建築ワールドが開かれている場合は失敗する。
      *
      * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
      * @param player     入場させるプレイヤー（{@code null} の場合はワールドのロードのみ）
      * @return ロード完了時にワールドを返す future（失敗時は例外で完了）
      */
     public synchronized CompletableFuture<World> openBuildWorldAsync(String templateId, Player player) {
+        return createBuildWorldAsync(templateId, player);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを新規作成する。
+     * <p>
+     * 建築ワールドは {@code minecraft:<templateId>_build} としてロードし、
+     * {@link #buildWorlds} に登録する。テンプレートごとに 1 つの建築ワールドを
+     * 複数人で共有できる。
+     *
+     * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
+     * @param player     入場させるプレイヤー（{@code null} の場合はワールドのロードのみ）
+     * @return ロード完了時にワールドを返す future（失敗時は例外で完了）
+     */
+    public synchronized CompletableFuture<World> createBuildWorldAsync(String templateId, Player player) {
         assertMainThread();
         validateId(templateId, "templateId");
 
-        World existing = resolveCurrentWorld();
+        World existing = findBuildWorld(templateId);
         if (existing != null) {
-            String existingTemplate = currentTemplateId != null
-                    ? currentTemplateId
-                    : existing.getKey().getKey();
-            currentBuildWorld = existing;
-            currentTemplateId = existingTemplate;
-            if (!templateId.equals(existingTemplate)) {
-                return CompletableFuture.failedFuture(new IllegalStateException(
-                        "既に別の建築ワールド（" + existingTemplate + "）が開かれています。"
-                                + "先に /admin build save で保存してください"));
-            }
-            enterBuildWorld(player, existing, false);
-            return CompletableFuture.completedFuture(existing);
+            buildWorlds.put(templateId, existing);
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "既に開かれています。/admin build join " + templateId + " で参加してください"));
         }
 
         if (!beginOperation(null)) {
@@ -192,72 +226,210 @@ public class BuildManager {
             return CompletableFuture.failedFuture(e);
         }
 
+        if (player != null) {
+            buildWorldOwners.putIfAbsent(templateId, player.getUniqueId());
+        }
+
         CompletableFuture<World> result = CompletableFuture
                 .supplyAsync(() -> prepareBuildDirectory(templateId, templateDir, buildDir),
                         copyExecutor)
                 .thenCompose(dir -> loadWorldOnMainThread(templateId, dir, player));
 
-        result.whenComplete((world, error) -> busy.set(false));
+        result.whenComplete((world, error) -> {
+            if (error != null && player != null) {
+                buildWorldOwners.remove(templateId, player.getUniqueId());
+            }
+            busy.set(false);
+        });
         return result;
     }
 
     /**
-     * 現在開いている建築ワールドを保存し、アンロードする。
+     * 建築ワールドを保存し、アンロードする（後方互換用）。
+     * <p>
+     * 引数省略時と同様に、開いているすべての建築ワールドを保存する。
+     *
+     * @return 保存に成功した場合は {@code true} で完了する future
+     */
+    public synchronized CompletableFuture<Boolean> saveActiveAsync() {
+        return saveAllBuildWorldsAsync();
+    }
+
+    /**
+     * 建築ワールドを保存せずにアンロードする（後方互換用）。
+     * <p>
+     * 引数省略時と同様に、開いているすべての建築ワールドを破棄する。
+     *
+     * @return 破棄に成功した場合は {@code true} で完了する future
+     */
+    public synchronized CompletableFuture<Boolean> unsaveActiveAsync() {
+        return unsaveAllBuildWorldsAsync();
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを保存してアンロードする。
      * <p>
      * ワールド内のプレイヤーは Hub のスポーンへ退避させ、アンロード後に
      * ディメンション側の内容をテンプレートへ上書きコピーしてから
      * ディメンション側のディレクトリを削除する。
      *
+     * @param templateId テンプレート ID
      * @return 保存に成功した場合は {@code true} で完了する future
      */
-    public synchronized CompletableFuture<Boolean> saveActiveAsync() {
+    public synchronized CompletableFuture<Boolean> saveBuildWorldAsync(String templateId) {
+        return closeBuildWorldAsync(templateId, true, savePending);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを保存せずにアンロードし、ディレクトリを削除する。
+     *
+     * @param templateId テンプレート ID
+     * @return 破棄に成功した場合は {@code true} で完了する future
+     */
+    public synchronized CompletableFuture<Boolean> unsaveBuildWorldAsync(String templateId) {
+        return closeBuildWorldAsync(templateId, false, unloadPending);
+    }
+
+    /**
+     * 開いているすべての建築ワールドを保存してアンロードする。
+     *
+     * @return すべての保存に成功した場合は {@code true} で完了する future
+     */
+    public synchronized CompletableFuture<Boolean> saveAllBuildWorldsAsync() {
         assertMainThread();
-        if (resolveCurrentWorld() == null) {
+        Set<String> templateIds = collectOpenTemplateIds();
+        if (templateIds.isEmpty()) {
             return CompletableFuture.completedFuture(false);
         }
         if (!beginOperation(savePending)) {
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "建築ワールドの準備中です。完了してから再実行してください。"));
         }
-        CompletableFuture<Boolean> result = closeActiveInternal(true);
+        CompletableFuture<Boolean> result = closeBuildWorldsSequentially(templateIds, true);
         result.whenComplete((saved, error) -> finishOperation(savePending));
         return result;
     }
 
     /**
-     * 現在開いている建築ワールドを保存せずにアンロードし、ディレクトリを削除する。
+     * 開いているすべての建築ワールドを保存せずにアンロードする。
      *
-     * @return 破棄に成功した場合は {@code true} で完了する future
+     * @return すべての破棄に成功した場合は {@code true} で完了する future
      */
-    public synchronized CompletableFuture<Boolean> unsaveActiveAsync() {
+    public synchronized CompletableFuture<Boolean> unsaveAllBuildWorldsAsync() {
         assertMainThread();
-        if (resolveCurrentWorld() == null) {
+        Set<String> templateIds = collectOpenTemplateIds();
+        if (templateIds.isEmpty()) {
             return CompletableFuture.completedFuture(false);
         }
         if (!beginOperation(unloadPending)) {
             return CompletableFuture.failedFuture(new IllegalStateException(
                     "建築ワールドの準備中です。完了してから再実行してください。"));
         }
-        CompletableFuture<Boolean> result = closeActiveInternal(false);
+        CompletableFuture<Boolean> result = closeBuildWorldsSequentially(templateIds, false);
         result.whenComplete((discarded, error) -> finishOperation(unloadPending));
         return result;
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを閉じる共通処理。
+     *
+     * @param templateId   テンプレート ID
+     * @param saveTemplate {@code true} の場合はテンプレートへ保存、{@code false} の場合は破棄
+     * @param pendingState 保存待ち／アンロード待ちの状態フラグ
+     * @return 処理に成功した場合は {@code true} で完了する future
+     */
+    private synchronized CompletableFuture<Boolean> closeBuildWorldAsync(
+            String templateId, boolean saveTemplate, AtomicBoolean pendingState) {
+        assertMainThread();
+        validateId(templateId, "templateId");
+        if (findBuildWorld(templateId) == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (!beginOperation(pendingState)) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "建築ワールドの準備中です。完了してから再実行してください。"));
+        }
+        CompletableFuture<Boolean> result = closeWorldInternal(templateId, saveTemplate);
+        result.whenComplete((done, error) -> finishOperation(pendingState));
+        return result;
+    }
+
+    /**
+     * 複数の建築ワールドをメインスレッドで 1 件ずつ順番に閉じる。
+     *
+     * @param templateIds 対象テンプレート ID
+     * @param saveTemplate {@code true} の場合は保存、{@code false} の場合は破棄
+     * @return すべて成功した場合は {@code true} で完了する future
+     */
+    private CompletableFuture<Boolean> closeBuildWorldsSequentially(
+            Set<String> templateIds, boolean saveTemplate) {
+        CompletableFuture<Boolean> result = CompletableFuture.completedFuture(true);
+        for (String templateId : templateIds) {
+            result = result.thenCompose(success -> {
+                if (!Boolean.TRUE.equals(success)) {
+                    return CompletableFuture.completedFuture(false);
+                }
+                return onMainThread(() -> closeWorldInternal(templateId, saveTemplate));
+            });
+        }
+        return result;
+    }
+
+    /**
+     * メインスレッドで処理を実行し、その結果を返す future を生成する。
+     *
+     * @param supplier メインスレッドで実行する処理
+     * @return 処理結果で完了する future
+     */
+    private CompletableFuture<Boolean> onMainThread(Supplier<CompletableFuture<Boolean>> supplier) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        Runnable task = () -> {
+            try {
+                supplier.get().whenComplete((value, error) -> {
+                    if (error != null) {
+                        future.completeExceptionally(error);
+                    } else {
+                        future.complete(value);
+                    }
+                });
+            } catch (RuntimeException e) {
+                future.completeExceptionally(e);
+            }
+        };
+        if (Bukkit.isPrimaryThread()) {
+            task.run();
+        } else {
+            Bukkit.getScheduler().runTask(plugin, task);
+        }
+        return future;
     }
 
     /**
      * 建築ワールドを保存して終了する（プラグイン停止時に呼び出す）。
      * <p>
      * 停止処理では非同期処理の完了を待てないため、ファイルコピーも同期実行する。
+     * 開いているすべての建築ワールドを保存する。
      */
     public synchronized void shutdown() {
-        String templateId = currentTemplateId;
-        World world = resolveCurrentWorld();
-        if (templateId == null && world != null) {
-            templateId = world.getKey().getKey();
+        for (String templateId : collectOpenTemplateIds()) {
+            shutdownWorld(templateId);
         }
-        if (templateId == null) {
-            resetCurrentWorld();
-            copyExecutor.shutdownNow();
-            return;
+        buildWorlds.clear();
+        buildWorldOwners.clear();
+        buildWorldLastActive.clear();
+        emptySince.clear();
+        copyExecutor.shutdownNow();
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを同期的に保存してアンロードする。
+     *
+     * @param templateId テンプレート ID
+     */
+    private void shutdownWorld(String templateId) {
+        World world = buildWorlds.get(templateId);
+        if (world == null) {
+            world = findLoadedWorld(templateId);
         }
 
         Path buildDir = resolveBuildPath(templateId);
@@ -275,7 +447,7 @@ public class BuildManager {
                 unloaded = false;
             }
         }
-        resetCurrentWorld();
+        removeBuildWorldEntries(templateId);
 
         // アンロードできていない場合は、稼働中ワールドのディレクトリを
         // テンプレートへコピー／削除しない（未保存データとワールド破損を防ぐ）。
@@ -296,8 +468,6 @@ public class BuildManager {
                 }
             }
         }
-
-        copyExecutor.shutdownNow();
     }
 
     /**
@@ -332,29 +502,97 @@ public class BuildManager {
 
     /**
      * 現在開いているテンプレート ID を取得する。
+     * <p>
+     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
      *
      * @return 建築中のテンプレート ID。開いていない場合は {@code null}
      */
     public String getActiveTemplateId() {
-        return currentTemplateId;
+        return primaryTemplateId();
     }
 
     /**
      * 現在開いている建築テンプレート ID を取得する。
+     * <p>
+     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
      *
      * @return 建築中のテンプレート ID。開いていない場合は {@code null}
      */
     public String getCurrentTemplateId() {
-        return currentTemplateId;
+        return primaryTemplateId();
     }
 
     /**
      * 現在開いている建築ワールドを取得する。
+     * <p>
+     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
      *
      * @return 建築ワールド。開いていない場合は {@code null}
      */
     public World getCurrentBuildWorld() {
-        return resolveCurrentWorld();
+        String templateId = primaryTemplateId();
+        return templateId == null ? null : buildWorlds.get(templateId);
+    }
+
+    /**
+     * 開いている建築ワールドのテンプレート ID 一覧を取得する。
+     *
+     * @return テンプレート ID の一覧（大文字小文字を無視して昇順）
+     */
+    public Set<String> getOpenTemplateIds() {
+        return collectOpenTemplateIds();
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドが開いているか判定する。
+     *
+     * @param templateId テンプレート ID
+     * @return 開いている場合は {@code true}
+     */
+    public boolean isBuildWorldOpen(String templateId) {
+        return findBuildWorld(templateId) != null;
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを取得する。
+     *
+     * @param templateId テンプレート ID
+     * @return 建築ワールド。開いていない場合は {@code null}
+     */
+    public World getBuildWorld(String templateId) {
+        return findBuildWorld(templateId);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドにいるプレイヤー数を取得する。
+     *
+     * @param templateId テンプレート ID
+     * @return プレイヤー数。開いていない場合は {@code 0}
+     */
+    public int getBuildWorldPlayerCount(String templateId) {
+        World world = findBuildWorld(templateId);
+        return world == null ? 0 : world.getPlayers().size();
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドの作成者 UUID を取得する。
+     *
+     * @param templateId テンプレート ID
+     * @return 作成者の UUID。記録が無い場合は {@code null}
+     */
+    public UUID getBuildWorldOwner(String templateId) {
+        return templateId == null ? null : buildWorldOwners.get(templateId);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドの最終アクティブ時刻を取得する。
+     *
+     * @param templateId テンプレート ID
+     * @return エポックミリ秒。記録が無い場合は {@code 0}
+     */
+    public long getBuildWorldLastActive(String templateId) {
+        Long lastActive = templateId == null ? null : buildWorldLastActive.get(templateId);
+        return lastActive == null ? 0L : lastActive;
     }
 
     /**
@@ -363,7 +601,17 @@ public class BuildManager {
      * @return プレイヤー名の一覧（名前順）。建築ワールドが無い場合は空リスト
      */
     public List<String> getActivePlayerNames() {
-        World world = resolveCurrentWorld();
+        return getActivePlayerNames(primaryTemplateId());
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドにいるプレイヤー名の一覧を取得する。
+     *
+     * @param templateId テンプレート ID
+     * @return プレイヤー名の一覧（名前順）。建築ワールドが無い場合は空リスト
+     */
+    public List<String> getActivePlayerNames(String templateId) {
+        World world = findBuildWorld(templateId);
         if (world == null) {
             return List.of();
         }
@@ -380,7 +628,18 @@ public class BuildManager {
      * @return 他のプレイヤーがいる場合は {@code true}
      */
     public boolean hasOtherPlayers(Player executor) {
-        World world = resolveCurrentWorld();
+        return hasOtherPlayers(primaryTemplateId(), executor);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドに実行者以外のプレイヤーがいるか判定する。
+     *
+     * @param templateId テンプレート ID
+     * @param executor   実行者。{@code null}（コンソール）の場合は全プレイヤーを対象にする
+     * @return 他のプレイヤーがいる場合は {@code true}
+     */
+    public boolean hasOtherPlayers(String templateId, Player executor) {
+        World world = findBuildWorld(templateId);
         if (world == null) {
             return false;
         }
@@ -396,12 +655,28 @@ public class BuildManager {
      * @return 参戦できた場合は {@code true}。建築ワールドが無い場合は {@code false}
      */
     public synchronized boolean joinBuildWorld(Player player) {
+        return joinBuildWorld(primaryTemplateId(), player);
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドへプレイヤーを参戦させる。
+     * <p>
+     * 参加時に最終アクティブ時刻を更新する。
+     *
+     * @param templateId テンプレート ID
+     * @param player     対象プレイヤー
+     * @return 参戦できた場合は {@code true}。建築ワールドが無い場合は {@code false}
+     */
+    public synchronized boolean joinBuildWorld(String templateId, Player player) {
         assertMainThread();
-        World world = resolveCurrentWorld();
+        World world = findBuildWorld(templateId);
         if (world == null) {
             return false;
         }
-        enterBuildWorld(player, world, false);
+        if (player != null) {
+            buildWorldLastActive.put(templateId, System.currentTimeMillis());
+        }
+        enterBuildWorld(templateId, player, world, false);
         return true;
     }
 
@@ -431,46 +706,48 @@ public class BuildManager {
      * @param now 現在時刻（ミリ秒）
      */
     public synchronized void checkAutoSave(long now) {
-        World world = resolveCurrentWorld();
-        if (world == null) {
-            emptySince = 0L;
-            return;
-        }
         if (isBusy()) {
             return;
         }
-        if (!world.getPlayers().isEmpty()) {
-            emptySince = 0L;
-            return;
-        }
-        if (emptySince == 0L) {
-            emptySince = now;
-            return;
-        }
-        if (now - emptySince < AUTO_SAVE_IDLE_MILLIS) {
-            return;
-        }
 
-        String templateId = currentTemplateId;
-        if (templateId == null) {
-            templateId = world.getKey().getKey();
-        }
-        String savedTemplate = templateId;
-        emptySince = 0L;
+        emptySince.keySet().retainAll(collectOpenTemplateIds());
 
-        saveActiveAsync().whenComplete((saved, error) -> {
-            if (error != null) {
-                plugin.getLogger().severe(
-                        "建築用ワールド " + savedTemplate + " の自動保存に失敗しました: "
-                                + rootMessage(error));
-            } else if (Boolean.TRUE.equals(saved)) {
-                plugin.getLogger().info(
-                        "建築用ワールド " + savedTemplate + " を自動保存してアンロードしました");
-            } else {
-                plugin.getLogger().warning(
-                        "建築用ワールド " + savedTemplate + " の自動保存を完了できませんでした。");
+        for (String templateId : collectOpenTemplateIds()) {
+            World world = findBuildWorld(templateId);
+            if (world == null) {
+                emptySince.remove(templateId);
+                continue;
             }
-        });
+            if (!world.getPlayers().isEmpty()) {
+                emptySince.remove(templateId);
+                continue;
+            }
+            long since = emptySince.getOrDefault(templateId, 0L);
+            if (since == 0L) {
+                emptySince.put(templateId, now);
+                continue;
+            }
+            if (now - since < AUTO_SAVE_IDLE_MILLIS) {
+                continue;
+            }
+
+            emptySince.remove(templateId);
+            saveBuildWorldAsync(templateId).whenComplete((saved, error) -> {
+                if (error != null) {
+                    plugin.getLogger().severe(
+                            "建築用ワールド " + templateId + " の自動保存に失敗しました: "
+                                    + rootMessage(error));
+                } else if (Boolean.TRUE.equals(saved)) {
+                    plugin.getLogger().info(
+                            "建築用ワールド " + templateId + " を自動保存してアンロードしました");
+                } else {
+                    plugin.getLogger().warning(
+                            "建築用ワールド " + templateId + " の自動保存を完了できませんでした。");
+                }
+            });
+            // 1 回の呼び出しで 1 ワールドずつ処理する（次回のタスクで残りを処理する）。
+            return;
+        }
     }
 
     /**
@@ -480,10 +757,7 @@ public class BuildManager {
      * @return ロード済みのワールド。存在しない場合は {@code null}
      */
     public World getLoadedWorld(String templateId) {
-        if (templateId == null || !templateId.equals(currentTemplateId)) {
-            return null;
-        }
-        return resolveCurrentWorld();
+        return findBuildWorld(templateId);
     }
 
     /**
@@ -515,14 +789,18 @@ public class BuildManager {
     /**
      * 指定したワールドが建築ワールドか判定する。
      * <p>
-     * {@code zeloria_build} 名前空間を共有するレイヤーインスタンス
-     * （{@code zeloria_build:<instanceId>}）は建築ワールドではないため除外する。
+     * {@code minecraft} 名前空間を共有するレイヤーインスタンス
+     * （{@code minecraft:<templateId>_instance_N}）と区別するため、
+     * キー名が {@link #BUILD_WORLD_SUFFIX} で終わるものだけを建築ワールドとする。
      *
      * @param world 判定対象のワールド
      * @return 建築ワールドの場合は {@code true}
      */
     public static boolean isBuildWorld(World world) {
         if (world == null || !BUILD_NAMESPACE.equals(world.getKey().getNamespace())) {
+            return false;
+        }
+        if (!world.getKey().getKey().endsWith(BUILD_WORLD_SUFFIX)) {
             return false;
         }
         // 所有権マーカーを持つディレクトリはレイヤーインスタンスであり、建築ワールドではない。
@@ -535,28 +813,26 @@ public class BuildManager {
     /**
      * 指定したワールドが「現在開いている」建築ワールドか判定する。
      * <p>
-     * テレポート制限では、同じ名前空間を共有するレイヤーインスタンスへの転送を
-     * 妨げないよう、この判定で建築ワールドを限定する。
+     * テレポート制限では、同じ名前空間（{@code minecraft}）を共有する
+     * レイヤーインスタンスやバニラワールドへの転送を妨げないよう、
+     * この判定で建築ワールドを限定する。
      *
      * @param world 判定対象のワールド
      * @return 現在の建築ワールドの場合は {@code true}
      */
     public boolean isActiveBuildWorld(World world) {
-        if (world == null) {
-            return false;
-        }
-        World current = resolveCurrentWorld();
-        return current != null && current.equals(world);
+        return world != null && buildWorlds.containsValue(world);
     }
 
     /**
      * テンプレート ID から建築ワールドのキーを生成する。
      *
      * @param templateId テンプレート ID
-     * @return {@code zeloria_build:<templateId>} のキー
+     * @return {@code minecraft:<templateId>_build} のキー
      */
     public static NamespacedKey keyOf(String templateId) {
-        return new NamespacedKey(BUILD_NAMESPACE, Objects.requireNonNull(templateId, "templateId"));
+        return NamespacedKey.minecraft(
+                Objects.requireNonNull(templateId, "templateId") + BUILD_WORLD_SUFFIX);
     }
 
     /**
@@ -576,36 +852,29 @@ public class BuildManager {
     }
 
     /**
-     * 現在の建築ワールドを Hub へ退避・アンロードし、必要に応じて保存する。
+     * 指定テンプレートの建築ワールドを Hub へ退避・アンロードし、必要に応じて保存する。
      * <p>
      * アンロードまではメインスレッドで同期的に実行し、ファイルコピーと
      * ディレクトリ削除のみ非同期で行う。保存中は対象テンプレートを
      * {@link LayerManager} 側でロックし、新規レイヤー生成を抑止する。
      *
+     * @param templateId     テンプレート ID
      * @param saveToTemplate テンプレートへ保存する場合は {@code true}。
      *                       {@code false} の場合は保存せずにディレクトリを削除する
      * @return 処理に成功した場合は {@code true} で完了する future
      */
-    private CompletableFuture<Boolean> closeActiveInternal(boolean saveToTemplate) {
-        String templateId = currentTemplateId;
-        World world = resolveCurrentWorld();
+    private CompletableFuture<Boolean> closeWorldInternal(String templateId, boolean saveToTemplate) {
+        String activeTemplate = templateId;
+        World world = findBuildWorld(templateId);
         if (world == null) {
-            resetCurrentWorld();
-            if (templateId == null) {
-                return CompletableFuture.completedFuture(true);
-            }
-            Path leftover = resolveBuildPath(templateId);
+            removeBuildWorldEntries(activeTemplate);
+            Path leftover = resolveBuildPath(activeTemplate);
             if (saveToTemplate || !Files.isDirectory(leftover)) {
                 return CompletableFuture.completedFuture(true);
             }
             return CompletableFuture.supplyAsync(
                     () -> deleteDirectoryWithRetry(leftover), copyExecutor);
         }
-
-        if (templateId == null) {
-            templateId = world.getKey().getKey();
-        }
-        String activeTemplate = templateId;
 
         if (!teleportPlayersToHub(world, !saveToTemplate)) {
             plugin.getLogger().severe(
@@ -623,7 +892,7 @@ public class BuildManager {
             return CompletableFuture.completedFuture(false);
         }
 
-        resetCurrentWorld();
+        removeBuildWorldEntries(activeTemplate);
         Path buildDir = resolveBuildPath(activeTemplate);
 
         if (!saveToTemplate) {
@@ -720,17 +989,10 @@ public class BuildManager {
                 return;
             }
 
-            World existing = resolveCurrentWorld();
+            World existing = findBuildWorld(templateId);
             if (existing != null) {
-                if (!templateId.equals(currentTemplateId)) {
-                    deleteDirectoryQuietly(buildDir);
-                    result.completeExceptionally(new IllegalStateException(
-                            "既に別の建築ワールド（" + currentTemplateId + "）が開かれています。"
-                                    + "先に /admin build save で保存してください"));
-                    return;
-                }
                 debugEnterBuildWorld(player, existing);
-                enterBuildWorld(player, existing, false);
+                enterBuildWorld(templateId, player, existing, false);
                 result.complete(existing);
                 return;
             }
@@ -766,15 +1028,18 @@ public class BuildManager {
                 return;
             }
 
-            currentBuildWorld = world;
-            currentTemplateId = templateId;
-            emptySince = 0L;
+            // 生成直後はスポーン位置のチャンクが未ロードのことがあるため、明示的にロードする。
+            loadDestinationChunk(world.getSpawnLocation());
+
+            buildWorlds.put(templateId, world);
+            buildWorldLastActive.put(templateId, System.currentTimeMillis());
+            emptySince.remove(templateId);
 
             // プレイヤー転送に失敗してもワールドのロード自体は成功扱いにし、
             // 管理者が手動で移動できるようエラーメッセージとフォールバックを行う。
             try {
                 debugEnterBuildWorld(player, world);
-                enterBuildWorld(player, world, newlyCreated);
+                enterBuildWorld(templateId, player, world, newlyCreated);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "建築ワールドへのプレイヤー転送に失敗しました: template=" + templateId
@@ -800,13 +1065,24 @@ public class BuildManager {
 
     /**
      * プレイヤーをクリエイティブモードにして建築ワールドへ転送する。
+     * <p>
+     * テンプレート ID をキーに {@link #buildWorlds} へ登録し、最終アクティブ時刻を更新する。
      *
+     * @param templateId   テンプレート ID
      * @param player       対象プレイヤー（{@code null} またはオフラインの場合は何もしない）
      * @param world        建築ワールド
      * @param newlyCreated {@code true} の場合はワールドを新規生成した直後（ログ用。
      *                     転送遅延は常に 20 tick）
      */
-    private void enterBuildWorld(Player player, World world, boolean newlyCreated) {
+    private void enterBuildWorld(String templateId, Player player, World world, boolean newlyCreated) {
+        if (templateId == null || world == null) {
+            return;
+        }
+
+        buildWorlds.put(templateId, world);
+        buildWorldLastActive.put(templateId, System.currentTimeMillis());
+        emptySince.remove(templateId);
+
         if (player == null || !player.isOnline()) {
             return;
         }
@@ -833,6 +1109,9 @@ public class BuildManager {
             if (!player.isOnline()) {
                 return;
             }
+            // 転送先（建築ワールドのスポーン）のチャンクが未ロードだと teleport が
+            // success=false を返すため、転送直前に明示的にロードする。
+            loadDestinationChunk(spawn);
             if (player.teleport(spawn)) {
                 return;
             }
@@ -885,6 +1164,27 @@ public class BuildManager {
     }
 
     /**
+     * テレポート先のチャンクを明示的にロードする。
+     * <p>
+     * 未ロードチャンクへのテレポートは {@code success=false} となるため、
+     * 転送直前に呼び出して転送先を確実に用意する。失敗は警告に留める。
+     *
+     * @param location テレポート先
+     */
+    private void loadDestinationChunk(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        try {
+            location.getChunk().load();
+        } catch (RuntimeException e) {
+            plugin.getLogger().warning(
+                    "テレポート先のチャンクをロードできませんでした: " + location
+                            + " (" + rootMessage(e) + ")");
+        }
+    }
+
+    /**
      * 転送に失敗したことをプレイヤーへ通知する。
      */
     private static void notifyTeleportFailure(Player player) {
@@ -904,6 +1204,7 @@ public class BuildManager {
             return;
         }
         Location spawn = buildSpawn(world, player);
+        loadDestinationChunk(spawn);
         if (!player.teleport(spawn)) {
             plugin.getLogger().warning(
                     "建築ワールドへのフォールバック転送にも失敗しました: player=" + player.getName()
@@ -1104,6 +1405,8 @@ public class BuildManager {
         target.add(0.5, 0.0, 0.5);
         target.setYaw(0.0f);
         target.setPitch(0.0f);
+        // 退避先（Hub スポーン）のチャンクが未ロードだとテレポートが失敗するため、事前にロードする。
+        loadDestinationChunk(target);
 
         boolean evacuated = true;
         for (Player player : players) {
@@ -1198,57 +1501,113 @@ public class BuildManager {
     }
 
     /**
-     * 現在の建築ワールドを取得する。
-     * <p>
-     * フィールドが未設定の場合は Bukkit にロード済みの建築ワールドを検索し、
-     * 状態を復元する。
+     * 現在開いているテンプレート ID を 1 つ取得する（後方互換用）。
      *
-     * @return 建築ワールド。無い場合は {@code null}
+     * @return テンプレート ID。開いていない場合は {@code null}
      */
-    private World resolveCurrentWorld() {
-        World world = currentBuildWorld;
-        if (world != null) {
-            return world;
-        }
-
-        String templateId = currentTemplateId;
-        if (templateId != null) {
-            World loaded = findLoadedWorld(templateId);
-            if (loaded != null) {
-                currentBuildWorld = loaded;
-                return loaded;
-            }
-        }
-
-        World scanned = findAnyLoadedBuildWorld();
-        if (scanned != null) {
-            currentBuildWorld = scanned;
-            currentTemplateId = scanned.getKey().getKey();
-        }
-        return scanned;
-    }
-
-    /**
-     * ロード済みの建築ワールドを 1 つ検索する。
-     *
-     * @return 建築ワールド。無い場合は {@code null}
-     */
-    private static World findAnyLoadedBuildWorld() {
-        for (World world : Bukkit.getWorlds()) {
-            if (isBuildWorld(world)) {
-                return world;
-            }
+    private String primaryTemplateId() {
+        for (String templateId : collectOpenTemplateIds()) {
+            return templateId;
         }
         return null;
     }
 
     /**
-     * 現在の建築ワールドの状態をクリアする。
+     * 開いている建築ワールドのテンプレート ID 一覧を取得する。
+     * <p>
+     * ロード済みの建築ワールドを {@link #buildWorlds} へ取り込み、
+     * 既にアンロードされたワールドのエントリを除去する。
+     *
+     * @return テンプレート ID の一覧（大文字小文字を無視して昇順）
      */
-    private void resetCurrentWorld() {
-        currentBuildWorld = null;
-        currentTemplateId = null;
-        emptySince = 0L;
+    private Set<String> collectOpenTemplateIds() {
+        for (World world : Bukkit.getWorlds()) {
+            if (!isBuildWorld(world)) {
+                continue;
+            }
+            String templateId = templateIdOf(world);
+            if (templateId != null) {
+                buildWorlds.put(templateId, world);
+            }
+        }
+        buildWorlds.entrySet().removeIf(entry -> !isWorldLoaded(entry.getValue()));
+
+        Set<String> templateIds = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        templateIds.addAll(buildWorlds.keySet());
+        return templateIds;
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドを取得する。
+     * <p>
+     * Map に無い場合は Bukkit にロード済みの建築ワールドを検索して状態を復元する。
+     *
+     * @param templateId テンプレート ID
+     * @return 建築ワールド。無い場合は {@code null}
+     */
+    private World findBuildWorld(String templateId) {
+        if (templateId == null) {
+            return null;
+        }
+
+        World world = buildWorlds.get(templateId);
+        if (isWorldLoaded(world)) {
+            return world;
+        }
+
+        World loaded = findLoadedWorld(templateId);
+        if (loaded != null) {
+            buildWorlds.put(templateId, loaded);
+            return loaded;
+        }
+
+        if (world != null) {
+            buildWorlds.remove(templateId, world);
+        }
+        return null;
+    }
+
+    /**
+     * ワールドが現在ロード済みか判定する。
+     *
+     * @param world 判定対象
+     * @return ロード済みの場合は {@code true}
+     */
+    private static boolean isWorldLoaded(World world) {
+        return world != null && Bukkit.getWorlds().contains(world);
+    }
+
+    /**
+     * 建築ワールドのキー名からテンプレート ID を取得する。
+     *
+     * @param world 建築ワールド
+     * @return テンプレート ID。建築ワールドでない場合は {@code null}
+     */
+    private static String templateIdOf(World world) {
+        if (world == null || !BUILD_NAMESPACE.equals(world.getKey().getNamespace())) {
+            return null;
+        }
+        String key = world.getKey().getKey();
+        if (!key.endsWith(BUILD_WORLD_SUFFIX)) {
+            return null;
+        }
+        String templateId = key.substring(0, key.length() - BUILD_WORLD_SUFFIX.length());
+        return templateId.isBlank() ? null : templateId;
+    }
+
+    /**
+     * 指定テンプレートの建築ワールドの管理情報を削除する。
+     *
+     * @param templateId テンプレート ID
+     */
+    private void removeBuildWorldEntries(String templateId) {
+        if (templateId == null) {
+            return;
+        }
+        buildWorlds.remove(templateId);
+        buildWorldOwners.remove(templateId);
+        buildWorldLastActive.remove(templateId);
+        emptySince.remove(templateId);
     }
 
     /**
@@ -1305,7 +1664,7 @@ public class BuildManager {
      * @throws IllegalArgumentException パスが建築ワールド用ディレクトリから外れる場合
      */
     private Path resolveBuildPath(String templateId) {
-        Path path = buildRoot.resolve(templateId).toAbsolutePath().normalize();
+        Path path = buildRoot.resolve(templateId + BUILD_WORLD_SUFFIX).toAbsolutePath().normalize();
         if (!buildRoot.equals(path.getParent())) {
             throw new IllegalArgumentException("不正なテンプレート ID です: " + templateId);
         }
@@ -1318,7 +1677,7 @@ public class BuildManager {
      * Paper 26.3 では {@link World#getWorldPath()} がディメンション名まで含む場合があるため、
      * {@link LayerManager} と同様にワールドコンテナとメインワールドのレベル名から組み立てる。
      *
-     * @return {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build}
+     * @return {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft}
      */
     private Path resolveBuildRoot() {
         Path container = plugin.getServer().getWorldContainer()

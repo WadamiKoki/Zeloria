@@ -38,14 +38,15 @@ import java.util.stream.Stream;
  * テンプレートワールドからレイヤーインスタンスを生成・管理するクラス。
  * <p>
  * テンプレートは {@code WorldData/{templateId}}（既定: {@code ZeloriaServer/WorldData/{templateId}}）に配置し、
- * 生成されたインスタンスは {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/{instanceId}}
- * （例: {@code ZeloriaServer/world/dimensions/zeloria_build/hub_instance_1}）に展開される。
+ * 生成されたインスタンスは {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/{instanceId}}
+ * （例: {@code ZeloriaServer/world/dimensions/minecraft/hub_instance_1}）に展開される。
  * <p>
- * {@link WorldCreator} に渡すキーは {@code zeloria_build:<instanceId>}
- * （例: {@code zeloria_build:hub_instance_1}）とし、{@link World.Environment#CUSTOM} +
- * {@code customEnvironmentKey} でロードする。これによりテンプレートの {@code level.dat} が持つ
- * {@code minecraft:overworld} のディメンションキーと衝突せず、
- * 「duplicate of another world」でロードを拒否されない。
+ * {@link WorldCreator} に渡すキーは {@code minecraft:<instanceId>}
+ * （例: {@code minecraft:hub_instance_1}）とし、{@link World.Environment#NORMAL} でロードする。
+ * テンプレートの {@code level.dat} は {@code minecraft:overworld} のディメンション定義しか持たないため、
+ * {@code CUSTOM} + {@code customEnvironmentKey} でロードすると
+ * 「ワールドのロードに失敗しました」となる。標準の {@code minecraft} 名前空間の
+ * 通常ディメンションとしてロードすることで、コピー済みの {@code level.dat} をそのまま利用する。
  * <p>
  * コピー対象は {@link #WORLD_COPY_WHITELIST}（{@code level.dat} と {@code region/}）のみとし、
  * UID・ロック・プレイヤーデータなどのメタデータは引き継がない。
@@ -125,7 +126,7 @@ public class LayerManager {
 
     /**
      * 生成インスタンス配置先の親ディレクトリ:
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build}
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft}
      */
     private final Path instanceRoot;
 
@@ -218,12 +219,12 @@ public class LayerManager {
 
     /**
      * Paper のカスタムディメンション配置先
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build} を解決する。
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft} を解決する。
      * <p>
      * {@link World#getWorldPath()} は Paper 26.3 では
      * {@code <worldContainer>/world/overworld} のようにディメンション名まで含むことがある。
-     * その値へ {@code dimensions/zeloria_build} を連結すると
-     * {@code world/overworld/dimensions/zeloria_build} という不正なパスになるため、
+     * その値へ {@code dimensions/minecraft} を連結すると
+     * {@code world/overworld/dimensions/minecraft} という不正なパスになるため、
      * このメソッドでは<b>ワールドコンテナから直接</b>構造を組み立てる。
      * <p>
      * レベル名はメインワールド名の先頭セグメントのみを使用し、取得できない場合は
@@ -286,25 +287,26 @@ public class LayerManager {
     /**
      * インスタンス ID から Bukkit のワールド名（ディメンションキー文字列）を導出する。
      * <p>
-     * レイヤーインスタンスは {@code zeloria_build} 名前空間のカスタムディメンションとして
-     * ロードするため、名前は {@code zeloria_build:<instanceId>} となる。
-     * 実体は {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>}。
+     * レイヤーインスタンスはテンプレートの {@code level.dat}（{@code minecraft:overworld}）を
+     * そのまま利用するため、標準の {@code minecraft} 名前空間のディメンションとして
+     * ロードする。名前は {@code minecraft:<instanceId>} となる。
+     * 実体は {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>}。
      * 名前にスラッシュを含めると追加の移設処理が走りパス不整合を招くため、
      * ID 部分にはパス区切り文字を許可しない。
      *
      * @param instanceId インスタンス ID
-     * @return {@code zeloria_build:<instanceId>}
+     * @return {@code minecraft:<instanceId>}
      */
     public static String worldName(String instanceId) {
         Objects.requireNonNull(instanceId, "instanceId");
         // ディメンションキーの path は小文字のみ許可されるため正規化する。
-        return BuildManager.BUILD_NAMESPACE + ":" + instanceId.toLowerCase(Locale.ROOT);
+        return "minecraft:" + instanceId.toLowerCase(Locale.ROOT);
     }
 
     /**
      * 指定 ID がレイヤーインスタンス ID の形式（{@code <templateId>_instance_<番号>}）か判定する。
      * <p>
-     * レイヤーインスタンスと建築ワールドは同じ {@code zeloria_build} 名前空間を共有するため、
+     * レイヤーインスタンスと建築ワールドは同じ {@code minecraft} 名前空間を共有するため、
      * 建築ワールド側（{@link BuildManager#isBuildWorld(World)}）がインスタンスを
      * 建築ワールドと誤認しないようにするための識別子として使用する。
      *
@@ -319,7 +321,7 @@ public class LayerManager {
      * 指定ディレクトリが本プラグインの生成したレイヤーインスタンスか判定する。
      * <p>
      * 生成時に書き込まれる所有権マーカー（{@link #OWNERSHIP_MARKER_FILE}）の有無で判定する。
-     * 建築ワールド（{@code zeloria_build} 名前空間を共有する）と区別するために使用する。
+     * 建築ワールド（{@code minecraft} 名前空間を共有する）と区別するために使用する。
      *
      * @param directory 判定対象ディレクトリ
      * @return レイヤーインスタンスのディレクトリなら {@code true}
@@ -333,7 +335,7 @@ public class LayerManager {
      *
      * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
      * @param instanceId 生成するインスタンス ID
-     *                   （{@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build} 配下のディレクトリ名）
+     *                   （{@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft} 配下のディレクトリ名）
      * @return ロードされたワールド
      * @throws IllegalArgumentException テンプレートが存在しない、または ID が不正な場合
      * @throws IllegalStateException    同一 ID のインスタンスが既に存在する、またはワールドのロードに失敗した場合
@@ -532,16 +534,17 @@ public class LayerManager {
         String bukkitWorldName = LayerManager.worldName(instanceId);
         World world;
         try {
-            // ディメンションキーを zeloria_build 名前空間へ変更する。
-            // テンプレートの level.dat に含まれる minecraft:overworld のキーと衝突せず、
-            // 「duplicate of another world」でロードを拒否されない。
+            // テンプレートの level.dat は minecraft:overworld のディメンション定義しか持たないため、
+            // 標準の minecraft 名前空間 + NORMAL 環境でロードする。
+            // （CUSTOM + customEnvironmentKey では level.dat に該当定義が無くロードに失敗する）
             NamespacedKey dimensionKey = Objects.requireNonNull(
                     NamespacedKey.fromString(bukkitWorldName),
                     "dimensionKey");
             WorldCreator creator = WorldCreator.ofKey(dimensionKey)
-                    .environment(World.Environment.CUSTOM)
-                    // スポーン位置を常時ロードしない（新規生成時の負荷・競合を避ける）。
-                    .keepSpawnLoaded(TriState.FALSE)
+                    .environment(World.Environment.NORMAL)
+                    // スポーン位置を常時ロードする。未ロードチャンクへのテレポートは
+                    // Paper に拒否されるため、ロード直後から転送先として使用できるようにする。
+                    .keepSpawnLoaded(TriState.TRUE)
                     .generateStructures(false)
                     // 空の ChunkGenerator によりブロック生成を抑止する（Void ワールド）。
                     .generator(new ChunkGenerator() {
@@ -566,6 +569,9 @@ public class LayerManager {
         }
 
         applySafetySettings(world);
+        // 生成直後はスポーン位置のチャンクが未ロードのままだと teleport / teleportAsync が
+        // success=false を返すため、転送先となるスポーン位置のチャンクを明示的にロードする。
+        loadSpawnChunk(world);
         // オンメモリキャッシュのキーは常にインスタンス ID で統一する。
         loadedWorlds.put(instanceId, world);
         instanceTemplates.put(instanceId, templateId);
@@ -748,7 +754,7 @@ public class LayerManager {
      * 生成から {@link #NEWLY_CREATED_WINDOW_MILLIS} 経過したインスタンスは
      * 既存扱いとなり {@code false} を返す。
      *
-     * @param instanceId インスタンス ID（ワールドキー {@code zeloria_build:<instanceId>} の ID 部分）
+     * @param instanceId インスタンス ID（ワールドキー {@code minecraft:<instanceId>} の ID 部分）
      * @return 新規生成直後なら {@code true}
      */
     public boolean isNewlyCreated(String instanceId) {
@@ -859,7 +865,7 @@ public class LayerManager {
      * ワールド内にプレイヤーがいる場合は、メインワールド／ハブ等の別ワールドへ
      * 退避させてからアンロードする（キックは発生しない）。
      * ディレクトリ削除は
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>} 直下のみを対象とし、
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>} 直下のみを対象とし、
      * バニラの標準ディメンション（{@code overworld} / {@code the_nether} / {@code the_end}）や
      * インスタンス配置先の外側は決して削除しない。
      * <p>
@@ -894,7 +900,7 @@ public class LayerManager {
 
         World world = loadedWorlds.get(instanceId);
         if (world == null) {
-            // キャッシュに無くても Bukkit 側でロード済みなら拾う（キーは zeloria_build:<instanceId>）。
+            // キャッシュに無くても Bukkit 側でロード済みなら拾う（キーは minecraft:<instanceId>）。
             world = findLoadedInstanceWorld(instanceId);
         }
 
@@ -1362,6 +1368,17 @@ public class LayerManager {
             return true;
         }
 
+        // 退避先のチャンクが未ロードだとテレポートが success=false になるため、事前にロードする。
+        if (destination != null && destination.getWorld() != null) {
+            try {
+                destination.getChunk().load();
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning(
+                        "退避先のチャンクをロードできませんでした: " + destination
+                                + " (" + e.getMessage() + ")");
+            }
+        }
+
         for (Player player : players) {
             try {
                 Location respawn = player.getRespawnLocation();
@@ -1417,9 +1434,31 @@ public class LayerManager {
     }
 
     /**
+     * ワールドのスポーン位置のチャンクを明示的にロードする。
+     * <p>
+     * 未ロードチャンクへのテレポートは {@code success=false} となるため、
+     * ワールド生成直後に呼び出して転送先を確実に用意する。失敗は警告に留める。
+     *
+     * @param world 対象ワールド
+     */
+    private void loadSpawnChunk(World world) {
+        if (world == null) {
+            return;
+        }
+        try {
+            Location spawn = world.getSpawnLocation();
+            world.getChunkAt(spawn).load();
+        } catch (RuntimeException e) {
+            plugin.getLogger().warning(
+                    "スポーン位置のチャンクをロードできませんでした: " + world.getName()
+                            + " (" + e.getMessage() + ")");
+        }
+    }
+
+    /**
      * 指定インスタンス ID のロード済みワールドを Bukkit から検索する。
      * <p>
-     * レイヤーインスタンスは {@code zeloria_build:<instanceId>} キーでロードされるため、
+     * レイヤーインスタンスは {@code minecraft:<instanceId>} キーでロードされるため、
      * 名前文字列ではなくディメンションキーで照合する。
      *
      * @param instanceId インスタンス ID
@@ -1440,10 +1479,10 @@ public class LayerManager {
 
     /**
      * インスタンス ID から展開先ディレクトリ
-     * （{@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>}）を解決する。
+     * （{@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>}）を解決する。
      * <p>
      * テンプレートのコピー先・存在チェック・削除対象はいずれもこのパスを参照する。
-     * ワールドキーの名前空間（{@code zeloria_build}）と一致させることで、
+     * ワールドキーの名前空間（{@code minecraft}）と一致させることで、
      * Paper がコピー済みのワールドデータをそのまま読み込む。
      *
      * @param instanceId インスタンス ID

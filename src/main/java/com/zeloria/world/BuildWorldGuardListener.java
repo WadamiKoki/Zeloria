@@ -48,22 +48,28 @@ public class BuildWorldGuardListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerTeleport(PlayerTeleportEvent event) {
+        Player player = event.getPlayer();
         Location destination = event.getTo();
+
+        // テレポートがキャンセルされている原因を切り分けるための調査用ログ。
+        Bukkit.getLogger().info("[BuildGuardDebug] player=" + player.getName()
+                + ", to=" + (destination != null && destination.getWorld() != null
+                        ? destination.getWorld().getName() : "null")
+                + ", isActiveBuildWorld=" + buildManager.isActiveBuildWorld(
+                        destination != null ? destination.getWorld() : null)
+                + ", cancelled=" + event.isCancelled());
+
         if (destination == null || destination.getWorld() == null) {
             return;
         }
 
-        // キャンセル対象は「建築ワールド（zeloria_build 名前空間）への入場」のみ。
-        // 同じ名前空間を共有するレイヤーインスタンス（zeloria_build:<instanceId>）や、
+        // キャンセル対象は「現在開いている建築ワールドへの入場」のみ。
+        // minecraft 名前空間を共有するレイヤーインスタンスやバニラワールド、
         // 建築ワールドからの退出はキャンセルしない。
-        if (!BuildManager.BUILD_NAMESPACE.equals(destination.getWorld().getKey().getNamespace())) {
-            return;
-        }
         if (!buildManager.isActiveBuildWorld(destination.getWorld())) {
             return;
         }
 
-        Player player = event.getPlayer();
         if (!player.hasPermission(BuildManager.BUILD_PERMISSION) && !player.isOp()) {
             event.setCancelled(true);
             player.sendMessage(DENIED);
