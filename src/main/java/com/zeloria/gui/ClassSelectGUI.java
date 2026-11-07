@@ -577,7 +577,7 @@ public final class ClassSelectGUI implements Listener {
         }
 
         PlayerClassData classData = data.getClassData();
-        Selection selection = select(classData, classId);
+        Selection selection = select(data, classId);
         Layout current = layout;
 
         switch (selection) {
@@ -647,11 +647,16 @@ public final class ClassSelectGUI implements Listener {
 
     /**
      * クラス選択の可否を判定し、可能なら現在のクラスを更新する。
+     * <p>
+     * 初回選択（未選択状態）の場合は、クラス別進行が未作成なら現在のグローバル
+     * レベル・経験値を引き継ぐ。切り替え時は選択先クラスの進行状況を
+     * {@link PlayerStats} へ反映する（未進行ならレベル 0 から開始）。
      */
-    private Selection select(PlayerClassData classData, String classId) {
-        if (classData == null) {
+    private Selection select(PlayerData data, String classId) {
+        if (data == null) {
             return Selection.NO_DATA;
         }
+        PlayerClassData classData = data.getClassData();
         if (classManager.find(classId).isEmpty()) {
             return Selection.UNKNOWN;
         }
@@ -661,7 +666,11 @@ public final class ClassSelectGUI implements Listener {
         if (classId.equals(classData.currentClassIdOrNull())) {
             return Selection.ALREADY;
         }
+        if (classData.currentClassIdOrNull() == null) {
+            data.ensureClassProgress(classId);
+        }
         classData.setCurrentClassId(classId);
+        data.mirrorCurrentClassProgress();
         return Selection.SELECTED;
     }
 

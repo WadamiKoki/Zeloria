@@ -39,6 +39,7 @@ import com.zeloria.player.PlayerListener;
 import com.zeloria.player.PlayerRegenTask;
 import com.zeloria.player.PlayerRepository;
 import com.zeloria.player.PlayerService;
+import com.zeloria.gui.ClassTreeGUI;
 import com.zeloria.gui.ClassSelectGUI;
 import com.zeloria.combat.CombatListener;
 import com.zeloria.combat.CombatModeListener;
@@ -46,6 +47,9 @@ import com.zeloria.combat.CombatStateListener;
 import com.zeloria.core.ListenerRegistrar;
 import com.zeloria.skill.SkillSlotListener;
 import com.zeloria.skill.ClassManager;
+import com.zeloria.skill.ClassTreeManager;
+import com.zeloria.skill.ClassTreeService;
+import com.zeloria.skill.TreeDataService;
 import com.zeloria.skill.CooldownService;
 import com.zeloria.skill.SkillCastNotifier;
 import com.zeloria.skill.SkillCastService;
@@ -171,6 +175,15 @@ public final class Zeloria extends JavaPlugin {
     /** クラス定義マネージャ（{@code config/ClassData/} を読み込む）。 */
     private ClassManager classManager;
 
+    /** クラスツリー共通形状（{@code config/TreeData/tree.yml}）。 */
+    private TreeDataService treeDataService;
+
+    /** クラスごとのツリー定義（{@code config/ClassTree/*.yml}）。 */
+    private ClassTreeManager classTreeManager;
+
+    /** クラスツリーポイントの解放・リセット処理。 */
+    private ClassTreeService classTreeService;
+
     /** スキル定義マネージャ（{@code config/SkillData/} を読み込む）。 */
     private SkillManager skillManager;
 
@@ -203,6 +216,9 @@ public final class Zeloria extends JavaPlugin {
 
     /** クラス選択 GUI（リスナーも兼ねる）。 */
     private ClassSelectGUI classSelectGUI;
+
+    /** クラスツリー GUI（リスナーも兼ねる）。 */
+    private ClassTreeGUI classTreeGUI;
 
     /** 死亡からリスポーンまでの独自演出を処理するリスナー。 */
     private DeathListener deathListener;
@@ -258,6 +274,9 @@ public final class Zeloria extends JavaPlugin {
         this.virtualInventoryService = new VirtualInventoryService(this);
         this.levelService = new LevelService(this, this.yamlLoader);
         this.classManager = new ClassManager(this, this.yamlLoader);
+        this.treeDataService = new TreeDataService(this, this.yamlLoader);
+        this.classTreeManager = new ClassTreeManager(this, this.yamlLoader, this.treeDataService);
+        this.classTreeService = new ClassTreeService(this.classTreeManager);
         this.skillManager = new SkillManager(this, this.yamlLoader);
         this.cooldownService = new CooldownService();
         this.combatStateService = new CombatStateService();
@@ -276,6 +295,7 @@ public final class Zeloria extends JavaPlugin {
         this.playerService = new PlayerService(this, this.playerRepository);
         this.menuService = new MenuService(this);
         this.classSelectGUI = new ClassSelectGUI(this, this.classManager);
+        this.classTreeGUI = new ClassTreeGUI(this);
         this.deathListener = new DeathListener(this);
         registerMenuFeatures();
 
@@ -632,6 +652,9 @@ public final class Zeloria extends JavaPlugin {
         if (this.classSelectGUI != null) {
             this.listenerRegistrar.register(this.classSelectGUI);
         }
+        if (this.classTreeGUI != null) {
+            this.listenerRegistrar.register(this.classTreeGUI);
+        }
         if (this.deathListener != null) {
             this.listenerRegistrar.register(this.deathListener);
         }
@@ -678,8 +701,8 @@ public final class Zeloria extends JavaPlugin {
      * <p>
      * {@code config/gui/menu.yml} の {@code features} で定義した
      * {@code action} 名とハンドラを対応付ける。現在は
-     * {@code class_select} のみを登録し、クリック時に
-     * {@link ClassSelectGUI} を開く。
+     * {@code class_select}（クラス選択）と {@code class_tree}（クラスツリー）を登録し、
+     * クリック時にそれぞれの GUI を開く。
      */
     private void registerMenuFeatures() {
         if (this.menuService == null) {
@@ -688,6 +711,12 @@ public final class Zeloria extends JavaPlugin {
 
         this.menuService.registerFeatureAction("class_select", player -> {
             ClassSelectGUI gui = this.classSelectGUI;
+            if (gui != null) {
+                gui.open(player);
+            }
+        });
+        this.menuService.registerFeatureAction("class_tree", player -> {
+            ClassTreeGUI gui = this.classTreeGUI;
             if (gui != null) {
                 gui.open(player);
             }
@@ -1050,6 +1079,33 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
+     * クラスツリー共通形状サービスを取得する。
+     *
+     * @return プラグインの TreeDataService（onEnable 前は null）
+     */
+    public TreeDataService getTreeDataService() {
+        return treeDataService;
+    }
+
+    /**
+     * クラスツリーマネージャを取得する。
+     *
+     * @return プラグインの ClassTreeManager（onEnable 前は null）
+     */
+    public ClassTreeManager getClassTreeManager() {
+        return classTreeManager;
+    }
+
+    /**
+     * クラスツリーサービスを取得する。
+     *
+     * @return プラグインの ClassTreeService（onEnable 前は null）
+     */
+    public ClassTreeService getClassTreeService() {
+        return classTreeService;
+    }
+
+    /**
      * SkillManager を取得する。
      *
      * @return プラグインの SkillManager（onEnable 前は null）
@@ -1110,5 +1166,14 @@ public final class Zeloria extends JavaPlugin {
      */
     public ClassSelectGUI getClassSelectGUI() {
         return classSelectGUI;
+    }
+
+    /**
+     * クラスツリー GUI を取得する。
+     *
+     * @return プラグインの ClassTreeGUI（onEnable 前は null）
+     */
+    public ClassTreeGUI getClassTreeGUI() {
+        return classTreeGUI;
     }
 }

@@ -30,6 +30,7 @@ public class PlayerRepository {
             uuid, player_name, level, exp, hp, mp, money,
             atk, `def`, crit_rate, crit_dmg, cdr, move_speed, hp_regen, mp_regen,
             current_class_id, unlocked_classes,
+            class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
             virtual_equipment_base64,
             max_health, current_health, max_mana, current_mana,
             attack_power, defense, defense1, defense2, critical_rate, critical_damage,
@@ -59,6 +60,7 @@ public class PlayerRepository {
                 uuid, player_name, level, exp, hp, mp, money,
                 atk, `def`, crit_rate, crit_dmg, cdr, move_speed, hp_regen, mp_regen,
                 current_class_id, unlocked_classes,
+                class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
                 virtual_equipment_base64,
                 max_health, current_health, max_mana, current_mana,
                 attack_power, defense, defense1, defense2, critical_rate, critical_damage,
@@ -69,7 +71,7 @@ public class PlayerRepository {
                 last_updated
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?,
+                      ?, ?, ?, ?, ?,
                       CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
@@ -88,6 +90,10 @@ public class PlayerRepository {
                 mp_regen = VALUES(mp_regen),
                 current_class_id = VALUES(current_class_id),
                 unlocked_classes = VALUES(unlocked_classes),
+                class_levels_json = VALUES(class_levels_json),
+                class_exps_json = VALUES(class_exps_json),
+                class_tree_points_json = VALUES(class_tree_points_json),
+                allocated_class_nodes_json = VALUES(allocated_class_nodes_json),
                 virtual_equipment_base64 = VALUES(virtual_equipment_base64),
                 max_health = VALUES(max_health),
                 current_health = VALUES(current_health),
@@ -313,6 +319,10 @@ public class PlayerRepository {
             statement.setDouble(index++, snapshot.mpRegen());
             statement.setString(index++, snapshot.currentClassId());
             statement.setString(index++, snapshot.unlockedClasses());
+            statement.setString(index++, snapshot.classLevelsJson());
+            statement.setString(index++, snapshot.classExpsJson());
+            statement.setString(index++, snapshot.classTreePointsJson());
+            statement.setString(index++, snapshot.allocatedClassNodesJson());
             statement.setString(index++, snapshot.virtualEquipmentBase64());
             statement.setDouble(index++, snapshot.maxHealth());
             statement.setDouble(index++, snapshot.currentHealth());
@@ -372,6 +382,10 @@ public class PlayerRepository {
                 mpRegen,
                 rs.getString("current_class_id"),
                 rs.getString("unlocked_classes"),
+                rs.getString("class_levels_json"),
+                rs.getString("class_exps_json"),
+                rs.getString("class_tree_points_json"),
+                rs.getString("allocated_class_nodes_json"),
                 rs.getString("virtual_equipment_base64"),
                 // 新カラムが NULL（マイグレーション前の既存行）の場合は旧カラムから補完する。
                 statOr(rs, "max_health", Math.max(PlayerStats.DEFAULT_MAX_HEALTH, hp)),

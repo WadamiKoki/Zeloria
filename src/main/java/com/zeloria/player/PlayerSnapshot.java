@@ -28,6 +28,10 @@ import java.util.UUID;
  * @param mpRegen                 MP 自然回復量（旧カラム互換。固定リジェネと同値）
  * @param currentClassId         現在のクラス ID（未選択時は空文字）
  * @param unlockedClasses        解放済みクラス ID のカンマ区切り文字列
+ * @param classLevelsJson        クラス ID → クラス別レベル（JSON）
+ * @param classExpsJson          クラス ID → クラス別経験値（JSON）
+ * @param classTreePointsJson    クラス ID → 未使用ツリーポイント（JSON）
+ * @param allocatedClassNodesJson クラス ID → 解放済みツリーノード ID（JSON）
  * @param virtualEquipmentBase64  仮想装備の Base64 データ
  * @param maxHealth               最大 HP
  * @param currentHealth           現在 HP
@@ -67,6 +71,10 @@ public record PlayerSnapshot(
         double mpRegen,
         String currentClassId,
         String unlockedClasses,
+        String classLevelsJson,
+        String classExpsJson,
+        String classTreePointsJson,
+        String allocatedClassNodesJson,
         String virtualEquipmentBase64,
         double maxHealth,
         double currentHealth,
@@ -112,6 +120,11 @@ public record PlayerSnapshot(
         playerName = playerName == null ? "" : playerName;
         currentClassId = currentClassId == null ? "" : currentClassId;
         unlockedClasses = unlockedClasses == null ? "" : unlockedClasses;
+        classLevelsJson = classLevelsJson == null || classLevelsJson.isBlank() ? "{}" : classLevelsJson;
+        classExpsJson = classExpsJson == null || classExpsJson.isBlank() ? "{}" : classExpsJson;
+        classTreePointsJson = classTreePointsJson == null || classTreePointsJson.isBlank() ? "{}" : classTreePointsJson;
+        allocatedClassNodesJson = allocatedClassNodesJson == null || allocatedClassNodesJson.isBlank()
+                ? "{}" : allocatedClassNodesJson;
         virtualEquipmentBase64 = virtualEquipmentBase64 == null ? InventorySerializer.EMPTY : virtualEquipmentBase64;
         cooldownEndAt = cooldownEndAt == null ? "" : cooldownEndAt;
     }
@@ -142,6 +155,10 @@ public record PlayerSnapshot(
                 0.0,
                 "",
                 "",
+                "{}",
+                "{}",
+                "{}",
+                "{}",
                 InventorySerializer.EMPTY,
                 PlayerStats.DEFAULT_MAX_HEALTH,
                 PlayerStats.DEFAULT_MAX_HEALTH,
@@ -174,7 +191,9 @@ public record PlayerSnapshot(
     public PlayerSnapshot withName(String name) {
         return new PlayerSnapshot(uuid, name, level, exp, hp, mp, money, atk, def,
                 critRate, critDmg, cdr, moveSpeed, hpRegen, mpRegen,
-                currentClassId, unlockedClasses, virtualEquipmentBase64,
+                currentClassId, unlockedClasses,
+                classLevelsJson, classExpsJson, classTreePointsJson, allocatedClassNodesJson,
+                virtualEquipmentBase64,
                 maxHealth, currentHealth, maxMana, currentMana,
                 attackPower, defense1, defense2, criticalRate, criticalDamage,
                 accuracy, evasion, dodgeCooldownReduction, cooldownReduction,

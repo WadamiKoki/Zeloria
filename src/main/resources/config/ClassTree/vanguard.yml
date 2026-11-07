@@ -1,0 +1,139 @@
+# ============================================================================
+# ヴァンガード用クラスツリー
+# ----------------------------------------------------------------------------
+# 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
+# ここでは表示名・説明・コスト・解放条件・効果だけを定義する。
+# ============================================================================
+
+id: "vanguard"
+title: "<gradient:#ef5350:#b71c1c><bold>ヴァンガード・ツリー</bold></gradient>"
+
+nodes:
+  root:
+    displayName: "<red><bold>鉄壁の誓い</bold></red>"
+    description:
+      - "<gray>ヴァンガードのクラスツリーの起点。</gray>"
+      - "<gray>前線で味方を守るための覚悟を固める。</gray>"
+    cost: 0
+    effects:
+      - "<red>・クラスツリーを解放できるようになる</red>"
+
+  offense_1:
+    displayName: "<red>戦斧鍛錬 I</red>"
+    description:
+      - "<gray>重い戦斧を振るうための基礎体力を養う。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<red>・攻撃力 +2</red>"
+
+  offense_2:
+    displayName: "<red>戦斧鍛錬 II</red>"
+    description:
+      - "<gray>斧の重みを活かし、装甲ごと敵を叩き潰す。</gray>"
+    cost: 2
+    requires: ["offense_1"]
+    effects:
+      - "<red>・攻撃力 +3</red>"
+      - "<red>・物理防御無視 +3%</red>"
+
+  offense_3:
+    displayName: "<red>破砕撃</red>"
+    description:
+      - "<gray>敵の防御を砕き、大ダメージを与える一撃。</gray>"
+    cost: 2
+    requires: ["offense_2"]
+    effects:
+      - "<red>・攻撃力 +4</red>"
+      - "<red>・物理防御無視 +5%</red>"
+
+  offense_4:
+    displayName: "<dark_red>大地断ち</dark_red>"
+    description:
+      - "<gray>大地を裂くほどの斬撃で、周囲の敵をなぎ払う。</gray>"
+    cost: 3
+    requires: ["offense_3"]
+    effects:
+      - "<red>・攻撃力 +8</red>"
+      - "<red>・物理防御無視 +5%</red>"
+
+  precision_1:
+    displayName: "<aqua>防反 I</aqua>"
+    description:
+      - "<gray>敵の攻撃を受け流し、反撃の機会を窺う。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<aqua>・命中率 +3%</aqua>"
+
+  precision_2:
+    displayName: "<aqua>防反 II</aqua>"
+    description:
+      - "<gray>相手の攻撃パターンを読み、確実に反撃する。</gray>"
+    cost: 2
+    requires: ["precision_1"]
+    effects:
+      - "<aqua>・命中率 +5%</aqua>"
+      - "<aqua>・回避率 +3%</aqua>"
+
+  precision_3:
+    displayName: "<aqua>不屈</aqua>"
+    description:
+      - "<gray>どれだけ傷を負っても前線から退かない意志。</gray>"
+    cost: 2
+    requires: ["precision_2"]
+    effects:
+      - "<aqua>・最大HP +5%</aqua>"
+      - "<aqua>・命中率 +3%</aqua>"
+
+  utility_1:
+    displayName: "<yellow>重装 I</yellow>"
+    description:
+      - "<gray>重い装備に慣れ、守りを固める。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<yellow>・物理防御 +3%</yellow>"
+
+  utility_2:
+    displayName: "<yellow>重装 II</yellow>"
+    description:
+      - "<gray>鎧の扱いを極め、あらゆる攻撃に耐える。</gray>"
+    cost: 2
+    requires: ["utility_1"]
+    effects:
+      - "<yellow>・物理防御 +5%</yellow>"
+      - "<yellow>・最大HP +3%</yellow>"
+
+  utility_3:
+    displayName: "<yellow>戦陣</yellow>"
+    description:
+      - "<gray>戦場を支配する陣形を敷き、味方を守る。</gray>"
+    cost: 2
+    requires: ["utility_2"]
+    effects:
+      - "<yellow>・最大HP +5%</yellow>"
+      - "<yellow>・物理防御 +3%</yellow>"
+
+  fusion:
+    displayName: "<light_purple>守護者の極意</light_purple>"
+    description:
+      - "<gray>攻撃・反撃・防御のうち 2 系統を修めた者だけが</gray>"
+      - "<gray>習得できる複合技術。</gray>"
+    cost: 3
+    requiresAny: ["offense_2", "precision_2", "utility_2"]
+    effects:
+      - "<light_purple>・攻撃力 +5</light_purple>"
+      - "<light_purple>・物理防御 +3%</light_purple>"
+
+  ultimate:
+    displayName: "<gold><bold>不落の要塞</bold></gold>"
+    description:
+      - "<gray>ヴァンガードの最終奥義。揺るぎない守りで戦場を支える。</gray>"
+    cost: 5
+    requires: ["fusion"]
+    requiresAny: ["offense_3", "precision_3", "utility_3"]
+    effects:
+      - "<gold>・攻撃力 +10</gold>"
+      - "<gold>・最大HP +15%</gold>"
+      - "<gold>・物理防御 +10%</gold>"

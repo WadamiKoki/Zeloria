@@ -10,6 +10,9 @@ exp_growth: 1.15
 # 下記 stages の max_level から自動算出される。
 max_level: 50
 
+# クラスレベルが 1 上がるごとに付与するクラスツリーポイント。
+tree_points_per_level: 1
+
 stages:
   - min_level: 0
     max_level: 9

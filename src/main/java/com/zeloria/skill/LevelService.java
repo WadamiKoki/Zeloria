@@ -94,6 +94,10 @@ public class LevelService {
     /**
      * プレイヤーデータへ経験値を付与し、必要に応じてレベルアップさせる。
      * <p>
+     * クラス選択済みの場合は「現在のクラス」のレベル・経験値を進め、レベルアップ
+     * 1 回につき {@link LevelSettings#treePointsPerLevel()} ポイントのクラスツリーポイントを
+     * 付与する。未選択の場合は従来どおりグローバル値を更新する。
+     * <p>
      * 1 回の付与で複数レベル上がる場合にも対応する。最大レベルに到達した場合は
      * 余剰経験値を保持せず、必要経験値ちょうどで停止する。
      *
@@ -107,9 +111,12 @@ public class LevelService {
         }
 
         PlayerStats stats = data.getStats();
-        int oldLevel = stats.getLevel();
+        String classId = data.getClassData().currentClassIdOrNull();
+        boolean classScoped = classId != null && !classId.isBlank();
+
+        int oldLevel = classScoped ? data.getClassLevel(classId) : stats.getLevel();
         int level = oldLevel;
-        long exp = stats.getExp() + amount;
+        long exp = (classScoped ? data.getClassExp(classId) : stats.getExp()) + amount;
         int maxLevel = settings.maxLevel();
         int levelsGained = 0;
 
@@ -129,8 +136,18 @@ public class LevelService {
             exp = 0L;
         }
 
-        stats.setLevel(level);
-        stats.setExp(exp);
+        if (classScoped) {
+            data.setClassLevel(classId, level);
+            data.setClassExp(classId, exp);
+            if (levelsGained > 0 && settings.treePointsPerLevel() > 0) {
+                data.addClassTreePoints(classId, levelsGained * settings.treePointsPerLevel());
+            }
+            // 既存のステータス計算・表示が参照するグローバル値へ反映する。
+            data.mirrorCurrentClassProgress();
+        } else {
+            stats.setLevel(level);
+            stats.setExp(exp);
+        }
 
         // レベルアップ時はクラス基礎ステータス（baseStats × レベル成長率）を再計算する。
         if (levelsGained > 0 && plugin.getPlayerStatsService() != null) {

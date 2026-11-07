@@ -30,6 +30,11 @@ features:
     icon: class_select
     action: class_select
     permission: "zeloria.player"
+  class_tree:
+    slot: 1
+    icon: class_tree
+    action: class_tree
+    permission: "zeloria.player"
 
 sounds:
   open:
@@ -56,6 +61,12 @@ icons:
     lore:
       - "<gray>クリックでクラス選択画面を開きます</gray>"
       - "<dark_gray>5つのクラスから選択できます</dark_gray>"
+  class_tree:
+    material: "EXPERIENCE_BOTTLE"
+    name: "<green>クラスツリー</green>"
+    lore:
+      - "<gray>クリックでクラスツリーを開きます</gray>"
+      - "<dark_gray>レベルアップで得たポイントを消費して強化します</dark_gray>"
   close:
     material: "COMPASS"
     name: "<red>閉じる</red>"

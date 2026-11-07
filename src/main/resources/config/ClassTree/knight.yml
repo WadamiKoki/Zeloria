@@ -1,0 +1,139 @@
+# ============================================================================
+# ナイト用クラスツリー
+# ----------------------------------------------------------------------------
+# 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
+# 同じノード ID でも、クラスごとに表示名・効果・条件を変えられる。
+# ============================================================================
+
+id: "knight"
+title: "<gradient:#FFD700:#B8860B><bold>ナイト・ツリー</bold></gradient>"
+
+nodes:
+  root:
+    displayName: "<gold><bold>騎士の誓い</bold></gold>"
+    description:
+      - "<gray>ナイトのクラスツリーの起点。</gray>"
+      - "<gray>守りと攻め、どちらの道もここから始まる。</gray>"
+    cost: 0
+    effects:
+      - "<gold>・クラスツリーを解放できるようになる</gold>"
+
+  offense_1:
+    displayName: "<red>剣術鍛錬 I</red>"
+    description:
+      - "<gray>基本の斬撃を繰り返し、確実な一撃を身につける。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<red>・攻撃力 +2</red>"
+
+  offense_2:
+    displayName: "<red>剣術鍛錬 II</red>"
+    description:
+      - "<gray>体重を乗せた重い斬撃を習得する。</gray>"
+    cost: 2
+    requires: ["offense_1"]
+    effects:
+      - "<red>・攻撃力 +3</red>"
+      - "<red>・クリティカルダメージ +5%</red>"
+
+  offense_3:
+    displayName: "<red>鎧砕き</red>"
+    description:
+      - "<gray>敵の防御ごと叩き割る強力な一振り。</gray>"
+    cost: 2
+    requires: ["offense_2"]
+    effects:
+      - "<red>・攻撃力 +4</red>"
+      - "<red>・物理防御無視 +5%</red>"
+
+  offense_4:
+    displayName: "<dark_red>獅子の一撃</dark_red>"
+    description:
+      - "<gray>騎士の全てを込めた、決戦の一撃。</gray>"
+    cost: 3
+    requires: ["offense_3"]
+    effects:
+      - "<red>・攻撃力 +8</red>"
+      - "<red>・クリティカル率 +5%</red>"
+
+  precision_1:
+    displayName: "<aqua>守勢 I</aqua>"
+    description:
+      - "<gray>盾の構えを学び、敵の攻撃を受け流す。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<aqua>・防御力 +2</aqua>"
+
+  precision_2:
+    displayName: "<aqua>守勢 II</aqua>"
+    description:
+      - "<gray>重装備でも崩れない安定した防御姿勢。</gray>"
+    cost: 2
+    requires: ["precision_1"]
+    effects:
+      - "<aqua>・防御力 +3</aqua>"
+      - "<aqua>・最大HP +5</aqua>"
+
+  precision_3:
+    displayName: "<aqua>鉄壁</aqua>"
+    description:
+      - "<gray>あらゆる攻撃を弾く、揺るぎない守り。</gray>"
+    cost: 2
+    requires: ["precision_2"]
+    effects:
+      - "<aqua>・防御力 +4</aqua>"
+      - "<aqua>・最大HP +10</aqua>"
+
+  utility_1:
+    displayName: "<yellow>鼓舞 I</yellow>"
+    description:
+      - "<gray>周囲を奮い立たせる騎士の統率力。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<yellow>・最大HP +5</yellow>"
+
+  utility_2:
+    displayName: "<yellow>鼓舞 II</yellow>"
+    description:
+      - "<gray>戦場を支える指揮官としての立ち振る舞い。</gray>"
+    cost: 2
+    requires: ["utility_1"]
+    effects:
+      - "<yellow>・最大HP +5</yellow>"
+      - "<yellow>・HP自然回復 +1</yellow>"
+
+  utility_3:
+    displayName: "<yellow>不動の意志</yellow>"
+    description:
+      - "<gray>痛みに耐え、前線に立ち続ける精神力。</gray>"
+    cost: 2
+    requires: ["utility_2"]
+    effects:
+      - "<yellow>・最大HP +10</yellow>"
+      - "<yellow>・被ダメージ軽減 +3%</yellow>"
+
+  fusion:
+    displayName: "<light_purple>攻守一体</light_purple>"
+    description:
+      - "<gray>攻撃・守勢・鼓舞のうち 2 系統を修めた者だけが</gray>"
+      - "<gray>習得できる複合技術。</gray>"
+    cost: 3
+    requiresAny: ["offense_2", "precision_2", "utility_2"]
+    effects:
+      - "<light_purple>・攻撃力 +3</light_purple>"
+      - "<light_purple>・防御力 +3</light_purple>"
+
+  ultimate:
+    displayName: "<gold><bold>聖騎士の威光</bold></gold>"
+    description:
+      - "<gray>ナイトの最終奥義。守りを力に変えて戦場を制する。</gray>"
+    cost: 5
+    requires: ["fusion"]
+    requiresAny: ["offense_3", "precision_3", "utility_3"]
+    effects:
+      - "<gold>・攻撃力 +5</gold>"
+      - "<gold>・防御力 +5</gold>"
+      - "<gold>・最大HP +20</gold>"

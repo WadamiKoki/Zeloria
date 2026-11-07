@@ -41,6 +41,9 @@ public final class LevelSettings {
     /** 上限なしを表す {@code max_level} の値。 */
     public static final int UNLIMITED = -1;
 
+    /** 既定のレベルアップ 1 回あたりに付与するツリーポイント。 */
+    public static final int DEFAULT_TREE_POINTS_PER_LEVEL = 1;
+
     /** 設定が読み込めなかった場合に使用する既定値。 */
     public static final LevelSettings DEFAULT =
             new LevelSettings(DEFAULT_BASE_EXP, DEFAULT_EXP_GROWTH, List.of());
@@ -75,6 +78,7 @@ public final class LevelSettings {
     private final double expGrowth;
     private final List<Stage> stages;
     private final int maxLevel;
+    private final int treePointsPerLevel;
 
     public LevelSettings(long baseExp, double expGrowth, List<Stage> stages) {
         this(baseExp, expGrowth, stages, UNLIMITED);
@@ -89,6 +93,20 @@ public final class LevelSettings {
      * @param explicitMaxLevel 明示的なレベル上限（1 以上で有効、{@link #UNLIMITED} 以下は段階から算出）
      */
     public LevelSettings(long baseExp, double expGrowth, List<Stage> stages, int explicitMaxLevel) {
+        this(baseExp, expGrowth, stages, explicitMaxLevel, DEFAULT_TREE_POINTS_PER_LEVEL);
+    }
+
+    /**
+     * ツリーポイント付与量まで指定して設定を生成する。
+     *
+     * @param baseExp           基準経験値
+     * @param expGrowth         レベルごとの成長率
+     * @param stages            レベル帯ごとの経験値倍率
+     * @param explicitMaxLevel  明示的なレベル上限（1 以上で有効、{@link #UNLIMITED} 以下は段階から算出）
+     * @param treePointsPerLevel レベルアップ 1 回あたりに付与するクラスツリーポイント
+     */
+    public LevelSettings(long baseExp, double expGrowth, List<Stage> stages,
+                         int explicitMaxLevel, int treePointsPerLevel) {
         this.baseExp = Math.max(1L, baseExp);
         this.expGrowth = expGrowth <= 0.0 ? DEFAULT_EXP_GROWTH : expGrowth;
         this.stages = stages == null
@@ -97,6 +115,7 @@ public final class LevelSettings {
         this.maxLevel = explicitMaxLevel >= 1
                 ? explicitMaxLevel
                 : resolveMaxLevel(this.stages);
+        this.treePointsPerLevel = Math.max(0, treePointsPerLevel);
     }
 
     /**
@@ -124,7 +143,8 @@ public final class LevelSettings {
                 config.getLong("base_exp", DEFAULT_BASE_EXP),
                 config.getDouble("exp_growth", DEFAULT_EXP_GROWTH),
                 parsed,
-                config.getInt("max_level", UNLIMITED));
+                config.getInt("max_level", UNLIMITED),
+                config.getInt("tree_points_per_level", DEFAULT_TREE_POINTS_PER_LEVEL));
     }
 
     public long baseExp() {
@@ -144,6 +164,13 @@ public final class LevelSettings {
      */
     public int maxLevel() {
         return maxLevel;
+    }
+
+    /**
+     * レベルアップ 1 回あたりに付与するクラスツリーポイントを返す。
+     */
+    public int treePointsPerLevel() {
+        return treePointsPerLevel;
     }
 
     /**

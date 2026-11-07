@@ -1,0 +1,139 @@
+# ============================================================================
+# ソーサラー用クラスツリー
+# ----------------------------------------------------------------------------
+# 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
+# ここでは表示名・説明・コスト・解放条件・効果だけを定義する。
+# ============================================================================
+
+id: "sorcerer"
+title: "<gradient:#42a5f5:#0d47a1><bold>ソーサラー・ツリー</bold></gradient>"
+
+nodes:
+  root:
+    displayName: "<blue><bold>魔力の源流</bold></blue>"
+    description:
+      - "<gray>ソーサラーのクラスツリーの起点。</gray>"
+      - "<gray>魔力を操るための基礎を築く。</gray>"
+    cost: 0
+    effects:
+      - "<blue>・クラスツリーを解放できるようになる</blue>"
+
+  offense_1:
+    displayName: "<red>元素魔法 I</red>"
+    description:
+      - "<gray>元素の力を引き出し、攻撃魔法の威力を高める。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<red>・攻撃力 +2</red>"
+
+  offense_2:
+    displayName: "<red>元素魔法 II</red>"
+    description:
+      - "<gray>複数の元素を組み合わせ、より強力な術を放つ。</gray>"
+    cost: 2
+    requires: ["offense_1"]
+    effects:
+      - "<red>・攻撃力 +3</red>"
+      - "<red>・魔法攻撃 +3%</red>"
+
+  offense_3:
+    displayName: "<red>大魔法</red>"
+    description:
+      - "<gray>広範囲を焼き払う高位魔法を習得する。</gray>"
+    cost: 2
+    requires: ["offense_2"]
+    effects:
+      - "<red>・攻撃力 +4</red>"
+      - "<red>・スキル威力 +5%</red>"
+
+  offense_4:
+    displayName: "<dark_red>滅びの業火</dark_red>"
+    description:
+      - "<gray>すべてを灰にする、ソーサラー究極の攻撃魔法。</gray>"
+    cost: 3
+    requires: ["offense_3"]
+    effects:
+      - "<red>・攻撃力 +8</red>"
+      - "<red>・スキル威力 +10%</red>"
+
+  precision_1:
+    displayName: "<aqua>詠唱制御 I</aqua>"
+    description:
+      - "<gray>詠唱の乱れを抑え、魔法を正確に制御する。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<aqua>・命中率 +3%</aqua>"
+
+  precision_2:
+    displayName: "<aqua>詠唱制御 II</aqua>"
+    description:
+      - "<gray>複雑な術式でも安定して発動できるようにする。</gray>"
+    cost: 2
+    requires: ["precision_1"]
+    effects:
+      - "<aqua>・命中率 +5%</aqua>"
+      - "<aqua>・スキルクールダウン短縮 +3%</aqua>"
+
+  precision_3:
+    displayName: "<aqua>無詠唱</aqua>"
+    description:
+      - "<gray>詠唱を省略し、瞬時に魔法を放つ技術。</gray>"
+    cost: 2
+    requires: ["precision_2"]
+    effects:
+      - "<aqua>・スキルクールダウン短縮 +5%</aqua>"
+      - "<aqua>・攻撃力 +2</aqua>"
+
+  utility_1:
+    displayName: "<yellow>マナ循環 I</yellow>"
+    description:
+      - "<gray>体内の魔力を循環させ、消費を抑える。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<yellow>・最大MP +5%</yellow>"
+
+  utility_2:
+    displayName: "<yellow>マナ循環 II</yellow>"
+    description:
+      - "<gray>魔力の再生成を促進し、戦闘を継続しやすくする。</gray>"
+    cost: 2
+    requires: ["utility_1"]
+    effects:
+      - "<yellow>・最大MP +5%</yellow>"
+      - "<yellow>・MP回復 +3%</yellow>"
+
+  utility_3:
+    displayName: "<yellow>魔力貯蔵</yellow>"
+    description:
+      - "<gray>余剰な魔力を蓄え、ここぞという時に解放する。</gray>"
+    cost: 2
+    requires: ["utility_2"]
+    effects:
+      - "<yellow>・最大MP +10%</yellow>"
+      - "<yellow>・スキル威力 +3%</yellow>"
+
+  fusion:
+    displayName: "<light_purple>大賢者の極意</light_purple>"
+    description:
+      - "<gray>攻撃・制御・魔力のうち 2 系統を修めた者だけが</gray>"
+      - "<gray>習得できる複合技術。</gray>"
+    cost: 3
+    requiresAny: ["offense_2", "precision_2", "utility_2"]
+    effects:
+      - "<light_purple>・攻撃力 +5</light_purple>"
+      - "<light_purple>・最大MP +5%</light_purple>"
+
+  ultimate:
+    displayName: "<gold><bold>星詠みの大魔導</bold></gold>"
+    description:
+      - "<gray>ソーサラーの最終奥義。星の力で世界を書き換える。</gray>"
+    cost: 5
+    requires: ["fusion"]
+    requiresAny: ["offense_3", "precision_3", "utility_3"]
+    effects:
+      - "<gold>・攻撃力 +10</gold>"
+      - "<gold>・スキル威力 +15%</gold>"
+      - "<gold>・最大MP +10%</gold>"

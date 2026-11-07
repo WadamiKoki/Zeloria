@@ -5,8 +5,12 @@ import org.bukkit.inventory.ItemStack;
 
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,6 +53,18 @@ public class PlayerData {
 
     /** クラス状態（現在のクラス・解放済みクラス）。 */
     private final PlayerClassData classData = new PlayerClassData();
+
+    /** クラス ID → クラス別レベル。 */
+    private final Map<String, Integer> classLevels = new LinkedHashMap<>();
+
+    /** クラス ID → クラス別経験値。 */
+    private final Map<String, Long> classExps = new LinkedHashMap<>();
+
+    /** クラス ID → 未使用のツリーポイント。 */
+    private final Map<String, Integer> classTreePoints = new LinkedHashMap<>();
+
+    /** クラス ID → 解放済みツリーノード ID。 */
+    private final Map<String, Set<String>> allocatedClassNodes = new LinkedHashMap<>();
 
     public PlayerData() {
     }
@@ -144,6 +160,10 @@ public class PlayerData {
                 stats.getBaseManaRegenFlat(),
                 classData.currentClassIdOrNull(),
                 classData.serializedUnlocked(),
+                ClassProgressJson.encodeIntMap(classLevels),
+                ClassProgressJson.encodeLongMap(classExps),
+                ClassProgressJson.encodeIntMap(classTreePoints),
+                ClassProgressJson.encodeSetMap(allocatedClassNodes),
                 InventorySerializer.encodeEquipment(virtualEquipment),
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
@@ -207,6 +227,15 @@ public class PlayerData {
         data.cooldownEndAt = snapshot.cooldownEndAt();
 
         data.classData.restore(snapshot.currentClassId(), snapshot.unlockedClasses());
+        data.restoreClassProgress(
+                snapshot.classLevelsJson(),
+                snapshot.classExpsJson(),
+                snapshot.classTreePointsJson(),
+                snapshot.allocatedClassNodesJson());
+
+        // 旧データ（クラス別進行が未保存）は、グローバルレベルを現在のクラスへ引き継ぐ。
+        data.ensureClassProgress(snapshot.currentClassId());
+        data.mirrorCurrentClassProgress();
 
         data.virtualEquipment.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
 
@@ -275,6 +304,207 @@ public class PlayerData {
      */
     public PlayerClassData getClassData() {
         return classData;
+    }
+
+    /* ------------------------------------------------------------------
+     * クラス別の進行状況（レベル・経験値・ツリーポイント・解放ノード）
+     * ------------------------------------------------------------------ */
+
+    /**
+     * 指定クラスのレベルを取得する。未進行の場合は 0。
+     */
+    public synchronized int getClassLevel(String classId) {
+        String normalized = normalizeClassId(classId);
+        return normalized.isEmpty() ? 0 : classLevels.getOrDefault(normalized, 0);
+    }
+
+    /**
+     * 指定クラスのレベルを設定する。
+     */
+    public synchronized void setClassLevel(String classId, int level) {
+        String normalized = normalizeClassId(classId);
+        if (!normalized.isEmpty()) {
+            classLevels.put(normalized, Math.max(0, level));
+        }
+    }
+
+    /**
+     * 指定クラスの経験値を取得する。未進行の場合は 0。
+     */
+    public synchronized long getClassExp(String classId) {
+        String normalized = normalizeClassId(classId);
+        return normalized.isEmpty() ? 0L : classExps.getOrDefault(normalized, 0L);
+    }
+
+    /**
+     * 指定クラスの経験値を設定する。
+     */
+    public synchronized void setClassExp(String classId, long exp) {
+        String normalized = normalizeClassId(classId);
+        if (!normalized.isEmpty()) {
+            classExps.put(normalized, Math.max(0L, exp));
+        }
+    }
+
+    /**
+     * 指定クラスの未使用ツリーポイントを取得する。
+     */
+    public synchronized int getClassTreePoints(String classId) {
+        String normalized = normalizeClassId(classId);
+        return normalized.isEmpty() ? 0 : classTreePoints.getOrDefault(normalized, 0);
+    }
+
+    /**
+     * 指定クラスの未使用ツリーポイントを設定する。
+     */
+    public synchronized void setClassTreePoints(String classId, int points) {
+        String normalized = normalizeClassId(classId);
+        if (!normalized.isEmpty()) {
+            classTreePoints.put(normalized, Math.max(0, points));
+        }
+    }
+
+    /**
+     * 指定クラスのツリーポイントを加算する（マイナスで減算）。
+     */
+    public synchronized void addClassTreePoints(String classId, int amount) {
+        String normalized = normalizeClassId(classId);
+        if (normalized.isEmpty() || amount == 0) {
+            return;
+        }
+        long current = classTreePoints.getOrDefault(normalized, 0);
+        long next = Math.max(0L, Math.min(Integer.MAX_VALUE, current + amount));
+        classTreePoints.put(normalized, (int) next);
+    }
+
+    /**
+     * 指定クラスで解放済みのツリーノード ID を取得する（不変コピー）。
+     */
+    public synchronized Set<String> getAllocatedClassNodes(String classId) {
+        String normalized = normalizeClassId(classId);
+        if (normalized.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> nodes = allocatedClassNodes.get(normalized);
+        return nodes == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(nodes));
+    }
+
+    /**
+     * 指定クラスのツリーノードが解放済みか判定する。
+     */
+    public synchronized boolean isClassNodeAllocated(String classId, String nodeId) {
+        String classKey = normalizeClassId(classId);
+        String nodeKey = normalizeNodeId(nodeId);
+        if (classKey.isEmpty() || nodeKey.isEmpty()) {
+            return false;
+        }
+        Set<String> nodes = allocatedClassNodes.get(classKey);
+        return nodes != null && nodes.contains(nodeKey);
+    }
+
+    /**
+     * 指定クラスのツリーノードを解放済みとして記録する（ポイント消費は行わない）。
+     *
+     * @return 新たに記録した場合は {@code true}
+     */
+    public synchronized boolean allocateClassNode(String classId, String nodeId) {
+        String classKey = normalizeClassId(classId);
+        String nodeKey = normalizeNodeId(nodeId);
+        if (classKey.isEmpty() || nodeKey.isEmpty()) {
+            return false;
+        }
+        Set<String> nodes = allocatedClassNodes.computeIfAbsent(
+                classKey, ignored -> new LinkedHashSet<>());
+        return nodes.add(nodeKey);
+    }
+
+    /**
+     * 指定クラスの解放済みツリーノードをすべて破棄する（ポイント返還は行わない）。
+     */
+    public synchronized void clearAllocatedClassNodes(String classId) {
+        String normalized = normalizeClassId(classId);
+        if (!normalized.isEmpty()) {
+            allocatedClassNodes.remove(normalized);
+        }
+    }
+
+    /**
+     * DB から復元したクラス別進行状況を反映する。
+     */
+    public synchronized void restoreClassProgress(String classLevelsJson,
+                                                  String classExpsJson,
+                                                  String classTreePointsJson,
+                                                  String allocatedClassNodesJson) {
+        classLevels.clear();
+        classExps.clear();
+        classTreePoints.clear();
+        allocatedClassNodes.clear();
+
+        ClassProgressJson.decodeIntMap(classLevelsJson)
+                .forEach((key, value) -> classLevels.put(normalizeClassId(key), value));
+        ClassProgressJson.decodeLongMap(classExpsJson)
+                .forEach((key, value) -> classExps.put(normalizeClassId(key), value));
+        ClassProgressJson.decodeIntMap(classTreePointsJson)
+                .forEach((key, value) -> classTreePoints.put(normalizeClassId(key), value));
+        ClassProgressJson.decodeSetMap(allocatedClassNodesJson).forEach((key, value) -> {
+            Set<String> normalized = new LinkedHashSet<>();
+            for (String nodeId : value) {
+                String nodeKey = normalizeNodeId(nodeId);
+                if (!nodeKey.isEmpty()) {
+                    normalized.add(nodeKey);
+                }
+            }
+            if (!normalized.isEmpty()) {
+                allocatedClassNodes.put(normalizeClassId(key), normalized);
+            }
+        });
+    }
+
+    /**
+     * クラス別進行状況が未作成の場合、現在のグローバルレベル・経験値を引き継ぐ。
+     * <p>
+     * クラス別進行の導入前に育成したプレイヤーが、クラス選択時にレベルを失わないための
+     * 移行処理。既に何らかの進行が保存されているクラスには何もしない。
+     */
+    public synchronized void ensureClassProgress(String classId) {
+        String normalized = normalizeClassId(classId);
+        if (normalized.isEmpty()) {
+            return;
+        }
+        if (classLevels.containsKey(normalized) || classExps.containsKey(normalized)) {
+            return;
+        }
+
+        int level = Math.max(0, stats.getLevel());
+        long exp = Math.max(0L, stats.getExp());
+        if (level == 0 && exp == 0L) {
+            return;
+        }
+        classLevels.put(normalized, level);
+        classExps.put(normalized, exp);
+    }
+
+    /**
+     * 現在選択中のクラスのレベル・経験値をグローバル値（{@link PlayerStats}）へ反映する。
+     * <p>
+     * レベル表示・必要経験値計算・既存のステータス計算は {@link PlayerStats#getLevel()}
+     * を参照するため、クラス切り替え時にもこのメソッドで同期する。
+     */
+    public synchronized void mirrorCurrentClassProgress() {
+        String classId = classData.currentClassIdOrNull();
+        if (classId == null || classId.isEmpty()) {
+            return;
+        }
+        stats.setLevel(getClassLevel(classId));
+        stats.setExp(getClassExp(classId));
+    }
+
+    private static String normalizeClassId(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeNodeId(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     public UUID getUuid() {

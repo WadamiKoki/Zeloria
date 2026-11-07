@@ -1,0 +1,139 @@
+# ============================================================================
+# アーチャー用クラスツリー
+# ----------------------------------------------------------------------------
+# 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
+# ここでは表示名・説明・コスト・解放条件・効果だけを定義する。
+# ============================================================================
+
+id: "archer"
+title: "<gradient:#7CFC00:#2E8B57><bold>アーチャー・ツリー</bold></gradient>"
+
+nodes:
+  root:
+    displayName: "<green><bold>狩人の心得</bold></green>"
+    description:
+      - "<gray>アーチャーのクラスツリーの起点。</gray>"
+      - "<gray>ここから各系統へ進み、射撃能力を伸ばす。</gray>"
+    cost: 0
+    effects:
+      - "<green>・クラスツリーを解放できるようになる</green>"
+
+  offense_1:
+    displayName: "<red>弓術鍛錬 I</red>"
+    description:
+      - "<gray>基礎的な引き絞りを学び、矢の威力を高める。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<red>・攻撃力 +2</red>"
+
+  offense_2:
+    displayName: "<red>弓術鍛錬 II</red>"
+    description:
+      - "<gray>強弓を扱うための筋力と技術を身につける。</gray>"
+    cost: 2
+    requires: ["offense_1"]
+    effects:
+      - "<red>・攻撃力 +3</red>"
+      - "<red>・クリティカルダメージ +5%</red>"
+
+  offense_3:
+    displayName: "<red>貫通射撃</red>"
+    description:
+      - "<gray>装甲の隙間を狙い、重い一撃を叩き込む。</gray>"
+    cost: 2
+    requires: ["offense_2"]
+    effects:
+      - "<red>・攻撃力 +4</red>"
+      - "<red>・物理防御無視 +5%</red>"
+
+  offense_4:
+    displayName: "<dark_red>必殺の一矢</dark_red>"
+    description:
+      - "<gray>急所を射抜く、アーチャー究極の攻撃技術。</gray>"
+    cost: 3
+    requires: ["offense_3"]
+    effects:
+      - "<red>・攻撃力 +8</red>"
+      - "<red>・クリティカル率 +5%</red>"
+
+  precision_1:
+    displayName: "<aqua>集中 I</aqua>"
+    description:
+      - "<gray>呼吸を整え、狙いを安定させる。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<aqua>・命中率 +3%</aqua>"
+
+  precision_2:
+    displayName: "<aqua>集中 II</aqua>"
+    description:
+      - "<gray>動く標的にも正確に矢を当てる技術。</gray>"
+    cost: 2
+    requires: ["precision_1"]
+    effects:
+      - "<aqua>・命中率 +5%</aqua>"
+      - "<aqua>・クリティカル率 +3%</aqua>"
+
+  precision_3:
+    displayName: "<aqua>鷹の目</aqua>"
+    description:
+      - "<gray>遠くの敵の動きまで見通す鋭い視力。</gray>"
+    cost: 2
+    requires: ["precision_2"]
+    effects:
+      - "<aqua>・命中率 +5%</aqua>"
+      - "<aqua>・攻撃力 +2</aqua>"
+
+  utility_1:
+    displayName: "<yellow>軽身 I</yellow>"
+    description:
+      - "<gray>素早い身のこなしで敵の攻撃をかわす。</gray>"
+    cost: 1
+    requires: ["root"]
+    effects:
+      - "<yellow>・移動速度 +3%</yellow>"
+
+  utility_2:
+    displayName: "<yellow>軽身 II</yellow>"
+    description:
+      - "<gray>弓を構えたままでも機敏に立ち回れる。</gray>"
+    cost: 2
+    requires: ["utility_1"]
+    effects:
+      - "<yellow>・移動速度 +3%</yellow>"
+      - "<yellow>・回避率 +3%</yellow>"
+
+  utility_3:
+    displayName: "<yellow>罠師の知恵</yellow>"
+    description:
+      - "<gray>地形を利用し、敵の進路を妨害する。</gray>"
+    cost: 2
+    requires: ["utility_2"]
+    effects:
+      - "<yellow>・回避率 +5%</yellow>"
+      - "<yellow>・スキルクールダウン短縮 +3%</yellow>"
+
+  fusion:
+    displayName: "<light_purple>射手の極意</light_purple>"
+    description:
+      - "<gray>攻撃・精度・機動のうち 2 系統を修めた者だけが</gray>"
+      - "<gray>習得できる複合技術。</gray>"
+    cost: 3
+    requiresAny: ["offense_2", "precision_2", "utility_2"]
+    effects:
+      - "<light_purple>・攻撃力 +5</light_purple>"
+      - "<light_purple>・命中率 +3%</light_purple>"
+
+  ultimate:
+    displayName: "<gold><bold>天空の射手</bold></gold>"
+    description:
+      - "<gray>アーチャーの最終奥義。あらゆる距離から敵を仕留める。</gray>"
+    cost: 5
+    requires: ["fusion"]
+    requiresAny: ["offense_3", "precision_3", "utility_3"]
+    effects:
+      - "<gold>・攻撃力 +10</gold>"
+      - "<gold>・クリティカル率 +5%</gold>"
+      - "<gold>・クリティカルダメージ +15%</gold>"

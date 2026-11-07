@@ -455,6 +455,12 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (plugin.getClassManager() != null) {
             plugin.getClassManager().reload();
         }
+        if (plugin.getTreeDataService() != null) {
+            plugin.getTreeDataService().reload();
+        }
+        if (plugin.getClassTreeManager() != null) {
+            plugin.getClassTreeManager().reload();
+        }
         if (plugin.getSkillManager() != null) {
             plugin.getSkillManager().reload();
         }
