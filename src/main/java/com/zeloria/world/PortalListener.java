@@ -169,12 +169,20 @@ public class PortalListener implements Listener {
         World sourceWorld = player.getWorld();
         String sourceLayer = portalMatch.layer().getId();
 
+        // ワールドロード直後は転送先チャンクの準備が整っておらず teleportAsync が
+        // false を返すことがあるため、5 tick 待ってから転送を開始する。
         // teleportAsync の完了コールバックは実行スレッドが保証されないため、
         // プレイヤー操作を伴う処理はメインスレッドへ戻してから実行する。
-        player.teleportAsync(destination).whenComplete((success, throwable) ->
-                Bukkit.getScheduler().runTask(plugin, () -> handleTeleportResult(
-                        player, portal, targetTemplate, targetName,
-                        targetWorld, sourceWorld, sourceLayer, destination, success, throwable)));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            player.teleportAsync(destination).whenComplete((success, throwable) ->
+                    Bukkit.getScheduler().runTask(plugin, () -> handleTeleportResult(
+                            player, portal, targetTemplate, targetName,
+                            targetWorld, sourceWorld, sourceLayer, destination,
+                            success, throwable)));
+        }, 5L);
     }
 
     /**

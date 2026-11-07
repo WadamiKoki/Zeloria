@@ -27,8 +27,7 @@ public class PlayerRepository {
 
     /** 取得・保存対象のカラム（{@code last_updated} は DB 側で自動更新する）。 */
     private static final String COLUMNS = """
-            uuid, player_name, level, exp, hp, mp, money,
-            atk, `def`, crit_rate, crit_dmg, cdr, move_speed, hp_regen, mp_regen,
+            uuid, player_name, level, exp, money,
             current_class_id, unlocked_classes,
             class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
             virtual_equipment_base64,
@@ -57,8 +56,7 @@ public class PlayerRepository {
 
     private static final String INSERT_SQL = """
             INSERT INTO %s (
-                uuid, player_name, level, exp, hp, mp, money,
-                atk, `def`, crit_rate, crit_dmg, cdr, move_speed, hp_regen, mp_regen,
+                uuid, player_name, level, exp, money,
                 current_class_id, unlocked_classes,
                 class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
                 virtual_equipment_base64,
@@ -69,25 +67,15 @@ public class PlayerRepository {
                 health_regen_flat, health_regen_percent, mana_regen_flat, mana_regen_percent,
                 cooldown_end_at,
                 last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?,
-                      CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
                 level = VALUES(level),
                 exp = VALUES(exp),
-                hp = VALUES(hp),
-                mp = VALUES(mp),
                 money = VALUES(money),
-                atk = VALUES(atk),
-                `def` = VALUES(`def`),
-                crit_rate = VALUES(crit_rate),
-                crit_dmg = VALUES(crit_dmg),
-                cdr = VALUES(cdr),
-                move_speed = VALUES(move_speed),
-                hp_regen = VALUES(hp_regen),
-                mp_regen = VALUES(mp_regen),
                 current_class_id = VALUES(current_class_id),
                 unlocked_classes = VALUES(unlocked_classes),
                 class_levels_json = VALUES(class_levels_json),
@@ -300,24 +288,14 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 41 columns（last_updated を除く）, 41 placeholders,
-            // max bind index 41。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 31 columns（last_updated を除く）, 31 placeholders,
+            // max bind index 31。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
             statement.setInt(index++, snapshot.level());
             statement.setLong(index++, snapshot.exp());
-            statement.setDouble(index++, snapshot.hp());
-            statement.setDouble(index++, snapshot.mp());
             statement.setLong(index++, snapshot.money());
-            statement.setDouble(index++, snapshot.atk());
-            statement.setDouble(index++, snapshot.def());
-            statement.setDouble(index++, snapshot.critRate());
-            statement.setDouble(index++, snapshot.critDmg());
-            statement.setDouble(index++, snapshot.cdr());
-            statement.setDouble(index++, snapshot.moveSpeed());
-            statement.setDouble(index++, snapshot.hpRegen());
-            statement.setDouble(index++, snapshot.mpRegen());
             statement.setString(index++, snapshot.currentClassId());
             statement.setString(index++, snapshot.unlockedClasses());
             statement.setString(index++, snapshot.classLevelsJson());
@@ -350,36 +328,12 @@ public class PlayerRepository {
     }
 
     private PlayerSnapshot mapRow(ResultSet rs) throws SQLException {
-        UUID uuid = UUID.fromString(rs.getString("uuid"));
-
-        // 旧カラム（既存インストールとの互換用）。
-        double hp = rs.getDouble("hp");
-        double mp = rs.getDouble("mp");
-        double atk = rs.getDouble("atk");
-        double def = rs.getDouble("def");
-        double critRate = rs.getDouble("crit_rate");
-        double critDmg = rs.getDouble("crit_dmg");
-        double cdr = rs.getDouble("cdr");
-        double moveSpeed = rs.getDouble("move_speed");
-        double hpRegen = rs.getDouble("hp_regen");
-        double mpRegen = rs.getDouble("mp_regen");
-
         return new PlayerSnapshot(
-                uuid,
+                UUID.fromString(rs.getString("uuid")),
                 rs.getString("player_name"),
                 rs.getInt("level"),
                 rs.getLong("exp"),
-                hp,
-                mp,
                 rs.getLong("money"),
-                atk,
-                def,
-                critRate,
-                critDmg,
-                cdr,
-                moveSpeed,
-                hpRegen,
-                mpRegen,
                 rs.getString("current_class_id"),
                 rs.getString("unlocked_classes"),
                 rs.getString("class_levels_json"),
@@ -387,29 +341,23 @@ public class PlayerRepository {
                 rs.getString("class_tree_points_json"),
                 rs.getString("allocated_class_nodes_json"),
                 rs.getString("virtual_equipment_base64"),
-                // 新カラムが NULL（マイグレーション前の既存行）の場合は旧カラムから補完する。
-                statOr(rs, "max_health", Math.max(PlayerStats.DEFAULT_MAX_HEALTH, hp)),
-                statOr(rs, "current_health", hp),
-                statOr(rs, "max_mana", Math.max(PlayerStats.DEFAULT_MAX_MANA, mp)),
-                statOr(rs, "current_mana", mp),
-                statOr(rs, "attack_power", atk),
+                statOr(rs, "max_health", PlayerStats.DEFAULT_MAX_HEALTH),
+                statOr(rs, "current_health", PlayerStats.DEFAULT_MAX_HEALTH),
+                statOr(rs, "max_mana", PlayerStats.DEFAULT_MAX_MANA),
+                statOr(rs, "current_mana", PlayerStats.DEFAULT_MAX_MANA),
+                statOr(rs, "attack_power", PlayerStats.DEFAULT_ATTACK_POWER),
                 statOr(rs, "defense1", PlayerStats.DEFAULT_DEFENSE1),
-                statOr(rs, "defense2", def),
-                statOr(rs, "critical_rate", critRate),
-                // 旧 crit_dmg は「150 = 150%」の倍率表現。新形式は % 加算のため 100 を引く。
-                statOr(rs, "critical_damage",
-                        critDmg > 0.0 ? Math.max(0.0, critDmg - 100.0)
-                                : PlayerStats.DEFAULT_CRITICAL_DAMAGE),
+                statOr(rs, "defense2", PlayerStats.DEFAULT_DEFENSE2),
+                statOr(rs, "critical_rate", PlayerStats.DEFAULT_CRITICAL_RATE),
+                statOr(rs, "critical_damage", PlayerStats.DEFAULT_CRITICAL_DAMAGE),
                 statOr(rs, "accuracy", PlayerStats.DEFAULT_ACCURACY),
                 statOr(rs, "evasion", PlayerStats.DEFAULT_EVASION),
-                statOr(rs, "dodge_cooldown_reduction",
-                        PlayerStats.DEFAULT_DODGE_COOLDOWN_REDUCTION),
-                statOr(rs, "cooldown_reduction", cdr / 100.0),
-                statOr(rs, "walk_speed",
-                        moveSpeed / 100.0 * PlayerStats.DEFAULT_MOVE_SPEED),
-                statOr(rs, "health_regen_flat", hpRegen),
+                statOr(rs, "dodge_cooldown_reduction", PlayerStats.DEFAULT_DODGE_COOLDOWN_REDUCTION),
+                statOr(rs, "cooldown_reduction", PlayerStats.DEFAULT_COOLDOWN_REDUCTION),
+                statOr(rs, "walk_speed", PlayerStats.DEFAULT_MOVE_SPEED),
+                statOr(rs, "health_regen_flat", PlayerStats.DEFAULT_HEALTH_REGEN_FLAT),
                 statOr(rs, "health_regen_percent", PlayerStats.DEFAULT_HEALTH_REGEN_PERCENT),
-                statOr(rs, "mana_regen_flat", mpRegen),
+                statOr(rs, "mana_regen_flat", PlayerStats.DEFAULT_MANA_REGEN_FLAT),
                 statOr(rs, "mana_regen_percent", PlayerStats.DEFAULT_MANA_REGEN_PERCENT),
                 rs.getString("cooldown_end_at")
         );

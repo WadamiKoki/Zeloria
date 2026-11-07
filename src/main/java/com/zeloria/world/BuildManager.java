@@ -797,31 +797,37 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
-        // 同期テレポートを優先し、false が返った場合は非同期テレポートへフォールバックする。
-        if (player.teleport(spawn)) {
-            return;
-        }
-
-        plugin.getLogger().warning(
-                "建築ワールドへの同期転送に失敗したため、非同期転送へフォールバックします: "
-                        + player.getName() + " -> " + world.getName());
-        player.teleportAsync(spawn).whenComplete((success, throwable) -> {
-            if (throwable == null && Boolean.TRUE.equals(success)) {
+        // ワールドロード直後はチャンクの準備が整っておらず同期テレポートが失敗するため、
+        // 5 tick 待ってから同期テレポートを試み、失敗時は非同期テレポートへフォールバックする。
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
                 return;
             }
+            if (player.teleport(spawn)) {
+                return;
+            }
+
             plugin.getLogger().warning(
-                    "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
-                            + world.getName()
-                            + " (" + (throwable != null ? rootMessage(throwable) : "success=false") + ")");
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
+                    "建築ワールドへの同期転送に失敗したため、非同期転送へフォールバックします: "
+                            + player.getName() + " -> " + world.getName());
+            player.teleportAsync(spawn).whenComplete((success, throwable) -> {
+                if (throwable == null && Boolean.TRUE.equals(success)) {
                     return;
                 }
-                notifyTeleportFailure(player);
-                // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
-                restoreGameMode(player);
+                plugin.getLogger().warning(
+                        "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
+                                + world.getName()
+                                + " (" + (throwable != null ? rootMessage(throwable) : "success=false") + ")");
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    notifyTeleportFailure(player);
+                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
+                    restoreGameMode(player);
+                });
             });
-        });
+        }, 5L);
     }
 
     /**

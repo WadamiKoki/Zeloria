@@ -15,17 +15,7 @@ import java.util.UUID;
  * @param playerName              プレイヤー名
  * @param level                   レベル
  * @param exp                     経験値
- * @param hp                      HP（旧カラム互換。現在 HP と同値）
- * @param mp                      MP（旧カラム互換。現在 MP と同値）
  * @param money                   所持金
- * @param atk                     攻撃力
- * @param def                     防御力
- * @param critRate                クリティカル率（%）
- * @param critDmg                 クリティカルダメージ（%）
- * @param cdr                     クールダウン短縮率（%）
- * @param moveSpeed               移動速度（%）
- * @param hpRegen                 HP 自然回復量（旧カラム互換。固定リジェネと同値）
- * @param mpRegen                 MP 自然回復量（旧カラム互換。固定リジェネと同値）
  * @param currentClassId         現在のクラス ID（未選択時は空文字）
  * @param unlockedClasses        解放済みクラス ID のカンマ区切り文字列
  * @param classLevelsJson        クラス ID → クラス別レベル（JSON）
@@ -58,17 +48,7 @@ public record PlayerSnapshot(
         String playerName,
         int level,
         long exp,
-        double hp,
-        double mp,
         long money,
-        double atk,
-        double def,
-        double critRate,
-        double critDmg,
-        double cdr,
-        double moveSpeed,
-        double hpRegen,
-        double mpRegen,
         String currentClassId,
         String unlockedClasses,
         String classLevelsJson,
@@ -142,17 +122,7 @@ public record PlayerSnapshot(
                 name,
                 DEFAULT_LEVEL,
                 0L,
-                DEFAULT_HP,
-                0.0,
                 0L,
-                DEFAULT_ATK,
-                0.0,
-                DEFAULT_CRIT_RATE,
-                DEFAULT_CRIT_DMG,
-                0.0,
-                DEFAULT_MOVE_SPEED,
-                0.0,
-                0.0,
                 "",
                 "",
                 "{}",
@@ -189,8 +159,7 @@ public record PlayerSnapshot(
      * @return 名前を差し替えたコピー
      */
     public PlayerSnapshot withName(String name) {
-        return new PlayerSnapshot(uuid, name, level, exp, hp, mp, money, atk, def,
-                critRate, critDmg, cdr, moveSpeed, hpRegen, mpRegen,
+        return new PlayerSnapshot(uuid, name, level, exp, money,
                 currentClassId, unlockedClasses,
                 classLevelsJson, classExpsJson, classTreePointsJson, allocatedClassNodesJson,
                 virtualEquipmentBase64,

@@ -46,9 +46,7 @@ public class DatabaseManager {
      * {@code last_updated} は INSERT / UPDATE 時に自動更新される。
      * <p>
      * RPG ステータス関連のカラム（{@code max_health} 以降）は
-     * {@code PlayerStats} の値をそのまま保持する。旧カラム（{@code hp} / {@code atk} /
-     * {@code crit_dmg} / {@code cdr} / {@code move_speed} など）は既存インストールとの
-     * 互換のために残しており、読み込み時に新カラムが NULL の場合のみ代替値として使う。
+     * {@code PlayerStats} の値をそのまま保持する。
      */
     private static final String CREATE_PLAYERS_TABLE_SQL = """
             CREATE TABLE IF NOT EXISTS %s (
@@ -56,17 +54,7 @@ public class DatabaseManager {
                 player_name VARCHAR(64) NOT NULL,
                 level INT NOT NULL DEFAULT 0,
                 exp BIGINT NOT NULL DEFAULT 0,
-                hp DOUBLE NOT NULL DEFAULT 20,
-                mp DOUBLE NOT NULL DEFAULT 0,
                 money BIGINT NOT NULL DEFAULT 0,
-                atk DOUBLE NOT NULL DEFAULT 1,
-                `def` DOUBLE NOT NULL DEFAULT 0,
-                crit_rate DOUBLE NOT NULL DEFAULT 5,
-                crit_dmg DOUBLE NOT NULL DEFAULT 150,
-                cdr DOUBLE NOT NULL DEFAULT 0,
-                move_speed DOUBLE NOT NULL DEFAULT 100,
-                hp_regen DOUBLE NOT NULL DEFAULT 0,
-                mp_regen DOUBLE NOT NULL DEFAULT 0,
                 current_class_id VARCHAR(64) NULL,
                 unlocked_classes TEXT NULL,
                 class_levels_json LONGTEXT NULL,
@@ -109,8 +97,7 @@ public class DatabaseManager {
      * （{@code sql/reset.sql} で再作成する運用）。
      */
     public static final List<String> REQUIRED_PLAYERS_COLUMNS = List.of(
-            "uuid", "player_name", "level", "exp", "hp", "mp", "money",
-            "atk", "def", "crit_rate", "crit_dmg", "cdr", "move_speed", "hp_regen", "mp_regen",
+            "uuid", "player_name", "level", "exp", "money",
             "current_class_id", "unlocked_classes",
             "class_levels_json", "class_exps_json", "class_tree_points_json", "allocated_class_nodes_json",
             "virtual_equipment_base64",
