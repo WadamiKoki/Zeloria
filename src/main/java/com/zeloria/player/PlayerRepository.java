@@ -71,7 +71,7 @@ public class PlayerRepository {
                 last_updated
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?,
                       CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
@@ -301,6 +301,8 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
+            // INSERT_SQL: 42 columns（last_updated を除く）, 42 placeholders,
+            // max bind index 42。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
@@ -329,7 +331,7 @@ public class PlayerRepository {
             statement.setDouble(index++, snapshot.maxMana());
             statement.setDouble(index++, snapshot.currentMana());
             statement.setDouble(index++, snapshot.attackPower());
-            statement.setDouble(index++, snapshot.defense2());
+            statement.setDouble(index++, snapshot.defense());
             statement.setDouble(index++, snapshot.defense1());
             statement.setDouble(index++, snapshot.defense2());
             statement.setDouble(index++, snapshot.criticalRate());
@@ -343,7 +345,7 @@ public class PlayerRepository {
             statement.setDouble(index++, snapshot.healthRegenPercent());
             statement.setDouble(index++, snapshot.manaRegenFlat());
             statement.setDouble(index++, snapshot.manaRegenPercent());
-            statement.setString(index, snapshot.cooldownEndAt());
+            statement.setString(index++, snapshot.cooldownEndAt());
 
             statement.executeUpdate();
         }

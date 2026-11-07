@@ -35,6 +35,9 @@ CREATE TABLE players (
     mp_regen DOUBLE NOT NULL DEFAULT 0,
     current_class_id VARCHAR(64) NULL,
     unlocked_classes TEXT NULL,
+    -- クラス別レベル / 経験値 / 未使用ツリーポイント / 解放済みツリーノード
+    -- （PlayerSnapshot の class_levels / class_exps / class_tree_points /
+    --   allocated_class_nodes に対応。PlayerRepository では *_json 名で読み書きする）
     class_levels_json LONGTEXT NULL,
     class_exps_json LONGTEXT NULL,
     class_tree_points_json LONGTEXT NULL,

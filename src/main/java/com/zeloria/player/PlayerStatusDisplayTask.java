@@ -122,7 +122,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         display.setTransformation(new Transformation(
                 new Vector3f(0.0f, DISPLAY_Y_OFFSET, 0.0f),
                 new Quaternionf(),
-                new Vector3f(1.0f, 1.0f, 1.0f),
+                new Vector3f(0.5f, 0.5f, 0.5f),
                 new Quaternionf()));
 
         if (!player.addPassenger(display)) {
@@ -135,27 +135,15 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     /**
      * ステータスから表示用の MiniMessage を組み立てる。
      * <p>
-     * 1 行目が HP、2 行目が MP。ゲージは {@code █} を 20 個並べ、
-     * 現在値の割合だけ塗り、残りを {@code ░} で表現する。
-     * HP が 50% 以下の場合はゲージ部分を赤くする。
+     * 1 行目が HP、2 行目が MP。数値は表示せず、ゲージのみを表示する。
+     * ゲージは {@code █} を 20 個並べ、現在値の割合だけ塗り、残りを {@code ░} で表現する。
      */
     private Component format(PlayerStats stats) {
-        long health = Math.round(stats.getCurrentHealth());
-        long maxHealth = Math.round(stats.getMaxHealth());
-        long mana = Math.round(stats.getCurrentMana());
-        long maxMana = Math.round(stats.getMaxMana());
+        String hpGauge = gauge(ratio(stats.getCurrentHealth(), stats.getMaxHealth()));
+        String mpGauge = gauge(ratio(stats.getCurrentMana(), stats.getMaxMana()));
 
-        double healthRatio = ratio(stats.getCurrentHealth(), stats.getMaxHealth());
-        double manaRatio = ratio(stats.getCurrentMana(), stats.getMaxMana());
-        String healthGaugeColor = healthRatio <= 0.5 ? "red" : "green";
-
-        String hpLine = "<red>❤ HP " + health + "/" + maxHealth
-                + " (" + percent(healthRatio) + "%)</red> "
-                + "<" + healthGaugeColor + ">" + gauge(healthRatio)
-                + "</" + healthGaugeColor + ">";
-        String mpLine = "<aqua>✦ MP " + mana + "/" + maxMana
-                + " (" + percent(manaRatio) + "%)</aqua> "
-                + "<aqua>" + gauge(manaRatio) + "</aqua>";
+        String hpLine = "<red>❤ " + hpGauge + "</red>";
+        String mpLine = "<aqua>✦ " + mpGauge + "</aqua>";
 
         return MINI.deserialize(hpLine + "\n" + mpLine);
     }
@@ -166,11 +154,6 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
             return 0.0;
         }
         return Math.max(0.0, Math.min(1.0, current / max));
-    }
-
-    /** 割合を 0〜100 の整数（%）へ変換する。 */
-    private static long percent(double ratio) {
-        return Math.round(ratio * 100.0);
     }
 
     /** 割合を 20 個のブロックで表現したゲージ文字列を返す。 */
