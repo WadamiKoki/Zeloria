@@ -7,6 +7,7 @@ import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
 import com.zeloria.world.BuildManager;
+import com.zeloria.world.LayerCleanupTask;
 import com.zeloria.world.LayerManager;
 import com.zeloria.skill.LevelService;
 import com.zeloria.core.LoggerService;
@@ -98,6 +99,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String INFO = "info";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
+    private static final String LAYER = "layer";
+    private static final String ALL = "all";
+    private static final String ONLINE = "online";
     private static final String SAVE = "save";
     private static final String UNSAVE = "unsave";
     private static final String FORCE = "force";
@@ -154,11 +158,13 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> NPC_TARGETS = List.of(LIST, SPAWN, REMOVE);
 
+    private static final List<String> LAYER_TARGETS = List.of(ALL, ONLINE);
+
     /**
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -184,6 +190,12 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        // 全サブコマンドの共通権限。未保有の場合はサブコマンドを解析せず早期に拒否する。
+        if (!sender.hasPermission(ADMIN_PERMISSION)) {
+            send(sender, noPermission(ADMIN_PERMISSION));
+            return true;
+        }
+
         String sub = args[0].toLowerCase(Locale.ROOT);
 
         // 建築モードはチャンネル 1 専用。サブコマンドの解析より前に判定する。
@@ -203,11 +215,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!sender.hasPermission(ADMIN_PERMISSION)) {
-            send(sender, noPermission(ADMIN_PERMISSION));
-            return true;
-        }
-
         switch (sub) {
             case RELOAD -> reload(sender);
             case TEST -> handleTest(sender, args);
@@ -217,6 +224,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case INFO -> handleInfo(sender, args);
             case GUI -> handleGui(sender, args);
             case BUILD -> handleBuild(sender, args);
+            case LAYER -> handleLayer(sender, args);
             default -> {
                 send(sender, message("command.unknown_subcommand", Map.of("input", sub),
                         "<red>不明なサブコマンドです: <white>{input}</white></red>"));
@@ -228,6 +236,13 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        // 候補の重複を除去し、大文字小文字を無視して昇順に並べる。
+        Set<String> sorted = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        sorted.addAll(complete(sender, command, alias, args));
+        return new ArrayList<>(sorted);
+    }
+
+    private List<String> complete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             List<String> candidates = new ArrayList<>();
             if (sender.hasPermission(ADMIN_PERMISSION)) {
@@ -238,6 +253,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(GIVE);
                 candidates.add(INFO);
                 candidates.add(GUI);
+                candidates.add(LAYER);
                 if (isBuildChannel()
                         && plugin.getBuildManager() != null
                         && sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
@@ -252,6 +268,19 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         if (MOB.equalsIgnoreCase(args[0])) {
             return completeMob(sender, args);
+        }
+
+        if (LAYER.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return partial(args[1], List.of(INFO));
+            }
+            if (args.length == 3 && INFO.equalsIgnoreCase(args[1])) {
+                return partial(args[2], LAYER_TARGETS);
+            }
+            return List.of();
         }
 
         if (NPC.equalsIgnoreCase(args[0])) {
@@ -708,7 +737,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private void applyMobData(Entity entity, MobData data) {
         entity.customName(displayName(data.name()));
-        entity.setCustomNameVisible(true);
+        entity.setCustomNameVisible(data.alwaysShowName());
         entity.addScoreboardTag(MOB_TAG_PREFIX + data.id());
         entity.getPersistentDataContainer().set(mobIdKey, PersistentDataType.STRING, data.id());
 
@@ -944,6 +973,112 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 "<gray>建築モード:</gray> <white>{template}</white> "
                         + "<dark_gray>|</dark_gray> <gray>ワールド:</gray> <white>{world}</white> "
                         + "<dark_gray>|</dark_gray> <gray>プレイヤー:</gray> <white>{players}</white>"));
+    }
+
+    /**
+     * {@code /admin layer info <all|online>}: 読み込み済みレイヤーインスタンスを一覧表示する。
+     * <p>
+     * {@code all} はプレイヤーが 0 人のインスタンスも含め、アイドルアンロードまでの
+     * 残り秒数を表示する。{@code online} はプレイヤーがいるインスタンスだけを表示する。
+     */
+    private void handleLayer(CommandSender sender, String[] args) {
+        if (args.length != 3 || !INFO.equalsIgnoreCase(args[1])) {
+            send(sender, layerUsage());
+            return;
+        }
+
+        String target = args[2].toLowerCase(Locale.ROOT);
+        boolean onlineOnly;
+        if (ONLINE.equals(target)) {
+            onlineOnly = true;
+        } else if (ALL.equals(target)) {
+            onlineOnly = false;
+        } else {
+            send(sender, layerUsage());
+            return;
+        }
+
+        LayerManager layerManager = plugin.getLayerManager();
+        if (layerManager == null) {
+            send(sender, message("layer.unavailable", Map.of(),
+                    "<yellow>レイヤーマネージャーが初期化されていません。</yellow>"));
+            return;
+        }
+
+        // 表示対象をインスタンス ID 順に整理する。
+        Map<String, World> visible = new TreeMap<>();
+        for (Map.Entry<String, World> entry : layerManager.getLoadedWorlds().entrySet()) {
+            World world = entry.getValue();
+            if (world == null) {
+                continue;
+            }
+            if (onlineOnly && world.getPlayers().isEmpty()) {
+                continue;
+            }
+            visible.put(entry.getKey(), world);
+        }
+
+        if (visible.isEmpty()) {
+            send(sender, message("layer.empty", Map.of(),
+                    "<gray>表示できるレイヤーインスタンスはありません。</gray>"));
+            return;
+        }
+
+        send(sender, message("layer.header", Map.of("count", Integer.toString(visible.size())),
+                "<green>レイヤー一覧</green> <gray>(<white>{count}</white> 件)</gray>"));
+
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, World> entry : visible.entrySet()) {
+            String instanceId = entry.getKey();
+            World world = entry.getValue();
+            String templateId = layerManager.getTemplateId(instanceId);
+            if (templateId == null || templateId.isBlank()) {
+                templateId = "不明";
+            }
+
+            List<Player> players = world.getPlayers();
+            Map<String, String> placeholders = Map.of(
+                    "template", esc(templateId),
+                    "world", esc(instanceId),
+                    "players", Integer.toString(players.size()));
+
+            if (players.isEmpty()) {
+                long remaining = plugin.getLayerCleanupTask() == null
+                        ? LayerCleanupTask.IDLE_TIMEOUT_SECONDS
+                        : plugin.getLayerCleanupTask().remainingSeconds(instanceId, now);
+                send(sender, message("layer.entry_idle", Map.of(
+                                "template", placeholders.get("template"),
+                                "world", placeholders.get("world"),
+                                "seconds", Long.toString(remaining)),
+                        "<gray>-</gray> <white>{template}</white> "
+                                + "<dark_gray>({world})</dark_gray> "
+                                + "<gray>プレイヤー: </gray><white>0</white> "
+                                + "<dark_gray>| </dark_gray><yellow>アンロードまで最大 {seconds} 秒</yellow>"));
+                continue;
+            }
+
+            List<String> names = new ArrayList<>();
+            for (Player player : players) {
+                names.add(player.getName());
+            }
+            send(sender, message("layer.entry", Map.of(
+                            "template", placeholders.get("template"),
+                            "world", placeholders.get("world"),
+                            "players", placeholders.get("players"),
+                            "names", esc(String.join(", ", names))),
+                    "<green>-</green> <white>{template}</white> "
+                            + "<dark_gray>({world})</dark_gray> "
+                            + "<gray>プレイヤー: </gray><white>{players}</white> "
+                            + "<dark_gray>|</dark_gray> <white>{names}</white>"));
+        }
+    }
+
+    /**
+     * {@code /admin layer} の使用方法メッセージを返す。
+     */
+    private String layerUsage() {
+        return message("layer.usage", Map.of(),
+                "<gray>使い方:</gray> <white>/admin layer info <all|online></white>");
     }
 
     /**

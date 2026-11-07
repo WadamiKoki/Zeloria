@@ -37,7 +37,7 @@ public final class MenuGui implements InventoryHolder {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
     /** 背景ガラスの既定 Material（設定不備時のフォールバック）。 */
-    private static final String DEFAULT_FILLER = "GRAY_STAINED_GLASS_PANE";
+    private static final String DEFAULT_FILLER = "LIGHT";
 
     /** 機能アイコンのフォールバック Material。 */
     private static final Material FEATURE_FALLBACK_MATERIAL = Material.PAPER;
@@ -150,7 +150,7 @@ public final class MenuGui implements InventoryHolder {
             }
             Material material = matchMaterial(entry.getValue());
             inventory.setItem(guiSlot, new ItemStack(
-                    material == null ? Material.GRAY_STAINED_GLASS_PANE : material));
+                    material == null ? Material.LIGHT : material));
         }
     }
 
@@ -167,8 +167,8 @@ public final class MenuGui implements InventoryHolder {
             EquipSlot equipSlot = entry.getValue();
             ItemStack equipped = data.getEquipment(equipSlot);
             if (equipped == null) {
-                inventory.setItem(guiSlot, glass("equipment",
-                        "<!italic><aqua>" + equipSlot.getDisplayName() + " (空き)</aqua>"));
+                // 背景アイテムは表示名を付けず、装備枠の位置だけを示す。
+                inventory.setItem(guiSlot, glass("equipment", ""));
             } else {
                 inventory.setItem(guiSlot, decorateEquipped(equipped, equipSlot));
             }

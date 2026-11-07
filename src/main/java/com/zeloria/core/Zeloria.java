@@ -54,6 +54,7 @@ import com.zeloria.combat.CombatActionBarTask;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.combat.CombatStateService;
 import com.zeloria.player.PlayerStatsService;
+import com.zeloria.player.PlayerStatusDisplayTask;
 import com.zeloria.skill.SkillCooldownHotbarTask;
 import com.zeloria.skill.SkillSlotService;
 import com.zeloria.world.PortalListener;
@@ -105,10 +106,17 @@ public final class Zeloria extends JavaPlugin {
     /**
      * 共有設定フォルダ（{@code channel.yml} の {@code shared-config-path} を解決したパス）。
      * <p>
-     * このフォルダ自体に YAML 一式（{@code ClassData/} など）と {@code sql.yml} を置き、
-     * 全サーバーで共有する。
+     * このフォルダ自体に YAML 一式（{@code ClassData/} など）を置き、全サーバーで共有する。
      */
     private File sharedConfigFolder;
+
+    /**
+     * SQL 設定ファイル（{@code channel.yml} の {@code sql-config-path} を解決したパス）。
+     * <p>
+     * 既定ではサーバールートの親フォルダ直下の {@code sql.yml}（例: {@code ZeloriaServer/sql.yml}）。
+     * 全サーバーで同じ DB 接続情報を共有する。
+     */
+    private File sqlConfigFile;
 
     /**
      * テンプレートワールドの保存先（{@code channel.yml} の {@code world-data-path} を解決したパス）。
@@ -189,6 +197,9 @@ public final class Zeloria extends JavaPlugin {
 
     /** ホットバーのスキルアイコンへ残りクールダウンを表示するタスク。 */
     private SkillCooldownHotbarTask skillCooldownHotbarTask;
+
+    /** プレイヤー頭上へ HP / MP を TextDisplay で常時表示するタスク。 */
+    private PlayerStatusDisplayTask playerStatusDisplayTask;
 
     /** クラス選択 GUI（リスナーも兼ねる）。 */
     private ClassSelectGUI classSelectGUI;
@@ -405,8 +416,16 @@ public final class Zeloria extends JavaPlugin {
             return false;
         }
 
+        String sqlConfigPath = this.channelConfig.getSqlConfigPath();
+        if (isAbsolutePath(sqlConfigPath)) {
+            getLogger().severe("sql-config-path には絶対パスを使用しないでください: " + sqlConfigPath);
+            getServer().getPluginManager().disablePlugin(this);
+            return false;
+        }
+
         File resolvedShared;
         File resolvedWorldData;
+        File resolvedSql;
         try {
             // サーバールート（paper.jar や world フォルダがある場所）は Bukkit.getWorldContainer() から解決する。
             // getDataFolder() は <server>/plugins/Zeloria/ を指すが、データフォルダの配置によっては
@@ -419,6 +438,7 @@ public final class Zeloria extends JavaPlugin {
             File serverRoot = worldContainer.getCanonicalFile();
             resolvedShared = new File(serverRoot, sharedConfigPath).getCanonicalFile();
             resolvedWorldData = new File(serverRoot, worldDataPath).getCanonicalFile();
+            resolvedSql = new File(serverRoot, sqlConfigPath).getCanonicalFile();
         } catch (IOException e) {
             getLogger().severe("設定フォルダの解決に失敗しました: " + e.getMessage());
             getServer().getPluginManager().disablePlugin(this);
@@ -433,11 +453,14 @@ public final class Zeloria extends JavaPlugin {
 
         this.sharedConfigFolder = resolvedShared;
         this.worldDataFolder = resolvedWorldData;
+        this.sqlConfigFile = resolvedSql;
         getLogger().info("チャンネル " + this.channelConfig.getChannel()
                 + " で起動します（共有設定フォルダ: "
                 + this.sharedConfigFolder.getAbsolutePath()
                 + "、ワールドデータフォルダ: "
-                + this.worldDataFolder.getAbsolutePath() + "）");
+                + this.worldDataFolder.getAbsolutePath()
+                + "、SQL設定: "
+                + this.sqlConfigFile.getAbsolutePath() + "）");
         return true;
     }
 
@@ -604,6 +627,8 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new SkillSlotListener(this));
         this.listenerRegistrar.register(new CombatModeListener(this));
         this.listenerRegistrar.register(new LevelListener(this));
+        this.playerStatusDisplayTask = new PlayerStatusDisplayTask(this);
+        this.listenerRegistrar.register(this.playerStatusDisplayTask);
         if (this.classSelectGUI != null) {
             this.listenerRegistrar.register(this.classSelectGUI);
         }
@@ -691,6 +716,12 @@ public final class Zeloria extends JavaPlugin {
         this.combatActionBarTask.runTaskTimer(
                 this, CombatActionBarTask.PERIOD_TICKS, CombatActionBarTask.PERIOD_TICKS);
 
+        this.playerStatusDisplayTask = this.playerStatusDisplayTask == null
+                ? new PlayerStatusDisplayTask(this)
+                : this.playerStatusDisplayTask;
+        this.playerStatusDisplayTask.runTaskTimer(
+                this, PlayerStatusDisplayTask.PERIOD_TICKS, PlayerStatusDisplayTask.PERIOD_TICKS);
+
         // アクションバーがアイコンを再生成した後に、残り秒数をスタック数へ反映する。
         this.skillCooldownHotbarTask = new SkillCooldownHotbarTask(this);
         this.skillCooldownHotbarTask.runTaskTimer(
@@ -720,6 +751,10 @@ public final class Zeloria extends JavaPlugin {
             this.combatActionBarTask.cancel();
             this.combatActionBarTask = null;
         }
+        if (this.playerStatusDisplayTask != null) {
+            this.playerStatusDisplayTask.shutdown();
+            this.playerStatusDisplayTask = null;
+        }
         if (this.skillCooldownHotbarTask != null) {
             this.skillCooldownHotbarTask.cancel();
             this.skillCooldownHotbarTask = null;
@@ -745,12 +780,21 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
-     * 共有設定フォルダ（YAML 一式と {@code sql.yml} を直接置くフォルダ）を取得する。
+     * 共有設定フォルダ（YAML 一式を直接置くフォルダ）を取得する。
      *
      * @return 共有設定フォルダ（onEnable 前は null）
      */
     public File getSharedConfigFolder() {
         return sharedConfigFolder;
+    }
+
+    /**
+     * SQL 設定ファイル（{@code sql.yml}）を取得する。
+     *
+     * @return SQL 設定ファイル（onEnable 前は null）
+     */
+    public File getSqlConfigFile() {
+        return sqlConfigFile;
     }
 
     /**
@@ -895,6 +939,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public LayerManager getLayerManager() {
         return layerManager;
+    }
+
+    /**
+     * 空インスタンス自動削除タスクを取得する。
+     *
+     * @return タスク。無効化中または onEnable 前は {@code null}
+     */
+    public LayerCleanupTask getLayerCleanupTask() {
+        return layerCleanupTask;
     }
 
     /**

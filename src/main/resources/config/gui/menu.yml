@@ -5,7 +5,7 @@ gui:
   title: "<gradient:#00c6ff:#0072ff><bold>Zeloria</bold></gradient> <dark_gray>|</dark_gray> <white>装備メニュー</white>"
   rows: 6
 filler:
-  equipment: "LIGHT_BLUE_STAINED_GLASS_PANE"
+  equipment: "LIGHT"
 equipment_slots:
   helmet: 16
   offhand: 24

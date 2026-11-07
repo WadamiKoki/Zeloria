@@ -534,7 +534,7 @@ public final class SpawnerManager {
      */
     private void applyMobData(Entity entity, MobData data, int level) {
         entity.customName(displayName(data.name(), level));
-        entity.setCustomNameVisible(true);
+        entity.setCustomNameVisible(data.alwaysShowName());
         entity.addScoreboardTag(MOB_TAG_PREFIX + data.id());
         entity.getPersistentDataContainer().set(mobIdKey, PersistentDataType.STRING, data.id());
 

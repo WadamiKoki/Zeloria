@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -70,6 +70,14 @@ build:
   saved: "<green>テンプレート <white>{template}</white> を保存しました。Hubに戻ります</green>"
   unsaved: "<green>テンプレート <white>{template}</white> の変更を破棄しました。Hubに戻ります</green>"
   save_failed: "<red>建築ワールドの処理に失敗しました: <white>{error}</white></red>"
+
+layer:
+  usage: "<gray>使い方:</gray> <white>/admin layer info <all|online></white>"
+  unavailable: "<yellow>レイヤーマネージャーが初期化されていません。</yellow>"
+  empty: "<gray>表示できるレイヤーインスタンスはありません。</gray>"
+  header: "<green>レイヤー一覧</green> <gray>(<white>{count}</white> 件)</gray>"
+  entry: "<green>-</green> <white>{template}</white> <dark_gray>({world})</dark_gray> <gray>プレイヤー: </gray><white>{players}</white> <dark_gray>|</dark_gray> <white>{names}</white>"
+  entry_idle: "<gray>-</gray> <white>{template}</white> <dark_gray>({world})</dark_gray> <gray>プレイヤー: </gray><white>0</white> <dark_gray>| </dark_gray><yellow>アンロードまで最大 {seconds} 秒</yellow>"
 
 npc:
   usage: "<gray>使い方:</gray> <white>/admin npc list</white> <dark_gray>|</dark_gray> <white>/admin npc spawn npcId</white> <dark_gray>|</dark_gray> <white>/admin npc remove</white>"

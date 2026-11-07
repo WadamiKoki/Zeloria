@@ -10,9 +10,9 @@ import java.io.File;
 /**
  * HikariCP を用いたデータベース接続管理クラス。
  * <p>
- * {@code channel.yml} の {@code shared-config-path} が指す共有設定フォルダ直下
- * （例: {@code ZeloriaServer/config/sql.yml}）の {@code sql.yml} を読み込み、
+ * {@code channel.yml} の {@code sql-config-path} が指す {@code sql.yml} を読み込み、
  * MySQL へのコネクションプールを管理する。
+ * 既定の配置はサーバールートの親フォルダ直下（例: {@code ZeloriaServer/sql.yml}）。
  * 全サーバー（チャンネル）が同じ {@code sql.yml} を参照するため、DB 接続情報は
  * 1 箇所で管理できる。本クラスは {@code sql.yml} の作成・書き込みを行わない。
  */
@@ -37,19 +37,16 @@ public class DatabaseService {
             return;
         }
 
-        File sharedFolder = plugin.getSharedConfigFolder();
-        if (sharedFolder == null) {
+        File configFile = plugin.getSqlConfigFile();
+        if (configFile == null) {
             plugin.getLogger().severe(
-                    "共有設定フォルダが見つかりません。channel.yml の shared-config-path を確認してください。");
+                    "SQL設定ファイルのパスが解決されていません。channel.yml の sql-config-path を確認してください。");
             return;
         }
-
-        // sql.yml は共有設定フォルダ直下（例: <server>/../config/sql.yml）に置く。
-        File configFile = new File(sharedFolder, "sql.yml");
         if (!configFile.exists()) {
-            // sql.yml は自動生成しない。初回起動前に共有設定フォルダへ手動で配置する運用とする。
+            // sql.yml は自動生成しない。初回起動前に手動で配置する運用とする。
             plugin.getLogger().severe("sql.yml が見つかりません: " + configFile.getAbsolutePath()
-                    + "（共有設定フォルダ直下へ手動で配置してください）");
+                    + "（channel.yml の sql-config-path を確認してください）");
             return;
         }
 

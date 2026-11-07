@@ -55,9 +55,9 @@ public class VirtualInventoryService {
     private static final ItemStack EMPTY_WEAPON_DISPLAY =
             VirtualItem.markPlaceholder(new ItemStack(Material.BLACK_STAINED_GLASS_PANE));
 
-    /** 防具スロットが空のときに表示するバリアブロック。 */
+    /** 防具スロットが空のときに表示するライトブロック。 */
     private static final ItemStack EMPTY_ARMOR_DISPLAY =
-            VirtualItem.markPlaceholder(new ItemStack(Material.BARRIER));
+            VirtualItem.markPlaceholder(new ItemStack(Material.LIGHT));
 
     /** メッセージ定義ファイル（{@code MessageData/equipment.yml}）。 */
     private static final String MESSAGE_FILE = "equipment";

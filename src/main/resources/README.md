@@ -20,6 +20,10 @@ shared-config-path: "../config"
 # テンプレートワールドの保存先（サーバールートからの相対パス。絶対パスは使用禁止）
 # 例: "../WorldData" → <server>/../WorldData = ZeloriaServer/WorldData/
 world-data-path: "../WorldData"
+
+# SQL 設定ファイル（sql.yml）のパス（サーバールートからの相対パス。絶対パスは使用禁止）
+# 例: "../sql.yml" → <server>/../sql.yml = ZeloriaServer/sql.yml
+sql-config-path: "../sql.yml"
 ```
 
 - `channel`: このサーバーのチャンネル番号。建築モードを許可するのは **チャンネル 1 のみ** です。
@@ -29,22 +33,31 @@ world-data-path: "../WorldData"
 - `world-data-path`: テンプレートワールドの保存先。`shared-config-path` と同様に
   **サーバールートからの相対パス** で指定します。`../WorldData` は
   `ZeloriaServer/WorldData/` を指します。
+- `sql-config-path`: SQL 設定ファイル（`sql.yml`）のパス。これも **サーバールートからの
+  相対パス** で指定します。既定値の `../sql.yml` は `ZeloriaServer/sql.yml` を指します。
+  全サーバーで同じ `sql.yml` を参照するため、DB 接続情報は 1 箇所で管理できます。
+  未指定の場合は `../sql.yml` が使用されます。
 - 絶対パス（`/Users/...`、`C:\...` など）は使用禁止です。指定した場合は次のログを
   出力して無効化されます。
   - `shared-config-path には絶対パスを使用しないでください: <パス>`
   - `world-data-path には絶対パスを使用しないでください`
+  - `sql-config-path には絶対パスを使用しないでください: <パス>`
 
 ### パスの解決
 
-共有設定フォルダとワールドデータフォルダは、サーバールートを基準に次の式で解決されます。
+共有設定フォルダ・ワールドデータフォルダ・SQL 設定ファイルは、サーバールートを基準に
+次の式で解決されます。
 
 ```java
-File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
+File serverRoot = Bukkit.getWorldContainer().getCanonicalFile();
 File sharedFolder = new File(serverRoot, channelConfig.getSharedConfigPath()).getCanonicalFile();
 File worldDataFolder = new File(serverRoot, channelConfig.getWorldDataPath()).getCanonicalFile();
+File sqlConfigFile = new File(serverRoot, channelConfig.getSqlConfigPath()).getCanonicalFile();
 ```
 
-`getDataFolder()` は `<server>/plugins/Zeloria/` を返すため、2 つ上がサーバールートになります。
+サーバールートは `Bukkit.getWorldContainer()`（`paper.jar` や `world` フォルダがある場所）
+から取得します。`plugins/Zeloria/` の親を辿る方式は、データフォルダの配置によっては
+親ディレクトリが存在せず `NullPointerException` になるため使用しません。
 パス区切りは `/` で記述してください（`File.separator` には依存しません）。
 
 指定した共有設定フォルダが存在しない場合、プラグインは次のログを出力して無効化されます。
@@ -68,29 +81,29 @@ ZeloriaServer/
 ├── velocity/
 ├── zeloria/                ← チャンネル 1（建築可能、paper.jar があるサーバールート）
 │   └── plugins/Zeloria/
-│       └── channel.yml     （channel: 1, shared-config-path: "../config", world-data-path: "../WorldData"）
+│       └── channel.yml     （channel: 1, shared-config-path: "../config", world-data-path: "../WorldData", sql-config-path: "../sql.yml"）
 ├── zeloria2/               ← チャンネル 2（将来）
 │   └── plugins/Zeloria/
-│       └── channel.yml     （channel: 2, shared-config-path: "../config", world-data-path: "../WorldData"）
-├── config/                 ← 全サーバー共有（YAML 設定と sql.yml）
+│       └── channel.yml     （channel: 2, shared-config-path: "../config", world-data-path: "../WorldData", sql-config-path: "../sql.yml"）
+├── config/                 ← 全サーバー共有（YAML 設定）
 │   ├── ClassData/
 │   ├── SkillData/
-│   ├── ...
-│   └── sql.yml             ← DB 接続情報（共有設定フォルダ直下）
+│   └── ...
+├── sql.yml                 ← DB 接続情報（全サーバー共有）
 └── WorldData/              ← 全サーバー共有（ワールドテンプレート）
     ├── hub/
     ├── field_1/
     └── ...
 ```
 
-- `config/` 配下の YAML と `config/sql.yml` は **全サーバーで共有** します。設定変更は 1 箇所の編集で
+- `config/` 配下の YAML は **全サーバーで共有** します。設定変更は 1 箇所の編集で
   全サーバーに反映されます（反映には各サーバーで `/admin reload` を実行してください）。
 - `WorldData/` 配下のテンプレートは **全サーバーで共有** します。テンプレートの追加・更新は
   `WorldData/` の 1 箇所で行えば、全サーバーから同じテンプレートを利用できます。
   各サーバーの `plugins/Zeloria/worlds/` は使用しません。
-- DB 接続情報も共有設定フォルダ直下の `sql.yml`（`<server>/config/sql.yml`、例:
-  `ZeloriaServer/config/sql.yml`）1 箇所で管理します。ここでの `<server>` は
-  `ZeloriaServer` のような共有ルートを指します。
+- DB 接続情報は `channel.yml` の `sql-config-path` が指す `sql.yml`（既定:
+  `ZeloriaServer/sql.yml`）1 箇所で管理します。設定ファイルを共有設定フォルダとは
+  別の場所に置きたい場合は `sql-config-path` を変更してください。
 - 全サーバーが同じ DB を参照するため、プレイヤーデータは自動的に一元管理されます。
   サーバー A からサーバー B へ移動しても、同じプレイヤーデータが引き継がれます。
 
@@ -121,8 +134,9 @@ mv ZeloriaServer/zeloria/plugins/Zeloria/worlds/* ZeloriaServer/WorldData/
 - `config/` 配下の YAML は `YamlLoader` が起動時に読み込みます。
   `/admin reload`、`SpawnerManager.reload()`、`NpcManager.reload()` など、
   再読み込み処理もすべて共有設定フォルダから読み込みます。
-- `sql.yml` は `DatabaseService` が起動時に共有設定フォルダ直下（`new File(sharedConfigFolder, "sql.yml")`）
-  から読み込みます。
+- `sql.yml` は `DatabaseService` が起動時に `channel.yml` の `sql-config-path` が指す
+  ファイル（既定: サーバールートの親フォルダ直下の `sql.yml`）から読み込みます。
+  自動生成は行いません。
 - プラグインは共有設定フォルダへの **書き込みを行いません**（ファイル作成・`saveResource` なし）。
   必要な YAML は `src/main/resources/config/` のテンプレートを手動でコピーしてください。
 - Mac / Ubuntu のどちらでも、`ZeloriaServer/config/` という同じフォルダ構成であれば
@@ -189,12 +203,13 @@ mv ZeloriaServer/zeloria/plugins/Zeloria/worlds/* ZeloriaServer/WorldData/
 ## インストール
 
 1. `channel.yml` を作成し、`plugins/Zeloria/channel.yml` に配置します
-   （`shared-config-path: "../config"` と `world-data-path: "../WorldData"` を指定）。
+   （`shared-config-path: "../config"`、`world-data-path: "../WorldData"`、
+   `sql-config-path: "../sql.yml"` を指定）。
 2. サーバールートの親フォルダ（`<server>/../config/`、例: `ZeloriaServer/config/`）へ
    `src/main/resources/config/` の内容をコピーします。
-3. `src/main/resources/sql.yml` を共有設定フォルダ直下（`<server>/config/sql.yml`、例:
-   `ZeloriaServer/config/sql.yml`。ここでの `<server>` は共有ルート）へコピーして
-   DB 情報を記入します。
+3. `src/main/resources/sql.yml` を `sql-config-path` が指す場所（既定:
+   `<server>/../sql.yml`、例: `ZeloriaServer/sql.yml`）へコピーして DB 情報を記入します。
+   別の場所に置く場合は `channel.yml` の `sql-config-path` をそのパスに変更してください。
 4. サーバールートの親フォルダに `WorldData/` を作成し、`WorldData/<templateId>/` へ
    ワールドテンプレートを配置します（`WorldData/` は全サーバーで共有）。
    旧バージョンから移行する場合は「既存環境からの移行（ワールドテンプレート）」を参照してください。

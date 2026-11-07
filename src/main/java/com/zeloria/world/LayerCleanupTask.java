@@ -154,6 +154,25 @@ public class LayerCleanupTask extends BukkitRunnable {
     }
 
     /**
+     * 指定インスタンスのアイドルアンロードまでの残り秒数を取得する。
+     * <p>
+     * タイマーがまだ開始していない（空になってから次のチェック前の）場合は
+     * {@link #IDLE_TIMEOUT_SECONDS} を返す。
+     *
+     * @param instanceId インスタンス ID
+     * @param now        現在時刻（ミリ秒）
+     * @return 残り秒数（0 以上）
+     */
+    public long remainingSeconds(String instanceId, long now) {
+        Long since = instanceId == null ? null : idleSince.get(instanceId);
+        if (since == null) {
+            return IDLE_TIMEOUT_SECONDS;
+        }
+        long elapsedSeconds = Math.max(0L, (now - since) / 1000L);
+        return Math.max(0L, IDLE_TIMEOUT_SECONDS - elapsedSeconds);
+    }
+
+    /**
      * 現在削除タイマーが進行中のインスタンス数を取得する。
      */
     public int getTrackedCount() {

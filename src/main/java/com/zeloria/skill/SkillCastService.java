@@ -92,6 +92,10 @@ public final class SkillCastService {
             stats.setCurrentHealth(stats.getCurrentHealth() - healthCost);
             combatService.syncPlayerHealth(player);
         }
+        if (plugin.getPlayerStatsService() != null) {
+            // 満腹度ゲージ（MP バー）とレベル／経験値表示を即時更新する。
+            plugin.getPlayerStatsService().syncVanillaStats(player, stats);
+        }
         cooldownService.set(player.getUniqueId(), skill.id(), cooldownMillis);
 
         playEffects(player, skill, target);

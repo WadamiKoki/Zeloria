@@ -4,6 +4,7 @@ import com.zeloria.combat.CombatService;
 import com.zeloria.combat.CombatStateService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.skill.ClassManager;
+import com.zeloria.skill.LevelService;
 import org.bukkit.entity.Player;
 
 import java.util.Objects;
@@ -12,9 +13,10 @@ import java.util.UUID;
 /**
  * プレイヤーの RPG ステータスを Bukkit のプレイヤーへ反映するサービス。
  * <p>
- * 現時点でゲーム内へ反映するのは移動速度（{@code setWalkSpeed}）のみで、
- * HP / MP は {@link PlayerStats} 内のモデル値として保持する。バニラの体力バーへの
- * HP 同期は {@link CombatService#syncPlayerHealth(Player)} が担い、リスポーン時に
+ * 現時点でゲーム内へ反映するのは移動速度（{@code setWalkSpeed}）、満腹度ゲージ
+ * （MP バー）、バニラのレベル／経験値バー（RPG レベル／経験値）である。
+ * HP / MP のモデル値は {@link PlayerStats} 内に保持し、バニラの体力バーへの
+ * HP 同期は {@link CombatService#syncPlayerHealth(Player)} が担う。リスポーン時に
  * 本クラスから呼び出して全回復を表示へ反映する。最大 HP / 最大 MP は
  * 自然回復の上限としてのみ機能する。
  * <p>
@@ -146,6 +148,50 @@ public final class PlayerStatsService {
             if (player.isOnline()) {
                 player.setWalkSpeed(walkSpeed);
             }
+        });
+
+        syncVanillaStats(player, stats);
+    }
+
+    /**
+     * RPG ステータスをバニラの満腹度・レベル・経験値バーへ反映する。
+     * <p>
+     * <ul>
+     *     <li>満腹度ゲージ: 現在 MP / 最大 MP の割合を 0〜20 に割り当てる（MP バーとして使用）</li>
+     *     <li>満腹度の隠し値（saturation）: 常に 0（満腹度ゲージの揺れを防ぐ）</li>
+     *     <li>レベル: RPG レベル</li>
+     *     <li>経験値バー: 次レベルまでの進捗（{@link LevelService#requiredExp(int)} を使用）</li>
+     * </ul>
+     * 非同期スレッドから呼ばれた場合はメインスレッドへ委譲する。
+     *
+     * @param player 対象プレイヤー
+     * @param stats  反映するステータス
+     */
+    public void syncVanillaStats(Player player, PlayerStats stats) {
+        if (player == null || stats == null) {
+            return;
+        }
+
+        int maxMana = (int) Math.round(stats.getMaxMana());
+        int foodLevel = maxMana <= 0
+                ? 0
+                : (int) Math.round(clamp(stats.getCurrentMana() / maxMana, 0.0, 1.0) * 20.0);
+
+        int level = Math.max(0, stats.getLevel());
+        LevelService levelService = plugin.getLevelService();
+        long requiredExp = levelService == null ? 0L : levelService.requiredExp(level);
+        float expProgress = requiredExp <= 0L
+                ? 0.0f
+                : (float) clamp((double) stats.getExp() / (double) requiredExp, 0.0, 1.0);
+
+        runOnMainThread(player, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            player.setFoodLevel(foodLevel);
+            player.setSaturation(0.0f);
+            player.setLevel(level);
+            player.setExp(expProgress);
         });
     }
 

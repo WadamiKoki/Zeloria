@@ -8,9 +8,9 @@ import java.util.Objects;
 /**
  * サーバー固有のチャンネル設定（{@code plugins/Zeloria/channel.yml}）を保持するクラス。
  * <p>
- * Zeloria を複数サーバー（チャンネル）で運用する場合、設定 YAML と DB 接続情報は
- * 共有フォルダに、ワールドテンプレートは {@code WorldData/} に 1 箇所だけ置き、
- * 各サーバーはこのファイルで自身のチャンネル番号と各フォルダの位置を指定する。
+ * Zeloria を複数サーバー（チャンネル）で運用する場合、設定 YAML は共有フォルダに、
+ * DB 接続情報は {@code sql.yml} に、ワールドテンプレートは {@code WorldData/} に
+ * 1 箇所だけ置き、各サーバーはこのファイルで自身のチャンネル番号と各ファイルの位置を指定する。
  * <p>
  * 建築モードは {@link #BUILD_CHANNEL}（チャンネル 1）でのみ有効とする。
  * {@code channel.yml} は自動生成しない。初回起動前に手動で配置すること。
@@ -28,6 +28,9 @@ public final class ChannelConfig {
 
     /** テンプレートワールドの保存先のキー。 */
     public static final String KEY_WORLD_DATA_PATH = "world-data-path";
+
+    /** SQL 設定ファイル（{@code sql.yml}）のパスのキー。 */
+    public static final String KEY_SQL_CONFIG_PATH = "sql-config-path";
 
     /** 建築モードを許可するチャンネル番号。 */
     public static final int BUILD_CHANNEL = 1;
@@ -53,12 +56,22 @@ public final class ChannelConfig {
      */
     public static final String DEFAULT_WORLD_DATA_PATH = "../WorldData";
 
+    /**
+     * {@code sql-config-path} が未指定の場合に使用する SQL 設定ファイルのパス。
+     * <p>
+     * サーバールート（{@code paper.jar} がある場所）からの相対パスで、
+     * 既定の {@code "../sql.yml"} はサーバールートの親フォルダ直下の
+     * {@code sql.yml}（例: {@code ZeloriaServer/sql.yml}）を指す。
+     */
+    public static final String DEFAULT_SQL_CONFIG_PATH = "../sql.yml";
+
     /** 共有設定フォルダ内の設定ディレクトリ名。 */
     public static final String SHARED_CONFIG_DIR_NAME = "config";
 
     private final int channel;
     private final String sharedConfigPath;
     private final String worldDataPath;
+    private final String sqlConfigPath;
 
     /**
      * チャンネル設定を生成する（{@code world-data-path} は既定値を使用）。
@@ -71,13 +84,26 @@ public final class ChannelConfig {
     }
 
     /**
-     * チャンネル設定を生成する。
+     * チャンネル設定を生成する（{@code sql-config-path} は既定値を使用）。
      *
      * @param channel          チャンネル番号
      * @param sharedConfigPath 共有設定フォルダのパス（サーバールートからの相対パス）
      * @param worldDataPath    テンプレートワールドの保存先（サーバールートからの相対パス）
      */
     public ChannelConfig(int channel, String sharedConfigPath, String worldDataPath) {
+        this(channel, sharedConfigPath, worldDataPath, DEFAULT_SQL_CONFIG_PATH);
+    }
+
+    /**
+     * チャンネル設定を生成する。
+     *
+     * @param channel          チャンネル番号
+     * @param sharedConfigPath 共有設定フォルダのパス（サーバールートからの相対パス）
+     * @param worldDataPath    テンプレートワールドの保存先（サーバールートからの相対パス）
+     * @param sqlConfigPath    SQL 設定ファイルのパス（サーバールートからの相対パス）
+     */
+    public ChannelConfig(int channel, String sharedConfigPath, String worldDataPath,
+                         String sqlConfigPath) {
         this.channel = channel;
         this.sharedConfigPath = sharedConfigPath == null || sharedConfigPath.isBlank()
                 ? DEFAULT_SHARED_CONFIG_PATH
@@ -85,6 +111,9 @@ public final class ChannelConfig {
         this.worldDataPath = worldDataPath == null || worldDataPath.isBlank()
                 ? DEFAULT_WORLD_DATA_PATH
                 : worldDataPath.trim();
+        this.sqlConfigPath = sqlConfigPath == null || sqlConfigPath.isBlank()
+                ? DEFAULT_SQL_CONFIG_PATH
+                : sqlConfigPath.trim();
     }
 
     /**
@@ -102,7 +131,8 @@ public final class ChannelConfig {
         int channel = yaml.getInt(KEY_CHANNEL, DEFAULT_CHANNEL);
         String sharedConfigPath = yaml.getString(KEY_SHARED_CONFIG_PATH, DEFAULT_SHARED_CONFIG_PATH);
         String worldDataPath = yaml.getString(KEY_WORLD_DATA_PATH, DEFAULT_WORLD_DATA_PATH);
-        return new ChannelConfig(channel, sharedConfigPath, worldDataPath);
+        String sqlConfigPath = yaml.getString(KEY_SQL_CONFIG_PATH, DEFAULT_SQL_CONFIG_PATH);
+        return new ChannelConfig(channel, sharedConfigPath, worldDataPath, sqlConfigPath);
     }
 
     /**
@@ -130,6 +160,15 @@ public final class ChannelConfig {
      */
     public String getWorldDataPath() {
         return worldDataPath;
+    }
+
+    /**
+     * SQL 設定ファイル（{@code sql.yml}）のパス（サーバールートからの相対パス）を取得する。
+     *
+     * @return SQL 設定ファイルのパス
+     */
+    public String getSqlConfigPath() {
+        return sqlConfigPath;
     }
 
     /**

@@ -11,3 +11,4 @@ accuracy: 90.0
 evasion: 0.0
 expReward: 15
 moneyReward: 5
+alwaysShowName: true

@@ -5,6 +5,7 @@ import com.zeloria.core.YamlLoader;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatsService;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
@@ -134,6 +135,13 @@ public class LevelService {
         // レベルアップ時はクラス基礎ステータス（baseStats × レベル成長率）を再計算する。
         if (levelsGained > 0 && plugin.getPlayerStatsService() != null) {
             plugin.getPlayerStatsService().refreshClassStats(data);
+        }
+
+        // バニラのレベル／経験値バー表示を最新値へ追従させる。
+        PlayerStatsService statsService = plugin.getPlayerStatsService();
+        Player player = data.getUuid() == null ? null : Bukkit.getPlayer(data.getUuid());
+        if (statsService != null && player != null) {
+            statsService.syncVanillaStats(player, stats);
         }
 
         return new LevelResult(oldLevel, level, levelsGained, exp, settings.requiredExp(level));

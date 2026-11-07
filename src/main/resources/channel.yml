@@ -8,3 +8,7 @@ shared-config-path: "../config"
 # テンプレートワールドの保存先（サーバールートからの相対パス。絶対パスは使用禁止）
 # 例: "../WorldData" → <server>/../WorldData = ZeloriaServer/WorldData/
 world-data-path: "../WorldData"
+
+# SQL 設定ファイル（sql.yml）のパス（サーバールートからの相対パス。絶対パスは使用禁止）
+# 例: "../sql.yml" → <server>/../sql.yml = ZeloriaServer/sql.yml
+sql-config-path: "../sql.yml"

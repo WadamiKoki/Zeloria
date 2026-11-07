@@ -5,6 +5,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -20,6 +21,7 @@ import java.util.Objects;
  *     <li>{@link InventoryClickEvent}: 装備の着脱・メニュー機能呼び出しを
  *         {@link MenuService} へ委譲</li>
  *     <li>{@link InventoryDragEvent}: メニュー GUI へアイテムをドラッグできないよう拒否</li>
+ *     <li>{@link InventoryCloseEvent}: メニューを閉じた際に RPG ステータスを再適用</li>
  * </ul>
  */
 public class MenuListener implements Listener {
@@ -67,6 +69,26 @@ public class MenuListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
+        }
+    }
+
+    /**
+     * メニュー GUI を閉じたタイミングでステータスを再適用する。
+     * <p>
+     * メニュー内で装備を変更した場合、閉じた直後に移動速度・HP / MP 表示などが
+     * 最新の装備補正へ追従するようにする。装備補正そのものの再計算は
+     * {@code EquipmentListener} が担当する。
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof org.bukkit.entity.Player player)) {
+            return;
+        }
+        if (!(event.getInventory().getHolder() instanceof MenuGui)) {
+            return;
+        }
+        if (plugin.getPlayerStatsService() != null) {
+            plugin.getPlayerStatsService().apply(player);
         }
     }
 

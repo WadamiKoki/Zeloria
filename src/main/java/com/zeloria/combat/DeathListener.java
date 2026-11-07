@@ -17,7 +17,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
@@ -126,7 +128,7 @@ public final class DeathListener implements Listener {
         player.setFallDistance(0.0f);
         player.setVelocity(new Vector(0, 0, 0));
 
-        // スペクテイターでも死亡地点に留める（移動はプレイヤーの操作に委ねる）。
+        // スペクテイター中も死亡地点に留める（視点操作のみ許可する）。
         if (deathLocation.getWorld() != null
                 && deathLocation.getWorld().equals(player.getWorld())) {
             player.teleport(deathLocation);
@@ -215,6 +217,40 @@ public final class DeathListener implements Listener {
             return;
         }
         restorePendingPlayer(player);
+    }
+
+    /**
+     * 待機中のプレイヤーの位置を死亡地点に固定する。
+     * <p>
+     * スペクテイターの移動操作・スニーク・ジャンプによる座標変化を打ち消し、
+     * 視点（yaw / pitch）の変更だけを許可する。テレポートは死亡地点への復帰や
+     * 他プラグインの処理を妨げないよう対象外とする。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerMove(PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        if (!awaitingRespawn.contains(player.getUniqueId())) {
+            return;
+        }
+        if (event instanceof PlayerTeleportEvent) {
+            return;
+        }
+
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (to == null) {
+            return;
+        }
+        if (from.getX() == to.getX()
+                && from.getY() == to.getY()
+                && from.getZ() == to.getZ()) {
+            return;
+        }
+
+        Location locked = from.clone();
+        locked.setYaw(to.getYaw());
+        locked.setPitch(to.getPitch());
+        event.setTo(locked);
     }
 
     /**

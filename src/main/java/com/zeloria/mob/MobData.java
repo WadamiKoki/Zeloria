@@ -25,6 +25,7 @@ import java.util.Objects;
  * evasion: 0.0          # 回避率（%）
  * expReward: 15
  * moneyReward: 5
+ * alwaysShowName: true  # 頭上に表示名を常時表示する（省略時は true）
  * </pre>
  * {@code entityType} は {@code zombie} / {@code minecraft:zombie} / {@code ZOMBIE} の
  * いずれの表記も受け付ける。
@@ -42,6 +43,7 @@ import java.util.Objects;
  * @param evasion        回避率（%）
  * @param expReward      撃破時経験値
  * @param moneyReward    撃破時報酬
+ * @param alwaysShowName 頭上に表示名を常時表示するか
  */
 public record MobData(
         String id,
@@ -56,7 +58,8 @@ public record MobData(
         double accuracy,
         double evasion,
         int expReward,
-        int moneyReward
+        int moneyReward,
+        boolean alwaysShowName
 ) {
 
     /** {@code entityType} が未指定のときに使用する既定のエンティティ種別。 */
@@ -107,7 +110,8 @@ public record MobData(
                 config.getDouble("accuracy", MobStats.DEFAULT_ACCURACY),
                 config.getDouble("evasion", MobStats.DEFAULT_EVASION),
                 config.getInt("expReward", 0),
-                config.getInt("moneyReward", 0)
+                config.getInt("moneyReward", 0),
+                config.getBoolean("alwaysShowName", true)
         );
     }
 

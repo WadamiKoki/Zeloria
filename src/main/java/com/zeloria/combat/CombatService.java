@@ -11,7 +11,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
-import org.bukkit.util.Vector;
 
 import java.util.Objects;
 
@@ -19,7 +18,9 @@ import java.util.Objects;
  * カスタムダメージの適用を担うサービス。
  * <p>
  * バニラのダメージ処理はリスナー側でキャンセルし、本サービスが HP の増減・
- * 死亡・ノックバック・プレイヤーのバニラ体力バー同期を一括して行う。
+ * 死亡・プレイヤーのバニラ体力バー同期を一括して行う。
+ * ノックバックはカスタム戦闘では付与せず、バニラ由来のノックバックも
+ * {@code CombatListener} 側でキャンセルする。
  * カスタムモブ（{@link MobStats} を持つエンティティ）以外は対象外とし、
  * バニラモブや他プラグインのモブには干渉しない。
  */
@@ -28,11 +29,8 @@ public final class CombatService {
     /** 最小ダメージ。 */
     public static final double MIN_DAMAGE = 1.0;
 
-    /** 近接攻撃のノックバック強度。 */
-    private static final double KNOCKBACK_STRENGTH = 0.35;
-
-    /** ノックバックの上方向成分。 */
-    private static final double KNOCKBACK_Y = 0.3;
+    /** バニラの体力バーの最大値（ハート 10 個分）。 */
+    private static final double VANILLA_MAX_HEALTH = 20.0;
 
     private final Zeloria plugin;
 
@@ -88,7 +86,6 @@ public final class CombatService {
         markCombat(attacker);
         if (!result.evaded()) {
             applyDamage(victim, result.damage(), attacker);
-            applyKnockback(attacker, victim);
             heal(attacker, attackerStats, result.damage() * totalLifesteal);
         }
         return result;
@@ -128,7 +125,6 @@ public final class CombatService {
         markCombat(victim);
         if (!result.evaded()) {
             damagePlayer(victim, result.damage());
-            applyKnockback(attacker, victim);
         }
         return result;
     }
@@ -180,8 +176,8 @@ public final class CombatService {
     /**
      * プレイヤーの {@link PlayerStats} の HP をバニラの体力バーへ反映する。
      * <p>
-     * 最大 HP は {@link Attribute#MAX_HEALTH} の基礎値として設定する。
-     * 装備補正などで最大 HP が変わった場合もこのメソッドで追従する。
+     * バニラの最大 HP は常に 20（ハート 10 個）に固定し、RPG 側の現在 HP / 最大 HP の
+     * 割合をそのまま体力バーへ写す。装備補正などで最大 HP が変わった場合も本メソッドで追従する。
      *
      * @param player 対象プレイヤー
      */
@@ -192,16 +188,16 @@ public final class CombatService {
         }
 
         AttributeInstance attribute = player.getAttribute(Attribute.MAX_HEALTH);
-        double maxHealth = Math.max(1.0, stats.getMaxHealth());
         if (attribute != null) {
-            attribute.setBaseValue(maxHealth);
-            maxHealth = attribute.getValue();
+            attribute.setBaseValue(VANILLA_MAX_HEALTH);
         }
 
+        double maxHealth = Math.max(1.0, stats.getMaxHealth());
+        double ratio = Math.max(0.0, Math.min(1.0, stats.getCurrentHealth() / maxHealth));
         // バニラの体力バーは表示専用。0 にするとバニラ死亡が発生するため 1.0 で下げ止める。
-        double health = Math.max(1.0, Math.min(maxHealth, stats.getCurrentHealth()));
+        double health = Math.max(1.0, ratio * VANILLA_MAX_HEALTH);
         if (Double.compare(player.getHealth(), health) != 0) {
-            player.setHealth(health);
+            player.setHealth(Math.min(VANILLA_MAX_HEALTH, health));
         }
     }
 
@@ -298,22 +294,6 @@ public final class CombatService {
         }
         stats.setCurrentHealth(stats.getCurrentHealth() + amount);
         syncPlayerHealth(player);
-    }
-
-    private void applyKnockback(Entity attacker, LivingEntity victim) {
-        if (attacker == null || victim == null) {
-            return;
-        }
-        if (victim instanceof Player player && isPendingDeath(player)) {
-            return;
-        }
-        Vector direction = victim.getLocation().toVector()
-                .subtract(attacker.getLocation().toVector());
-        if (direction.lengthSquared() <= 0.0) {
-            return;
-        }
-        direction.normalize().multiply(KNOCKBACK_STRENGTH).setY(KNOCKBACK_Y);
-        victim.setVelocity(victim.getVelocity().add(direction));
     }
 
     private CombatTarget resolveTarget(LivingEntity entity) {

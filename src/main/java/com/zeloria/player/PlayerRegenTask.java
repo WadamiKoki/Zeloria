@@ -57,7 +57,10 @@ public class PlayerRegenTask extends BukkitRunnable {
             if (data == null) {
                 continue;
             }
-            regenerate(data.getStats());
+            if (regenerate(data.getStats())) {
+                // 満腹度（MP バー）・レベル／経験値表示を最新値へ追従させる。
+                statsService.syncVanillaStats(player, data.getStats());
+            }
         }
     }
 
@@ -65,12 +68,14 @@ public class PlayerRegenTask extends BukkitRunnable {
      * 1 秒分の自然回復を適用する。
      *
      * @param stats 対象ステータス
+     * @return HP または MP が変化した場合は {@code true}
      */
-    static void regenerate(PlayerStats stats) {
+    static boolean regenerate(PlayerStats stats) {
         if (stats == null) {
-            return;
+            return false;
         }
 
+        boolean changed = false;
         double healthGain = regenAmount(
                 stats.getHealthRegenFlat(), stats.getHealthRegenPercent());
         if (healthGain != 0.0) {
@@ -82,13 +87,16 @@ public class PlayerRegenTask extends BukkitRunnable {
                 // 最大 HP を超えないよう setCurrentHealth 側でクランプされる。
                 stats.setCurrentHealth(nextHealth);
             }
+            changed = true;
         }
 
         double manaGain = regenAmount(stats.getManaRegenFlat(), stats.getManaRegenPercent());
         if (manaGain != 0.0) {
             // 0〜最大 MP へのクランプは setCurrentMana に委譲する。
             stats.setCurrentMana(stats.getCurrentMana() + manaGain);
+            changed = true;
         }
+        return changed;
     }
 
     /**

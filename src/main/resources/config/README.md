@@ -41,8 +41,8 @@ mkdir -p ZeloriaServer/config
 # リポジトリのテンプレートをコピー（ビルド後の jar から取り出す場合は unzip を使用）
 cp -R src/main/resources/config/. ZeloriaServer/config/
 
-# DB 接続情報も共有設定フォルダ直下へコピー
-cp src/main/resources/sql.yml ZeloriaServer/config/sql.yml
+# DB 接続情報は sql.yml（既定では共有フォルダの親、ZeloriaServer/sql.yml）へコピー
+cp src/main/resources/sql.yml ZeloriaServer/sql.yml
 ```
 
 ## ワールドテンプレートの配置（`WorldData/`）
@@ -67,13 +67,16 @@ cp -R /path/to/hub ZeloriaServer/WorldData/hub
 
 ## channel.yml のパス設定
 
-`shared-config-path` と `world-data-path` は **サーバールート（`paper.jar` がある場所）
-からの相対パス** で指定してください。`paper.jar` が `ZeloriaServer/zeloria/` にある場合、
-`../config` は `ZeloriaServer/config/`、`../WorldData` は `ZeloriaServer/WorldData/` を指します。
+`shared-config-path` と `world-data-path`、`sql-config-path` は
+**サーバールート（`paper.jar` がある場所）からの相対パス** で指定してください。
+`paper.jar` が `ZeloriaServer/zeloria/` にある場合、`../config` は
+`ZeloriaServer/config/`、`../WorldData` は `ZeloriaServer/WorldData/`、
+`../sql.yml` は `ZeloriaServer/sql.yml` を指します。
 
 ```yaml
 shared-config-path: "../config"
 world-data-path: "../WorldData"
+sql-config-path: "../sql.yml"
 ```
 
 - パス区切りには `/` を使用してください（`File.separator` に依存しません）。
@@ -83,22 +86,24 @@ world-data-path: "../WorldData"
 ```
 shared-config-path には絶対パスを使用しないでください: <指定されたパス>
 world-data-path には絶対パスを使用しないでください
+sql-config-path には絶対パスを使用しないでください: <指定されたパス>
 ```
 
-共有設定フォルダとワールドデータフォルダは次の式で解決されます。
+共有設定フォルダ・ワールドデータフォルダ・SQL 設定ファイルは次の式で解決されます。
 
 ```java
-File serverRoot = getDataFolder().getParentFile().getParentFile().getCanonicalFile();
+File serverRoot = Bukkit.getWorldContainer().getCanonicalFile();
 File sharedFolder = new File(serverRoot, sharedConfigPath).getCanonicalFile();
 File worldDataFolder = new File(serverRoot, worldDataPath).getCanonicalFile();
+File sqlConfigFile = new File(serverRoot, sqlConfigPath).getCanonicalFile();
 ```
 
 ## データベース設定
 
 `sql.yml` も自動生成されません。`src/main/resources/sql.yml` を
-共有設定フォルダ直下の `sql.yml` へコピーして、DB 情報を記入してください。
-配置先は `<server>/config/sql.yml`（ここでの `<server>` は `ZeloriaServer` のような共有ルート。
-実例: `ZeloriaServer/config/sql.yml`）です。
+`channel.yml` の `sql-config-path` が指す場所へコピーして、DB 情報を記入してください。
+既定の配置先は `<server>/../sql.yml`（`<server>` は `paper.jar` があるサーバールート。
+実例: `ZeloriaServer/sql.yml`）です。別の場所に置く場合は `sql-config-path` を変更してください。
 
 `players` テーブルのカラムが不足している場合は、プラグインは自動 `ALTER TABLE` を行わず、
 次のログを出力して無効化されます。開発用のリセット SQL を実行してテーブルを作り直してください。
