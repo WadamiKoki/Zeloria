@@ -79,7 +79,6 @@ public class DatabaseManager {
                 max_mana DOUBLE NULL,
                 current_mana DOUBLE NULL,
                 attack_power DOUBLE NULL,
-                defense DOUBLE NULL,
                 defense1 DOUBLE NULL,
                 defense2 DOUBLE NULL,
                 critical_rate DOUBLE NULL,
@@ -116,7 +115,7 @@ public class DatabaseManager {
             "class_levels_json", "class_exps_json", "class_tree_points_json", "allocated_class_nodes_json",
             "virtual_equipment_base64",
             "max_health", "current_health", "max_mana", "current_mana",
-            "attack_power", "defense", "defense1", "defense2", "critical_rate", "critical_damage",
+            "attack_power", "defense1", "defense2", "critical_rate", "critical_damage",
             "accuracy", "evasion", "dodge_cooldown_reduction", "cooldown_reduction",
             "walk_speed", "health_regen_flat", "health_regen_percent",
             "mana_regen_flat", "mana_regen_percent", "cooldown_end_at",
@@ -193,10 +192,6 @@ public class DatabaseManager {
             if (!missingColumns.isEmpty()) {
                 throw new MissingColumnsException(missingColumns);
             }
-
-            // defense カラムは旧・新どちらのインストールにも存在する。
-            // 新セッションの防具防御力（defense2）が未設定の行だけ旧 defense から移行する。
-            migrateDefenseToDefense2(connection);
         } catch (SQLException e) {
             throw new CompletionException(
                     "テーブル " + PLAYERS_TABLE + " の作成に失敗しました。", e);
@@ -229,24 +224,6 @@ public class DatabaseManager {
             }
         }
         return missing;
-    }
-
-    /**
-     * 旧 {@code defense} カラムの値を新 {@code defense2} カラムへ移行する。
-     * <p>
-     * 既に {@code defense2} が設定されている行は上書きしない。何度実行しても
-     * 結果が変わらないため、起動のたびに呼び出しても安全。
-     *
-     * @param connection 対象コネクション
-     * @throws SQLException 移行に失敗した場合
-     */
-    private void migrateDefenseToDefense2(Connection connection) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate(
-                    "UPDATE " + PLAYERS_TABLE
-                            + " SET defense2 = defense"
-                            + " WHERE defense2 IS NULL AND defense IS NOT NULL");
-        }
     }
 
     /**

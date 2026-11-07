@@ -33,7 +33,7 @@ public class PlayerRepository {
             class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
             virtual_equipment_base64,
             max_health, current_health, max_mana, current_mana,
-            attack_power, defense, defense1, defense2, critical_rate, critical_damage,
+            attack_power, defense1, defense2, critical_rate, critical_damage,
             accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
             walk_speed,
             health_regen_flat, health_regen_percent, mana_regen_flat, mana_regen_percent,
@@ -63,7 +63,7 @@ public class PlayerRepository {
                 class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
                 virtual_equipment_base64,
                 max_health, current_health, max_mana, current_mana,
-                attack_power, defense, defense1, defense2, critical_rate, critical_damage,
+                attack_power, defense1, defense2, critical_rate, critical_damage,
                 accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
                 walk_speed,
                 health_regen_flat, health_regen_percent, mana_regen_flat, mana_regen_percent,
@@ -71,7 +71,7 @@ public class PlayerRepository {
                 last_updated
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?,
                       CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
@@ -100,7 +100,6 @@ public class PlayerRepository {
                 max_mana = VALUES(max_mana),
                 current_mana = VALUES(current_mana),
                 attack_power = VALUES(attack_power),
-                defense = VALUES(defense),
                 defense1 = VALUES(defense1),
                 defense2 = VALUES(defense2),
                 critical_rate = VALUES(critical_rate),
@@ -301,8 +300,8 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 42 columns（last_updated を除く）, 42 placeholders,
-            // max bind index 42。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 41 columns（last_updated を除く）, 41 placeholders,
+            // max bind index 41。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
@@ -331,7 +330,6 @@ public class PlayerRepository {
             statement.setDouble(index++, snapshot.maxMana());
             statement.setDouble(index++, snapshot.currentMana());
             statement.setDouble(index++, snapshot.attackPower());
-            statement.setDouble(index++, snapshot.defense());
             statement.setDouble(index++, snapshot.defense1());
             statement.setDouble(index++, snapshot.defense2());
             statement.setDouble(index++, snapshot.criticalRate());

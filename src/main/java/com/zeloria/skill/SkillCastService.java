@@ -365,7 +365,7 @@ public final class SkillCastService {
         // 旧 Enum 名は区切り文字の情報が失われているため、英数字のみへ正規化して照合する。
         String normalized = normalizeSoundName(path);
         for (Sound candidate : Registry.SOUNDS) {
-            NamespacedKey key = candidate.getKey();
+            NamespacedKey key = Registry.SOUNDS.getKey(candidate);
             if (key.getNamespace().equals(namespace)
                     && normalizeSoundName(key.getKey()).equals(normalized)) {
                 return candidate;

@@ -48,7 +48,6 @@ CREATE TABLE players (
     max_mana DOUBLE NULL,
     current_mana DOUBLE NULL,
     attack_power DOUBLE NULL,
-    defense DOUBLE NULL,
     defense1 DOUBLE NULL,
     defense2 DOUBLE NULL,
     critical_rate DOUBLE NULL,
