@@ -722,9 +722,10 @@ public class BuildManager {
                     WorldCreator creator = WorldCreator.ofKey(keyOf(templateId))
                             .environment(World.Environment.NORMAL)
                             .generateStructures(false)
-                            // 建築ワールドのスポーン周辺を常時ロードしない（false 相当）。
+                            // 建築ワールドのスポーン位置を常時ロードし、テレポート先の
+                            // チャンク未ロードによる転送失敗を防ぐ。
                             // Paper 26.3 では boolean 版が無いため TriState を使用する。
-                            .keepSpawnLoaded(TriState.FALSE);
+                            .keepSpawnLoaded(TriState.TRUE);
                     world = Bukkit.createWorld(creator);
                 }
             } catch (RuntimeException e) {
@@ -784,6 +785,11 @@ public class BuildManager {
             return;
         }
 
+        Location spawn = buildSpawn(world, player);
+        plugin.getLogger().info("[TransferDebug] player=" + player.getName()
+                + ", destination=" + spawn
+                + ", world=" + (spawn.getWorld() != null ? spawn.getWorld().getName() : "null"));
+
         // 建築ワールドへ入る直前のゲームモードを記録し、退出時に戻す。
         // 既に建築ワールド内にいる場合は、最初の入場時の値を保持する。
         if (!isBuildWorld(player.getWorld())) {
@@ -791,28 +797,29 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
-        Location spawn = buildSpawn(world, player);
+        // 同期テレポートを優先し、false が返った場合は非同期テレポートへフォールバックする。
+        if (player.teleport(spawn)) {
+            return;
+        }
+
+        plugin.getLogger().warning(
+                "建築ワールドへの同期転送に失敗したため、非同期転送へフォールバックします: "
+                        + player.getName() + " -> " + world.getName());
         player.teleportAsync(spawn).whenComplete((success, throwable) -> {
             if (throwable == null && Boolean.TRUE.equals(success)) {
                 return;
             }
-            // teleportAsync が失敗した場合は同期テレポートへフォールバックする。
             plugin.getLogger().warning(
-                    "建築ワールドへの非同期転送に失敗したため、同期転送へフォールバックします: "
-                            + player.getName() + " -> " + world.getName()
+                    "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
+                            + world.getName()
                             + " (" + (throwable != null ? rootMessage(throwable) : "success=false") + ")");
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) {
                     return;
                 }
-                if (!player.teleport(spawn)) {
-                    plugin.getLogger().warning(
-                            "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
-                                    + world.getName());
-                    notifyTeleportFailure(player);
-                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
-                    restoreGameMode(player);
-                }
+                notifyTeleportFailure(player);
+                // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
+                restoreGameMode(player);
             });
         });
     }

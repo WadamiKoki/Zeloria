@@ -44,7 +44,14 @@ public class BuildWorldGuardListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerTeleport(PlayerTeleportEvent event) {
         Location destination = event.getTo();
-        if (destination == null || !BuildManager.isBuildWorld(destination.getWorld())) {
+        if (destination == null || destination.getWorld() == null) {
+            return;
+        }
+
+        // キャンセル対象は「建築ワールド（zeloria_build 名前空間）への入場」のみ。
+        // 通常のレイヤーワールド（minecraft 名前空間）への転送や、
+        // 建築ワールドからの退出はキャンセルしない。
+        if (!BuildManager.BUILD_NAMESPACE.equals(destination.getWorld().getKey().getNamespace())) {
             return;
         }
 

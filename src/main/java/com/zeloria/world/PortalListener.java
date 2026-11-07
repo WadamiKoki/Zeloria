@@ -195,6 +195,10 @@ public class PortalListener implements Listener {
                                       String targetTemplate, String targetName,
                                       World targetWorld, World sourceWorld, String sourceLayer,
                                       Location destination, Boolean success, Throwable throwable) {
+        plugin.getLogger().info("[TransferDebug] player=" + player.getName()
+                + ", destination=" + destination
+                + ", world=" + (destination != null && destination.getWorld() != null
+                        ? destination.getWorld().getName() : "null"));
         plugin.getLogger().info("[PortalDebug] teleport result: success=" + success
                 + ", throwable=" + (throwable != null ? throwable.getMessage() : "none")
                 + ", to=" + (destination != null && destination.getWorld() != null
@@ -214,20 +218,19 @@ public class PortalListener implements Listener {
             return;
         }
 
-        if (throwable != null) {
-            // teleportAsync が例外で失敗した場合も、同期テレポートで復旧を試みる。
-            logWarning("ポータル転送エラー: player=" + player.getName()
-                    + ", portal=" + portal.id() + ", error=" + rootMessage(throwable));
-            if (!player.teleport(destination)) {
-                cooldowns.remove(player.getUniqueId());
-                messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
-                return;
+        if (!Boolean.TRUE.equals(success) || throwable != null) {
+            // teleportAsync が失敗した場合は、同期テレポートで復旧を試みる。
+            if (throwable != null) {
+                logWarning("ポータル転送エラー: player=" + player.getName()
+                        + ", portal=" + portal.id() + ", error=" + rootMessage(throwable));
+            } else {
+                logWarning("ポータル転送失敗（同期テレポートへフォールバック）: player=" + player.getName()
+                        + ", portal=" + portal.id() + ", target=" + targetTemplate);
             }
-        } else if (Boolean.FALSE.equals(success)) {
-            // teleportAsync が false を返した場合は同期テレポートへフォールバックする。
-            logWarning("ポータル転送失敗（同期テレポートへフォールバック）: player=" + player.getName()
-                    + ", portal=" + portal.id() + ", target=" + targetTemplate);
-            if (!player.teleport(destination)) {
+            plugin.getLogger().info(
+                    "[TransferDebug] teleportAsync failed, fallback to teleport: " + destination);
+            boolean fallback = player.teleport(destination);
+            if (!fallback) {
                 cooldowns.remove(player.getUniqueId());
                 messageService().send(player, MESSAGE_FILE, "portal.teleport_failed", Map.of());
                 logWarning("ポータル転送フォールバックにも失敗: player=" + player.getName()
