@@ -1418,11 +1418,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 "<gold>=== <white>{player}</white> ===</gold>"));
         send(sender, message("info.identity", Map.of(
                         "uuid", snapshot.uuid().toString(),
-                        "class", esc(text(snapshot.currentClassId(), "-")),
-                        "unlocked", esc(text(snapshot.unlockedClasses(), "-"))),
+                        "class", esc(text(snapshot.currentClassId(), "-"))),
                 "<gray>UUID:</gray> <white>{uuid}</white> <dark_gray>|</dark_gray> "
-                        + "<gray>Class:</gray> <aqua>{class}</aqua> <dark_gray>|</dark_gray> "
-                        + "<gray>Unlocked:</gray> <white>{unlocked}</white>"));
+                        + "<gray>Class:</gray> <aqua>{class}</aqua>"));
         send(sender, message("info.level", Map.of(
                         "level", String.valueOf(snapshot.level()),
                         "exp", String.valueOf(snapshot.exp()),

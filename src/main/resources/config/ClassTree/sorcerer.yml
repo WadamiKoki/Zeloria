@@ -3,7 +3,8 @@
 # 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
 # ============================================================================
 
-id: "sorcerer"
+# クラス ID はファイル名から決定します（sorcerer.yml → sorcerer）。
+# ClassData/*.yml の id と重複するため、このファイルには id を定義しません。
 title: "<gradient:#BA68C8:#4A148C><bold>ソーサラー・ツリー</bold></gradient>"
 
 nodes:

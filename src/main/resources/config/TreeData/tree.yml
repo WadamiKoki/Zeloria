@@ -9,7 +9,9 @@
 title: "クラスツリー"
 rows: 6
 visible_rows: 6
-fixed_column: 8
+# 固定UI用の列。この列は常に灰色ガラスで埋まり、スクロールの影響を受けない。
+# 固定ボタン（reset / down / up / close）は col 8 に置く。
+fixed_column: 7
 
 fixed_slots:
   reset: 8      # row 0, col 8
@@ -18,23 +20,25 @@ fixed_slots:
   close: 53     # row 5, col 8
 
 nodes:
-  root:      { row: 0, column: 4, icon: "END_PORTAL_FRAME" }
-  green_1:   { row: 1, column: 1, icon: "LIME_CONCRETE" }
-  green_2:   { row: 1, column: 3, icon: "LIME_CONCRETE" }
-  green_3:   { row: 1, column: 5, icon: "LIME_CONCRETE" }
-  green_4:   { row: 2, column: 0, icon: "LIME_CONCRETE" }
-  green_5:   { row: 2, column: 2, icon: "LIME_CONCRETE" }
-  green_6:   { row: 2, column: 4, icon: "LIME_CONCRETE" }
-  green_7:   { row: 2, column: 6, icon: "LIME_CONCRETE" }
-  blue_1:    { row: 3, column: 0, icon: "BLUE_NETHER_BRICKS" }
-  blue_2:    { row: 3, column: 2, icon: "BLUE_NETHER_BRICKS" }
-  blue_3:    { row: 3, column: 4, icon: "BLUE_NETHER_BRICKS" }
-  blue_4:    { row: 3, column: 6, icon: "BLUE_NETHER_BRICKS" }
-  red_1:     { row: 4, column: 1, icon: "RED_NETHER_BRICKS" }
-  red_2:     { row: 4, column: 3, icon: "RED_NETHER_BRICKS" }
-  red_3:     { row: 4, column: 5, icon: "RED_NETHER_BRICKS" }
-  green_8:   { row: 5, column: 0, icon: "LIME_CONCRETE" }
-  green_9:   { row: 5, column: 2, icon: "LIME_CONCRETE" }
-  green_10:  { row: 5, column: 4, icon: "LIME_CONCRETE" }
-  green_11:  { row: 5, column: 6, icon: "LIME_CONCRETE" }
+  # custom_model_data は任意。リソースパックでノードの見た目を差し替える場合に設定する。
+  # 0 または未設定の場合はバニラのアイコンがそのまま表示される。
+  root:      { row: 0, column: 3, icon: "NETHER_STAR", custom_model_data: 1001 }
+  green_1:   { row: 1, column: 1, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2001 }
+  green_2:   { row: 1, column: 3, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2002 }
+  green_3:   { row: 1, column: 5, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2003 }
+  green_4:   { row: 2, column: 0, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2004 }
+  green_5:   { row: 2, column: 2, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2005 }
+  green_6:   { row: 2, column: 4, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2006 }
+  green_7:   { row: 2, column: 6, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2007 }
+  blue_1:    { row: 3, column: 0, icon: "AMETHYST_SHARD", custom_model_data: 3001 }
+  blue_2:    { row: 3, column: 2, icon: "AMETHYST_SHARD", custom_model_data: 3002 }
+  blue_3:    { row: 3, column: 4, icon: "AMETHYST_SHARD", custom_model_data: 3003 }
+  blue_4:    { row: 3, column: 6, icon: "AMETHYST_SHARD", custom_model_data: 3004 }
+  red_1:     { row: 4, column: 1, icon: "BLAZE_POWDER", custom_model_data: 4001 }
+  red_2:     { row: 4, column: 3, icon: "BLAZE_POWDER", custom_model_data: 4002 }
+  red_3:     { row: 4, column: 5, icon: "BLAZE_POWDER", custom_model_data: 4003 }
+  green_8:   { row: 5, column: 0, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2008 }
+  green_9:   { row: 5, column: 2, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2009 }
+  green_10:  { row: 5, column: 4, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2010 }
+  green_11:  { row: 5, column: 6, icon: "EXPERIENCE_BOTTLE", custom_model_data: 2011 }
 

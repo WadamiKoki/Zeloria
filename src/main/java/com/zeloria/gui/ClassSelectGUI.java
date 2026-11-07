@@ -10,6 +10,7 @@ import com.zeloria.player.PlayerClassData;
 import com.zeloria.player.ZeloriaClass;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -365,7 +366,7 @@ public final class ClassSelectGUI implements Listener {
         Holder holder = new Holder(this);
         Inventory inventory = Bukkit.createInventory(holder, current.size(), current.title());
         holder.inventory = inventory;
-        render(inventory, classData, current);
+        render(inventory, data, current);
 
         player.openInventory(inventory);
         current.openSound().play(player);
@@ -376,8 +377,9 @@ public final class ClassSelectGUI implements Listener {
      * <p>
      * 背景ガラスは敷かない（Geyser / Bedrock でアイコンをタップしやすいようにするため）。
      */
-    private void render(Inventory inventory, PlayerClassData classData, Layout current) {
+    private void render(Inventory inventory, PlayerData data, Layout current) {
         inventory.clear();
+        PlayerClassData classData = data.getClassData();
 
         Set<Integer> used = new HashSet<>(current.classSlots().values());
         Map<Integer, ZeloriaClass> placed = new LinkedHashMap<>();
@@ -402,7 +404,8 @@ public final class ClassSelectGUI implements Listener {
                         + slot + " は GUI サイズ " + inventory.getSize() + " の範囲外です。");
                 continue;
             }
-            inventory.setItem(slot, createClassItem(definition, classData, current));
+            inventory.setItem(slot, createClassItem(definition, classData, current,
+                    data.getClassLevel(definition.id())));
             placed.putIfAbsent(slot, definition);
             used.add(slot);
         }
@@ -490,15 +493,19 @@ public final class ClassSelectGUI implements Listener {
      */
     private ItemStack createClassItem(ZeloriaClass definition,
                                       PlayerClassData classData,
-                                      Layout current) {
+                                      Layout current,
+                                      int classLevel) {
         ItemStack item = new ItemStack(definition.icon());
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return item;
         }
 
-        meta.displayName(definition.displayName());
-        List<Component> lore = new ArrayList<>(definition.description());
+        meta.displayName(noItalic(definition.displayName()));
+        List<Component> lore = new ArrayList<>();
+        lore.add(MINI.deserialize("<gray>Lv. " + classLevel + "</gray>"));
+        lore.add(Component.empty());
+        lore.addAll(definition.description());
         lore.add(Component.empty());
 
         String currentId = classData == null ? null : classData.currentClassIdOrNull();
@@ -510,10 +517,21 @@ public final class ClassSelectGUI implements Listener {
             lore.add(current.lockedLore());
         }
 
-        meta.lore(lore);
+        List<Component> plainLore = new ArrayList<>(lore.size());
+        for (Component line : lore) {
+            plainLore.add(noItalic(line));
+        }
+        meta.lore(plainLore);
         meta.getPersistentDataContainer().set(classIdKey, PersistentDataType.STRING, definition.id());
         item.setItemMeta(meta);
         return item;
+    }
+
+    /**
+     * アイテム名・Lore の斜体（Italic）を無効化する。
+     */
+    private static Component noItalic(Component component) {
+        return component.decoration(TextDecoration.ITALIC, false);
     }
 
     /* ------------------------------------------------------------------
@@ -576,7 +594,6 @@ public final class ClassSelectGUI implements Listener {
             return;
         }
 
-        PlayerClassData classData = data.getClassData();
         Selection selection = select(data, classId);
         Layout current = layout;
 
@@ -593,7 +610,7 @@ public final class ClassSelectGUI implements Listener {
                                 .append(definition.displayName())
                                 .append(Component.text(
                                         " にクラスチェンジしました。", NamedTextColor.GRAY))));
-                render(top, classData, current);
+                render(top, data, current);
             }
             case ALREADY -> {
                 current.clickSound().play(player);

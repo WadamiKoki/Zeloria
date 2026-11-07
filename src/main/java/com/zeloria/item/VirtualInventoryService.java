@@ -7,11 +7,14 @@ import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.skill.SkillSlotService;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,13 +54,35 @@ public class VirtualInventoryService {
     /** オフハンドスロット（{@link PlayerInventory} のインデックス）。 */
     public static final int OFFHAND_SLOT = 40;
 
-    /** 武器スロットが空のときに表示する黒ガラス板。 */
-    private static final ItemStack EMPTY_WEAPON_DISPLAY =
-            VirtualItem.markPlaceholder(new ItemStack(Material.BLACK_STAINED_GLASS_PANE));
+    /** 空きスロット表示の共通文言（斜体は無効化する）。 */
+    private static final MiniMessage MINI = MiniMessage.miniMessage();
+    private static final String EMPTY_SLOT_NAME = "<!italic><gray>空きスロット</gray>";
+    private static final String EMPTY_SLOT_LORE =
+            "<!italic><dark_gray>装備するとここに表示されます</dark_gray>";
 
-    /** 防具スロットが空のときに表示するライトブロック。 */
-    private static final ItemStack EMPTY_ARMOR_DISPLAY =
-            VirtualItem.markPlaceholder(new ItemStack(Material.LIGHT));
+    /** メインハンドが空のときに表示するバリア。 */
+    private static final ItemStack EMPTY_WEAPON_DISPLAY = createPlaceholder(Material.BARRIER);
+
+    /** 防具スロットが空のときに表示する木のボタン。 */
+    private static final ItemStack EMPTY_ARMOR_DISPLAY = createPlaceholder(Material.OAK_BUTTON);
+
+    /**
+     * 空きスロット表示用のアイテムを生成する。
+     * <p>
+     * PDC マーカーを付与して仮想アイテムとして扱い、プレイヤーの実アイテムと
+     * 区別できるようにする。
+     */
+    private static ItemStack createPlaceholder(Material material) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(MINI.deserialize(EMPTY_SLOT_NAME));
+            meta.lore(List.of(MINI.deserialize(EMPTY_SLOT_LORE)));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        return VirtualItem.markPlaceholder(item);
+    }
 
     /** メッセージ定義ファイル（{@code MessageData/equipment.yml}）。 */
     private static final String MESSAGE_FILE = "equipment";
@@ -150,7 +175,7 @@ public class VirtualInventoryService {
     /**
      * 指定スロットへ仮想表示アイテムを配置する。
      * <p>
-     * 武器が未装備の場合は黒ガラス板を表示し、プレイヤー操作を防ぐ。
+     * 武器が未装備の場合はバリア（空きスロット表示）を表示し、プレイヤー操作を防ぐ。
      */
     private void applySlot(PlayerInventory inventory, int slot, ItemStack equipped) {
         ItemStack current = inventory.getItem(slot);
@@ -164,7 +189,7 @@ public class VirtualInventoryService {
     /**
      * 防具スロットへ仮想表示アイテムを配置する。
      * <p>
-     * 防具が未装備の場合はバリアブロックを表示し、プレイヤー操作を防ぐ。
+     * 防具が未装備の場合は木のボタン（空きスロット表示）を表示し、プレイヤー操作を防ぐ。
      */
     private void applyArmor(PlayerInventory inventory, EquipSlot slot, ItemStack equipped) {
         ItemStack current = armorItem(inventory, slot);

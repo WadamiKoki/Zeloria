@@ -35,7 +35,7 @@ give:
 info:
   usage: "<gray>使い方:</gray> <white>/admin info \\<player></white>"
   header: "<gold>=== <white>{player}</white> ===</gold>"
-  identity: "<gray>UUID:</gray> <white>{uuid}</white> <dark_gray>|</dark_gray> <gray>Class:</gray> <aqua>{class}</aqua> <dark_gray>|</dark_gray> <gray>Unlocked:</gray> <white>{unlocked}</white>"
+  identity: "<gray>UUID:</gray> <white>{uuid}</white> <dark_gray>|</dark_gray> <gray>Class:</gray> <aqua>{class}</aqua>"
   level: "<gray>Level:</gray> <yellow>{level}</yellow> <dark_gray>|</dark_gray> <gray>EXP:</gray> <white>{exp}</white><gray>/</gray><white>{required}</white>"
   vitals: "<gray>HP:</gray> <red>{health}</red><gray>/</gray><white>{max_health}</white> <dark_gray>|</dark_gray> <gray>MP:</gray> <blue>{mana}</blue><gray>/</gray><white>{max_mana}</white> <dark_gray>|</dark_gray> <gray>Money:</gray> <gold>{money}</gold>"
   combat: "<gray>ATK:</gray> <white>{attack}</white> <dark_gray>|</dark_gray> <gray>DEF1:</gray> <white>{defense1}</white> <dark_gray>/</dark_gray> <gray>DEF2:</gray> <white>{defense2}</white> <dark_gray>|</dark_gray> <gray>CRIT:</gray> <white>{crit_rate}%</white> <dark_gray>|</dark_gray> <gray>CRIT DMG:</gray> <white>{crit_damage}%</white> <dark_gray>|</dark_gray> <gray>ACC:</gray> <white>{accuracy}%</white> <dark_gray>|</dark_gray> <gray>EVA:</gray> <white>{evasion}%</white> <dark_gray>|</dark_gray> <gray>CDR:</gray> <white>{cdr}%</white> <dark_gray>|</dark_gray> <gray>Speed:</gray> <white>{move_speed}%</white>"

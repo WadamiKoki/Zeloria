@@ -202,19 +202,30 @@ mv ZeloriaServer/zeloria/plugins/Zeloria/worlds/* ZeloriaServer/WorldData/
 
 ## インストール
 
-1. `channel.yml` を作成し、`plugins/Zeloria/channel.yml` に配置します
+1. ビルドした `Zeloria-0.1.jar` を **`plugins/` 直下** に配置します。
+   `plugins/Zeloria/` の中に置いても Paper には読み込まれません。
+2. `channel.yml` を作成し、`plugins/Zeloria/channel.yml` に配置します
    （`shared-config-path: "../config"`、`world-data-path: "../WorldData"`、
    `sql-config-path: "../sql.yml"` を指定）。
-2. サーバールートの親フォルダ（`<server>/../config/`、例: `ZeloriaServer/config/`）へ
+3. サーバールートの親フォルダ（`<server>/../config/`、例: `ZeloriaServer/config/`）へ
    `src/main/resources/config/` の内容をコピーします。
-3. `src/main/resources/sql.yml` を `sql-config-path` が指す場所（既定:
+4. `src/main/resources/sql.yml` を `sql-config-path` が指す場所（既定:
    `<server>/../sql.yml`、例: `ZeloriaServer/sql.yml`）へコピーして DB 情報を記入します。
    別の場所に置く場合は `channel.yml` の `sql-config-path` をそのパスに変更してください。
-4. サーバールートの親フォルダに `WorldData/` を作成し、`WorldData/<templateId>/` へ
+5. サーバールートの親フォルダに `WorldData/` を作成し、`WorldData/<templateId>/` へ
    ワールドテンプレートを配置します（`WorldData/` は全サーバーで共有）。
    旧バージョンから移行する場合は「既存環境からの移行（ワールドテンプレート）」を参照してください。
-5. 各サーバーを起動します。必須 YAML が不足している場合は次のログを出力して無効化されます。
+6. 各サーバーを起動します。必須 YAML が不足している場合は次のログを出力して無効化されます。
 
 ```
 必須YAMLが見つかりません: <不足しているディレクトリ>
 ```
+
+### データフォルダについて
+
+- `plugins/Zeloria/` に必要なのは `channel.yml` のみです。
+- `plugins/Zeloria/config/` は **使用しません**（存在しても無視されます）。
+  設定 YAML は必ず共有設定フォルダ（例: `ZeloriaServer/config/`）へ配置してください。
+- プラグイン独自のログファイル（`plugins/Zeloria/logs/`）は生成しません。
+  ログはサーバーのコンソール（`latest.log`）へ `[カテゴリ] メッセージ` 形式で出力されます。
+

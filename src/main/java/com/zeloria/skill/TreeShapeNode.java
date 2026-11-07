@@ -12,12 +12,14 @@ import org.bukkit.Material;
  * @param row    ツリー上の行（0 始まり。画面外の行も指定できる）
  * @param column ツリー上の列（0〜8）
  * @param icon   未解放時の表示アイコン
+ * @param customModelData リソースパック用の CustomModelData（0 以下は未設定）
  */
 public record TreeShapeNode(
         String id,
         int row,
         int column,
-        Material icon
+        Material icon,
+        int customModelData
 ) {
 
     public TreeShapeNode {
@@ -25,6 +27,7 @@ public record TreeShapeNode(
         row = Math.max(0, row);
         column = Math.max(0, Math.min(8, column));
         icon = icon == null ? Material.PAPER : icon;
+        customModelData = Math.max(0, customModelData);
     }
 
     /**

@@ -103,7 +103,8 @@ public final class TreeDataService {
                         Material.PAPER,
                         "tree node " + id,
                         plugin.getLogger());
-                nodes.put(id, new TreeShapeNode(id, row, column, icon));
+                int customModelData = Math.max(0, nodeSection.getInt("custom_model_data", 0));
+                nodes.put(id, new TreeShapeNode(id, row, column, icon, customModelData));
             }
         }
 

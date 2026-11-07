@@ -9,6 +9,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -35,9 +36,6 @@ import java.util.UUID;
 public final class MenuGui implements InventoryHolder {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
-
-    /** 背景ガラスの既定 Material（設定不備時のフォールバック）。 */
-    private static final String DEFAULT_FILLER = "LIGHT";
 
     /** 機能アイコンのフォールバック Material。 */
     private static final Material FEATURE_FALLBACK_MATERIAL = Material.PAPER;
@@ -167,8 +165,8 @@ public final class MenuGui implements InventoryHolder {
             EquipSlot equipSlot = entry.getValue();
             ItemStack equipped = data.getEquipment(equipSlot);
             if (equipped == null) {
-                // 背景アイテムは表示名を付けず、装備枠の位置だけを示す。
-                inventory.setItem(guiSlot, glass("equipment", ""));
+                // 空き装備枠はバリアで示し、装備すると表示されることを案内する。
+                inventory.setItem(guiSlot, createEmptySlotItem());
             } else {
                 inventory.setItem(guiSlot, decorateEquipped(equipped, equipSlot));
             }
@@ -211,6 +209,22 @@ public final class MenuGui implements InventoryHolder {
      * ------------------------------------------------------------------ */
 
     /**
+     * 空の装備枠に表示するダミーアイテムを生成する。
+     */
+    private ItemStack createEmptySlotItem() {
+        ItemStack item = new ItemStack(Material.BARRIER);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(MINI.deserialize("<!italic><gray>空きスロット</gray>"));
+            meta.lore(List.of(MINI.deserialize(
+                    "<!italic><dark_gray>装備するとここに表示されます</dark_gray>")));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    /**
      * 装備中のアイテムに外し方のヒントを付与した表示用コピーを返す。
      */
     private ItemStack decorateEquipped(ItemStack item, EquipSlot slot) {
@@ -245,17 +259,8 @@ public final class MenuGui implements InventoryHolder {
     }
 
     /**
-     * {@code filler} セクションの色付きガラスを生成する。
+     * Material 名を解決する。不正な名前・アイテム以外の場合は {@code null} を返す。
      */
-    private ItemStack glass(String key, String displayName) {
-        String materialName = layout.fillers().get(key);
-        Material material = matchMaterial(materialName);
-        if (material == null) {
-            material = matchMaterial(DEFAULT_FILLER);
-        }
-        return simpleItem(material, displayName);
-    }
-
     private static Material matchMaterial(String name) {
         if (name == null || name.isBlank()) {
             return null;

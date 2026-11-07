@@ -57,8 +57,8 @@ levelUpPercent:
   cooldownReduction: 0.0
   moveSpeed: 0.0
   healthRegenFlat: 0.0
-  healthRegenPercent: 0.0
+  healthRegenPercent: 0.02
   manaRegenFlat: 0.0
-  manaRegenPercent: 0.0
+  manaRegenPercent: 0.01
   armorPenetration: 0.0
   lifesteal: 0.0

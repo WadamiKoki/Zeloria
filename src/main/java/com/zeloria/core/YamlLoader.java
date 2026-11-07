@@ -49,6 +49,12 @@ public class YamlLoader {
     /** メッセージ設定を配置するディレクトリ名（{@code config/} 直下）。 */
     private static final String MESSAGE_DIR_NAME = "MessageData";
 
+    /**
+     * クラスツリー定義を配置するディレクトリ名（{@code config/} 直下）。
+     * ここでは {@code id} をインデックス化しない（クラス ID はファイル名から決定する）。
+     */
+    private static final String CLASS_TREE_DIR_NAME = "ClassTree/";
+
     /** 読み込み対象とする拡張子（第一候補）。 */
     private static final String YAML_EXTENSION = ".yml";
 
@@ -95,6 +101,8 @@ public class YamlLoader {
      * <p>
      * {@link Zeloria} では {@code channel.yml} の {@code shared-config-path} を
      * 解決した共有設定フォルダ自体を設定フォルダとして扱う。
+     * そのため {@code plugins/Zeloria/config/} は読み込み対象にせず、
+     * 存在していても無視する（自動生成も行わない）。
      * {@link Zeloria} 以外のプラグイン実装では、従来どおりプラグインの
      * データフォルダ直下の {@code config/} を使用する。
      *
@@ -461,7 +469,9 @@ public class YamlLoader {
             configs.put(key, config);
 
             String id = config.getString(ID_KEY);
-            if (id != null && !id.isBlank()) {
+            // ClassTree/*.yml のクラス ID はファイル名から決定するため、
+            // ClassData/*.yml と同名の id が書かれていても重複警告の対象にしない。
+            if (id != null && !id.isBlank() && !key.startsWith(CLASS_TREE_DIR_NAME)) {
                 FileConfiguration previous = configsById.putIfAbsent(id, config);
                 if (previous != null) {
                     plugin.getLogger().warning(

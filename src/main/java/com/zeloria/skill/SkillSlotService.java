@@ -12,6 +12,7 @@ import com.zeloria.player.PlayerData;
 import com.zeloria.player.ZeloriaClass;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -58,8 +59,22 @@ public final class SkillSlotService {
     private static final int ICON_MAX_STACK = 64;
 
     /** 戦闘モード OFF 時に表示する灰色ガラス板（空きスキルスロット）。 */
-    private static final ItemStack IDLE_ICON =
-            VirtualItem.markPlaceholder(new ItemStack(Material.GRAY_STAINED_GLASS_PANE));
+    private static final ItemStack IDLE_ICON = createIdleIcon();
+
+    /**
+     * 戦闘モード OFF 時のスキルスロット表示アイテムを生成する。
+     */
+    private static ItemStack createIdleIcon() {
+        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(Component.text("スキルスロット", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        return VirtualItem.markPlaceholder(item);
+    }
 
     /** メッセージ定義ファイル（{@code MessageData/equipment.yml}）。 */
     private static final String MESSAGE_FILE = "equipment";

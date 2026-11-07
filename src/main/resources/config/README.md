@@ -156,3 +156,11 @@ ZeloriaServer/
   （`user.home` や `HOME`）には依存しません。
 - `shared-config-path` と `world-data-path` に OS 固有の絶対パスを書かない限り、
   フォルダ構成を同じにすれば Mac / Ubuntu / Windows のどれでもそのまま動作します。
+
+## ClassTree のファイル名
+
+`ClassTree/` 配下のクラスツリーは **ファイル名がクラス ID** になります
+（例: `ClassTree/knight.yml` → `knight`）。`ClassData/*.yml` と同じ `id` を書くと
+「YAML の id が重複しています」の警告が出るため、`ClassTree/*.yml` には `id` を
+定義しないでください（定義しても読み込み時は無視されます）。
+

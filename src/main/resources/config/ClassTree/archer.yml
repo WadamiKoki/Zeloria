@@ -3,7 +3,8 @@
 # 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
 # ============================================================================
 
-id: "archer"
+# クラス ID はファイル名から決定します（archer.yml → archer）。
+# ClassData/*.yml の id と重複するため、このファイルには id を定義しません。
 title: "<gradient:#7CFC00:#2E8B57><bold>アーチャー・ツリー</bold></gradient>"
 
 nodes:

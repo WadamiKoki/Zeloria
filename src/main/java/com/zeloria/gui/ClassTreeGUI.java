@@ -203,7 +203,7 @@ public final class ClassTreeGUI implements Listener {
                         ClassTreeData classTree, TreeData tree, int offset) {
         inventory.clear();
 
-        // 固定ボタン列を背景で埋め、ノードとボタンの視認性を確保する。
+        // 固定UI列（col 7）を灰色ガラスで埋める。スクロールの影響を受けない。
         if (tree.fixedColumn() >= 0 && tree.fixedColumn() <= 8) {
             ItemStack filler = createFiller();
             for (int row = 0; row < tree.rows(); row++) {
@@ -221,6 +221,11 @@ public final class ClassTreeGUI implements Listener {
             }
             int slot = shape.slot(offset);
             if (slot < 0 || slot >= inventory.getSize()) {
+                continue;
+            }
+            // 固定UI列（col 7）はスクロールの影響を受けない灰色ガラス専用。
+            // 計算結果がその列になるノードは描画しない。
+            if (tree.fixedColumn() >= 0 && slot % 9 == tree.fixedColumn()) {
                 continue;
             }
             inventory.setItem(slot, createNodeItem(data, classId, classTree, node, shape));
@@ -270,6 +275,11 @@ public final class ClassTreeGUI implements Listener {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return item;
+        }
+
+        // リソースパックのカスタムモデルを適用する（0 は未設定扱い）。
+        if (shape.customModelData() > 0) {
+            meta.setCustomModelData(shape.customModelData());
         }
 
         // 解放済み・解放可能ノードは光沢（エンチャント＋HIDE_ENCHANTS）で強調する。

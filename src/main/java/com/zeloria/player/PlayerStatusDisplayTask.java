@@ -13,6 +13,9 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Transformation;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -107,10 +110,17 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         display.setSeeThrough(false);
         display.setShadowed(true);
         display.setBackgroundColor(Color.fromARGB(120, 0, 0, 0));
-        display.setLineWidth(200);
+        display.setLineWidth(400);
         display.setPersistent(false);
         display.setInvulnerable(true);
         display.setGravity(false);
+
+        // passenger として乗せた状態でも頭と重ならないよう、表示位置を頭上へ持ち上げる。
+        display.setTransformation(new Transformation(
+                new Vector3f(0.0f, 0.45f, 0.0f),
+                new Quaternionf(),
+                new Vector3f(1.0f, 1.0f, 1.0f),
+                new Quaternionf()));
 
         if (!player.addPassenger(display)) {
             display.remove();
@@ -121,15 +131,50 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     /**
      * ステータスから表示用の MiniMessage を組み立てる。
+     * <p>
+     * 1 行目が HP、2 行目が MP。ゲージは {@code █} を 20 個並べ、
+     * 現在値の割合だけ塗り、残りを {@code ░} で表現する。
+     * HP が 50% 以下の場合はゲージ部分を赤くする。
      */
     private Component format(PlayerStats stats) {
         long health = Math.round(stats.getCurrentHealth());
         long maxHealth = Math.round(stats.getMaxHealth());
         long mana = Math.round(stats.getCurrentMana());
         long maxMana = Math.round(stats.getMaxMana());
-        return MINI.deserialize(
-                "<red>❤ HP</red> <white>" + health + "/" + maxHealth + "</white>"
-                        + "  <aqua>✦ MP</aqua> <white>" + mana + "/" + maxMana + "</white>");
+
+        double healthRatio = ratio(stats.getCurrentHealth(), stats.getMaxHealth());
+        double manaRatio = ratio(stats.getCurrentMana(), stats.getMaxMana());
+        String healthGaugeColor = healthRatio <= 0.5 ? "red" : "green";
+
+        String hpLine = "<red>❤ HP " + health + "/" + maxHealth
+                + " (" + percent(healthRatio) + "%)</red> "
+                + "<" + healthGaugeColor + ">" + gauge(healthRatio)
+                + "</" + healthGaugeColor + ">";
+        String mpLine = "<aqua>✦ MP " + mana + "/" + maxMana
+                + " (" + percent(manaRatio) + "%)</aqua> "
+                + "<aqua>" + gauge(manaRatio) + "</aqua>";
+
+        return MINI.deserialize(hpLine + "\n" + mpLine);
+    }
+
+    /** 現在値 / 最大値を 0.0〜1.0 に丸めた割合で返す。 */
+    private static double ratio(double current, double max) {
+        if (max <= 0.0) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, current / max));
+    }
+
+    /** 割合を 0〜100 の整数（%）へ変換する。 */
+    private static long percent(double ratio) {
+        return Math.round(ratio * 100.0);
+    }
+
+    /** 割合を 20 個のブロックで表現したゲージ文字列を返す。 */
+    private static String gauge(double ratio) {
+        int filled = (int) Math.round(ratio * 20.0);
+        filled = Math.max(0, Math.min(20, filled));
+        return "█".repeat(filled) + "░".repeat(20 - filled);
     }
 
     private boolean isAwaitingRespawn(Player player) {
