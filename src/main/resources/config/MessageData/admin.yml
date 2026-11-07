@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|build|layer|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|gui|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -18,10 +18,6 @@ mob:
     not_found: "<red>モブ設定が見つかりません: <white>{mob_id}</white></red>"
     invalid_type: "<red>スポーンできないエンティティ種別です: <white>{entity_type}</white></red>"
     failed: "<red>モブのスポーンに失敗しました: <white>{mob_id}</white> <gray>({error})</gray></red>"
-  list:
-    empty: "<gray>MobData が 1 件も読み込まれていません。</gray>"
-    header: "<gray>MobData: <white>{count}</white> 件</gray>"
-    entry: "<gray>- <white>{mob_id}</white> <dark_gray>({entity_type})</dark_gray></gray>"
 
 give:
   usage: "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon> \\<id> [amount]</white>"
@@ -30,7 +26,6 @@ give:
   full: "<red>プレイヤーインベントリに空きがありません。</red>"
   not_found: "<red>アイテム設定が見つかりません: <white>{item_id}</white></red>"
   invalid_amount: "<red>個数は <white>1</white> 〜 <white>{max}</white> の範囲で指定してください。</red>"
-  failed: "<red>アイテムの付与に失敗しました: <gray>{error}</gray></red>"
 
 info:
   usage: "<gray>使い方:</gray> <white>/admin info \\<player></white>"
@@ -53,10 +48,9 @@ gui:
 
 build:
   channel_only: "<red>建築モードはチャンネル1でのみ使用できます</red>"
-  usage: "<gray>使い方:</gray> <white>/admin build create <templateId></white> <dark_gray>|</dark_gray> <white>/admin build join <templateId></white> <dark_gray>|</dark_gray> <white>/admin build list</white> <dark_gray>|</dark_gray> <white>/admin build info [templateId]</white> <dark_gray>|</dark_gray> <white>/admin build save [templateId] [force]</white> <dark_gray>|</dark_gray> <white>/admin build unsave [templateId] [force]</white>"
+  usage: "<gray>使い方:</gray> <white>/admin build create <yml></white> <dark_gray>|</dark_gray> <white>/admin build join <yml></white> <dark_gray>|</dark_gray> <white>/admin build list</white> <dark_gray>|</dark_gray> <white>/admin build info [yml]</white> <dark_gray>|</dark_gray> <white>/admin build save [yml] [force]</white> <dark_gray>|</dark_gray> <white>/admin build unsave [yml] [force]</white>"
   busy: "<yellow>建築ワールドの処理中です。完了してから再実行してください。</yellow>"
   not_active: "<yellow>建築中のワールドはありません。</yellow>"
-  info_inactive: "<yellow>建築モードは起動していません。</yellow>"
   not_open: "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。/admin build create <white>{template}</white> で作成してください。</yellow>"
   already_open: "<yellow>建築ワールド '<white>{template}</white>' は既に開かれています。/admin build join <white>{template}</white> で参加してください。</yellow>"
   list_empty: "<gray>開いている建築ワールドはありません。</gray>"
@@ -68,7 +62,6 @@ build:
   opened: "<green>建築ワールド '<white>{template}</white>' を開きました。</green>"
   open_failed: "<red>建築ワールドを開けませんでした: <white>{error}</white></red>"
   joined: "<green>建築ワールド '<white>{template}</white>' に参加しました。</green>"
-  other_active: "<yellow>既に別の建築ワールド（<white>{template}</white>）が開かれています。先に /admin build save で保存してください</yellow>"
   saving: "<yellow>建築ワールド '<white>{template}</white>' を保存しています...</yellow>"
   discarding: "<yellow>建築ワールド '<white>{template}</white>' の変更を破棄しています...</yellow>"
   others_save: "<yellow>他のプレイヤーが建築ワールド '<white>{template}</white>' にいます。全員退出するか、強制する場合は <white>/admin build {command}</white> を実行してください</yellow>"

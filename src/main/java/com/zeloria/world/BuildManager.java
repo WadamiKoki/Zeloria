@@ -5,7 +5,6 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
-import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -15,16 +14,12 @@ import org.bukkit.entity.Player;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -173,20 +168,6 @@ public class BuildManager {
     }
 
     /**
-     * 建築ワールドを開く（テンプレートの複製・ロード・プレイヤーの転送まで行う）。
-     * <p>
-     * 後方互換用の入口。指定テンプレートの建築ワールドを新規作成する。
-     * 既に同じテンプレートの建築ワールドが開かれている場合は失敗する。
-     *
-     * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
-     * @param player     入場させるプレイヤー（{@code null} の場合はワールドのロードのみ）
-     * @return ロード完了時にワールドを返す future（失敗時は例外で完了）
-     */
-    public synchronized CompletableFuture<World> openBuildWorldAsync(String templateId, Player player) {
-        return createBuildWorldAsync(templateId, player);
-    }
-
-    /**
      * 指定テンプレートの建築ワールドを新規作成する。
      * <p>
      * 建築ワールドは {@code minecraft:<templateId>_build} としてロードし、
@@ -242,28 +223,6 @@ public class BuildManager {
             busy.set(false);
         });
         return result;
-    }
-
-    /**
-     * 建築ワールドを保存し、アンロードする（後方互換用）。
-     * <p>
-     * 引数省略時と同様に、開いているすべての建築ワールドを保存する。
-     *
-     * @return 保存に成功した場合は {@code true} で完了する future
-     */
-    public synchronized CompletableFuture<Boolean> saveActiveAsync() {
-        return saveAllBuildWorldsAsync();
-    }
-
-    /**
-     * 建築ワールドを保存せずにアンロードする（後方互換用）。
-     * <p>
-     * 引数省略時と同様に、開いているすべての建築ワールドを破棄する。
-     *
-     * @return 破棄に成功した場合は {@code true} で完了する future
-     */
-    public synchronized CompletableFuture<Boolean> unsaveActiveAsync() {
-        return unsaveAllBuildWorldsAsync();
     }
 
     /**
@@ -512,29 +471,6 @@ public class BuildManager {
     }
 
     /**
-     * 現在開いている建築テンプレート ID を取得する。
-     * <p>
-     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
-     *
-     * @return 建築中のテンプレート ID。開いていない場合は {@code null}
-     */
-    public String getCurrentTemplateId() {
-        return primaryTemplateId();
-    }
-
-    /**
-     * 現在開いている建築ワールドを取得する。
-     * <p>
-     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
-     *
-     * @return 建築ワールド。開いていない場合は {@code null}
-     */
-    public World getCurrentBuildWorld() {
-        String templateId = primaryTemplateId();
-        return templateId == null ? null : buildWorlds.get(templateId);
-    }
-
-    /**
      * 開いている建築ワールドのテンプレート ID 一覧を取得する。
      *
      * @return テンプレート ID の一覧（大文字小文字を無視して昇順）
@@ -751,42 +687,6 @@ public class BuildManager {
     }
 
     /**
-     * ロード済みの建築ワールドを取得する。
-     *
-     * @param templateId テンプレート ID
-     * @return ロード済みのワールド。存在しない場合は {@code null}
-     */
-    public World getLoadedWorld(String templateId) {
-        return findBuildWorld(templateId);
-    }
-
-    /**
-     * 利用可能な建築テンプレート ID の一覧を取得する。
-     * <p>
-     * {@code WorldData} 配下のディレクトリ名を返す。保存処理中の一時ディレクトリ
-     * （{@code .<id>.tmp} など）は先頭が {@code .} のため除外する。
-     *
-     * @return テンプレート ID の一覧（昇順）。テンプレートが無い場合は空リスト
-     */
-    public List<String> listTemplateIds() {
-        if (!Files.isDirectory(templateRoot)) {
-            return List.of();
-        }
-        try (Stream<Path> stream = Files.list(templateRoot)) {
-            return stream.filter(Files::isDirectory)
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> !name.startsWith("."))
-                    .filter(name -> ID_PATTERN.matcher(name).matches())
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            plugin.getLogger().warning(
-                    "建築テンプレート一覧の取得に失敗しました: " + e.getMessage());
-            return List.of();
-        }
-    }
-
-    /**
      * 指定したワールドが建築ワールドか判定する。
      * <p>
      * {@code minecraft} 名前空間を共有するレイヤーインスタンス
@@ -999,7 +899,7 @@ public class BuildManager {
 
             World world;
             // ロード済みでない場合は、これからテンプレートから新規生成されるワールド。
-            // 新規生成かどうかはログ出力用に保持する（転送遅延は常に 20 tick）。
+            // 新規生成かどうかはログ出力用に保持する（転送自体は即時実行）。
             boolean newlyCreated;
             try {
                 world = findLoadedWorld(templateId);
@@ -1026,12 +926,19 @@ public class BuildManager {
                 return;
             }
 
-            // ワールド作成直後はスポーン位置のチャンクが未ロードのことがあるため、
-            // 同期的に強制ロードしてからテレポートする。
+            // ワールド作成直後はスポーン位置のチャンクが未ロードのことがあり、
+            // その状態では teleportAsync が success=false を返すため同期的にロードする。
             Location spawn = world.getSpawnLocation();
-            Chunk spawnChunk = spawn.getChunk();
-            if (!spawnChunk.isLoaded()) {
-                spawnChunk.load(true);
+            world.loadChunk(spawn.getBlockX() >> 4, spawn.getBlockZ() >> 4, true);
+
+            // 建築ワールド生成直後はスポーン Y が 0（奈落）のままで、Paper が
+            // 「危険な位置」として転送を拒否するため、地表の高さへ補正する。
+            if (spawn.getY() <= 0.0) {
+                int safeY = world.getHighestBlockYAt(spawn.getBlockX(), spawn.getBlockZ()) + 1;
+                Location newSpawn = new Location(world, spawn.getX(), safeY, spawn.getZ(),
+                        spawn.getYaw(), spawn.getPitch());
+                world.setSpawnLocation(newSpawn);
+                world.loadChunk(newSpawn.getBlockX() >> 4, newSpawn.getBlockZ() >> 4, true);
             }
 
             buildWorlds.put(templateId, world);
@@ -1074,8 +981,7 @@ public class BuildManager {
      * @param templateId   テンプレート ID
      * @param player       対象プレイヤー（{@code null} またはオフラインの場合は何もしない）
      * @param world        建築ワールド
-     * @param newlyCreated {@code true} の場合はワールドを新規生成した直後（ログ用。
-     *                     転送遅延は常に 20 tick）
+     * @param newlyCreated {@code true} の場合はワールドを新規生成した直後（ログ用）
      */
     private void enterBuildWorld(String templateId, Player player, World world, boolean newlyCreated) {
         if (templateId == null || world == null) {
@@ -1103,18 +1009,20 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
-        // 新規生成かどうかに関わらず、チャンク準備とクライアント側の同期を待つため
-        // 常に 20 tick（1 秒）待ってから転送する。
-        long delay = 20L;
+        // 転送は即時実行する（チャンクは転送直前に同期ロードする）。
         player.sendActionBar(TRANSFER_PREPARING);
 
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) {
                 return;
             }
             // 転送先（建築ワールドのスポーン）のチャンクが未ロードだと teleportAsync が
             // success=false を返すため、転送直前に同期的にロードする。
             loadDestinationChunk(spawn);
+
+            // Paper は passenger（頭上ステータス表示）を乗せたプレイヤーの
+            // クロスワールド転送を success=false で拒否するため、転送前に切り離す。
+            plugin.suspendPlayerStatusDisplay(player);
 
             // teleportAsync の Future を join() / get() するとデッドロックするため、
             // 結果は必ずコールバックで受け取り、メインスレッドへ戻して処理する。
@@ -1124,18 +1032,22 @@ public class BuildManager {
                         + ", world=" + world.getName()
                         + ", destination=" + spawn);
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (Boolean.TRUE.equals(success)) {
-                        return;
+                    try {
+                        if (Boolean.TRUE.equals(success)) {
+                            return;
+                        }
+                        if (!player.isOnline()) {
+                            return;
+                        }
+                        plugin.getLogger().warning(
+                                "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
+                                        + world.getName() + " (success=false)");
+                        notifyTeleportFailure(player);
+                        // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
+                        restoreGameMode(player);
+                    } finally {
+                        plugin.resumePlayerStatusDisplay(player);
                     }
-                    if (!player.isOnline()) {
-                        return;
-                    }
-                    plugin.getLogger().warning(
-                            "プレイヤー '" + player.getName() + "' を建築ワールドへ転送できませんでした: "
-                                    + world.getName() + " (success=false)");
-                    notifyTeleportFailure(player);
-                    // 転送に失敗した場合は建築ワールドへ入場していないため、ゲームモードを戻す。
-                    restoreGameMode(player);
                 });
             }).exceptionally(throwable -> {
                 plugin.getLogger().info("[TransferDebug] teleport result: success=false"
@@ -1143,15 +1055,19 @@ public class BuildManager {
                         + ", world=" + world.getName()
                         + ", error=" + rootMessage(throwable));
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) {
-                        return;
+                    try {
+                        if (!player.isOnline()) {
+                            return;
+                        }
+                        notifyTeleportFailure(player);
+                        restoreGameMode(player);
+                    } finally {
+                        plugin.resumePlayerStatusDisplay(player);
                     }
-                    notifyTeleportFailure(player);
-                    restoreGameMode(player);
                 });
                 return null;
             });
-        }, delay);
+        });
     }
 
     /**
@@ -1179,26 +1095,17 @@ public class BuildManager {
     }
 
     /**
-     * テレポート先のチャンクを同期的に強制ロードする。
-     * <p>
-     * 未ロードチャンクへのテレポートは {@code success=false} となるため、
-     * 転送直前に呼び出して転送先を確実に用意する。失敗は警告に留める。
+     * 転送先のチャンクを同期的にロードする。
      *
-     * @param location テレポート先
+     * @param location 転送先座標
      */
     private void loadDestinationChunk(Location location) {
         if (location == null || location.getWorld() == null) {
             return;
         }
-        try {
-            Chunk chunk = location.getChunk();
-            if (!chunk.isLoaded()) {
-                chunk.load(true);
-            }
-        } catch (RuntimeException e) {
+        if (!LayerManager.loadChunkSafely(location)) {
             plugin.getLogger().warning(
-                    "テレポート先のチャンクをロードできませんでした: " + location
-                            + " (" + rootMessage(e) + ")");
+                    "テレポート先のチャンクをロードできませんでした: " + location);
         }
     }
 
@@ -1223,10 +1130,16 @@ public class BuildManager {
         }
         Location spawn = buildSpawn(world, player);
         loadDestinationChunk(spawn);
-        if (!player.teleport(spawn)) {
-            plugin.getLogger().warning(
-                    "建築ワールドへのフォールバック転送にも失敗しました: player=" + player.getName()
-                            + ", world=" + world.getName() + ", spawn=" + spawn);
+        // passenger を乗せたままだとクロスワールド転送が失敗するため、転送前に切り離す。
+        plugin.suspendPlayerStatusDisplay(player);
+        try {
+            if (!player.teleport(spawn)) {
+                plugin.getLogger().warning(
+                        "建築ワールドへのフォールバック転送にも失敗しました: player=" + player.getName()
+                                + ", world=" + world.getName() + ", spawn=" + spawn);
+            }
+        } finally {
+            plugin.resumePlayerStatusDisplay(player);
         }
     }
 
@@ -1288,7 +1201,8 @@ public class BuildManager {
     /**
      * ワールドファイルを再帰的に複製する。
      * <p>
-     * {@link LayerManager#WORLD_COPY_WHITELIST}（{@code level.dat} と {@code region/}）だけを
+     * {@link LayerManager#WORLD_COPY_WHITELIST}
+     * （{@code level.dat} / {@code region/} / {@code data/}）だけを
      * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
      * {@code level.dat_old} などのメタデータは複製せず、テンプレート保存時に
      * 新しいワールド UID が Paper 側で生成される。
@@ -1450,16 +1364,22 @@ public class BuildManager {
         GameMode targetMode = forceSurvival || previous == null
                 ? GameMode.SURVIVAL
                 : previous;
-        if (!player.teleport(target)) {
-            if (previous != null) {
-                previousGameModes.putIfAbsent(player.getUniqueId(), previous);
+        // passenger を乗せたままだとクロスワールド転送が失敗するため、転送前に切り離す。
+        plugin.suspendPlayerStatusDisplay(player);
+        try {
+            if (!player.teleport(target)) {
+                if (previous != null) {
+                    previousGameModes.putIfAbsent(player.getUniqueId(), previous);
+                }
+                plugin.getLogger().warning(
+                        "プレイヤー '" + player.getName() + "' を Hub へ退避できませんでした。");
+                return false;
             }
-            plugin.getLogger().warning(
-                    "プレイヤー '" + player.getName() + "' を Hub へ退避できませんでした。");
-            return false;
+            applyGameMode(player, targetMode);
+            return true;
+        } finally {
+            plugin.resumePlayerStatusDisplay(player);
         }
-        applyGameMode(player, targetMode);
-        return true;
     }
 
     /**

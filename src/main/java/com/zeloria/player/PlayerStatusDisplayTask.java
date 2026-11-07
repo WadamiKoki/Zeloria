@@ -20,7 +20,9 @@ import org.joml.Vector3f;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * プレイヤーの頭上へ HP / MP を常時表示するタスク。
@@ -38,6 +40,14 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     /** タスクの実行周期（ティック）。20 ティック = 1 秒。 */
     public static final long PERIOD_TICKS = 20L;
 
+    /**
+     * {@link #suspend(Player)} が解除されない場合に自動復帰するまでの tick（10 秒）。
+     * <p>
+     * テレポートの完了通知が何らかの理由で届かなくても、頭上表示が消えたままに
+     * ならないようにするための安全策。
+     */
+    private static final long SUSPEND_TIMEOUT_TICKS = 200L;
+
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
     /** 頭上ステータス表示の Y オフセット（ブロック単位）。 */
@@ -48,6 +58,15 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     /** プレイヤー UUID → 頭上表示エンティティ。 */
     private final Map<UUID, TextDisplay> displays = new HashMap<>();
 
+    /**
+     * テレポート中など、passenger を外しておくプレイヤーの UUID。
+     * <p>
+     * Paper は passenger を乗せたプレイヤーのクロスワールドテレポートを
+     * {@code success=false} で拒否するため、転送処理は
+     * {@link #suspend(Player)} / {@link #resume(Player)} で一時的に切り離す。
+     */
+    private final Set<UUID> suspended = ConcurrentHashMap.newKeySet();
+
     public PlayerStatusDisplayTask(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
     }
@@ -55,40 +74,53 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     @Override
     public void run() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            PlayerData data = PlayerData.getCached(player.getUniqueId());
-            if (!player.isOnline()
-                    || data == null
-                    || player.isDead()
-                    || isAwaitingRespawn(player)) {
-                remove(player.getUniqueId());
+            // テレポート完了待ちの間は passenger を再装着しない。
+            if (suspended.contains(player.getUniqueId())) {
                 continue;
             }
+            update(player);
+        }
+    }
 
-            PlayerStats stats = data.getStats();
-            if (stats == null) {
-                remove(player.getUniqueId());
-                continue;
-            }
+    /**
+     * 指定プレイヤーの頭上表示を最新状態へ更新する（メインスレッド専用）。
+     *
+     * @param player 対象プレイヤー
+     */
+    private void update(Player player) {
+        PlayerData data = PlayerData.getCached(player.getUniqueId());
+        if (!player.isOnline()
+                || data == null
+                || player.isDead()
+                || isAwaitingRespawn(player)) {
+            remove(player.getUniqueId());
+            return;
+        }
 
-            TextDisplay display = displays.get(player.getUniqueId());
-            if (display == null
-                    || !display.isValid()
-                    || !display.getWorld().equals(player.getWorld())) {
-                if (display != null && display.isValid()) {
-                    display.remove();
-                }
-                display = spawn(player);
-                if (display == null) {
-                    displays.remove(player.getUniqueId());
-                    continue;
-                }
-                displays.put(player.getUniqueId(), display);
-            }
+        PlayerStats stats = data.getStats();
+        if (stats == null) {
+            remove(player.getUniqueId());
+            return;
+        }
 
-            display.text(format(stats));
-            if (!player.getPassengers().contains(display)) {
-                player.addPassenger(display);
+        TextDisplay display = displays.get(player.getUniqueId());
+        if (display == null
+                || !display.isValid()
+                || !display.getWorld().equals(player.getWorld())) {
+            if (display != null && display.isValid()) {
+                display.remove();
             }
+            display = spawn(player);
+            if (display == null) {
+                displays.remove(player.getUniqueId());
+                return;
+            }
+            displays.put(player.getUniqueId(), display);
+        }
+
+        display.text(format(stats));
+        if (!player.getPassengers().contains(display)) {
+            player.addPassenger(display);
         }
     }
 
@@ -130,6 +162,54 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
             return null;
         }
         return display;
+    }
+
+    /**
+     * 頭上表示をプレイヤーから切り離し、テレポート完了まで再装着を抑止する（メインスレッド専用）。
+     * <p>
+     * Paper の {@code Player#teleportAsync} / {@code Player#teleport} は、passenger を
+     * 乗せたプレイヤーのクロスワールド転送を {@code false} で失敗させる。
+     * そのため、ワールドをまたぐ転送の直前に必ず呼び出す。エンティティ自体は破棄しない。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void suspend(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID playerId = player.getUniqueId();
+        suspended.add(playerId);
+
+        TextDisplay display = displays.get(playerId);
+        if (display != null && display.isValid() && player.getPassengers().contains(display)) {
+            // passenger を外すだけで、エンティティはそのまま残す。
+            player.removePassenger(display);
+        }
+
+        // テレポート完了通知が届かなかった場合でも表示が消えたままにならないようにする。
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (suspended.contains(playerId)) {
+                resume(player);
+            }
+        }, SUSPEND_TIMEOUT_TICKS);
+    }
+
+    /**
+     * {@link #suspend(Player)} を解除し、次の tick で頭上表示を再装着する。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void resume(Player player) {
+        if (player == null || !suspended.remove(player.getUniqueId())) {
+            return;
+        }
+        // テレポート完了コールバックは非同期スレッドから呼ばれることがあるため、
+        // 位置同期が完了した次の tick にメインスレッドで再装着する。
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline() && !suspended.contains(player.getUniqueId())) {
+                update(player);
+            }
+        });
     }
 
     /**
@@ -183,7 +263,9 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        remove(event.getPlayer().getUniqueId());
+        UUID playerId = event.getPlayer().getUniqueId();
+        suspended.remove(playerId);
+        remove(playerId);
     }
 
     /**
@@ -196,6 +278,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
             }
         }
         displays.clear();
+        suspended.clear();
         cancel();
     }
 }

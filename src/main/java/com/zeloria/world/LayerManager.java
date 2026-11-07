@@ -48,7 +48,7 @@ import java.util.stream.Stream;
  * 「ワールドのロードに失敗しました」となる。標準の {@code minecraft} 名前空間の
  * 通常ディメンションとしてロードすることで、コピー済みの {@code level.dat} をそのまま利用する。
  * <p>
- * コピー対象は {@link #WORLD_COPY_WHITELIST}（{@code level.dat} と {@code region/}）のみとし、
+ * コピー対象は {@link #WORLD_COPY_WHITELIST}（{@code level.dat} / {@code region/} / {@code data/}）のみとし、
  * UID・ロック・プレイヤーデータなどのメタデータは引き継がない。
  * <p>
  * ワールド操作を伴うため、すべてのメソッドはメインスレッドから呼び出すこと。
@@ -66,14 +66,19 @@ public class LayerManager {
      * <p>
      * ホワイトリスト方式にすることで、{@code session.lock} / {@code uid.dat} /
      * {@code level.dat_old} / {@code playerdata} / {@code players} / {@code entities} /
-     * {@code data} / {@code datapacks} / {@code paper-world.yml} などは一切コピーされない。
+     * {@code datapacks} / {@code paper-world.yml} などは一切コピーされない。
      * 結果として Paper がインスタンス用の新しいワールド UID を自動生成する。
+     * <p>
+     * Paper 26.1 以降は {@code data/minecraft/world_gen_settings.dat} が必須のため、
+     * {@code data} もコピー対象に含める。これが欠けるとスポーン位置が Y=0 になり
+     * テレポートが失敗する。
      * <p>
      * {@link BuildManager} のテンプレート保存処理からも共有参照される。
      */
     public static final Set<String> WORLD_COPY_WHITELIST = Set.of(
             "level.dat",
-            "region"
+            "region",
+            "data"
     );
 
     /**
@@ -331,6 +336,30 @@ public class LayerManager {
     }
 
     /**
+     * 指定座標のチャンクを同期的にロードする（転送前の準備用）。
+     * <p>
+     * {@code Chunk#load} は Paper の内部チャンクロード状態とギャップがあるため、
+     * {@link World#loadChunk(int, int, boolean)} で同期的に強制ロードする。
+     * 未ロードチャンクへの {@code teleport}/{@code teleportAsync} は
+     * {@code false} を返すため、転送直前に呼び出す。
+     *
+     * @param location 対象座標（{@code null} やワールド未設定の場合は何もしない）
+     * @return ロードに成功した（またはロード不要だった）場合は {@code true}
+     */
+    public static boolean loadChunkSafely(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return false;
+        }
+        try {
+            World world = location.getWorld();
+            world.loadChunk(location.getBlockX() >> 4, location.getBlockZ() >> 4, true);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
      * テンプレートを複製し、レイヤーインスタンスを生成・ロードする。
      *
      * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
@@ -561,6 +590,10 @@ public class LayerManager {
             throw new IllegalStateException("ワールドのロードに失敗しました: " + bukkitWorldName);
         }
 
+        // 生成直後はスポーン位置のチャンクが未ロードのままだと teleport / teleportAsync が
+        // success=false を返すため、転送先となるスポーン位置のチャンクを明示的にロードする。
+        loadSpawnChunk(world);
+
         // 実際にロードされたディレクトリが想定と異なる場合は、以降の運用で不整合が起きるため警告する。
         Path loadedDir = world.getWorldPath().toAbsolutePath().normalize();
         if (!loadedDir.equals(instanceDir)) {
@@ -569,9 +602,6 @@ public class LayerManager {
         }
 
         applySafetySettings(world);
-        // 生成直後はスポーン位置のチャンクが未ロードのままだと teleport / teleportAsync が
-        // success=false を返すため、転送先となるスポーン位置のチャンクを明示的にロードする。
-        loadSpawnChunk(world);
         // オンメモリキャッシュのキーは常にインスタンス ID で統一する。
         loadedWorlds.put(instanceId, world);
         instanceTemplates.put(instanceId, templateId);
@@ -761,13 +791,24 @@ public class LayerManager {
         if (instanceId == null) {
             return false;
         }
+        String matchedId = instanceId;
         Long createdAt = newlyCreatedInstances.get(instanceId);
+        if (createdAt == null) {
+            // ワールドキーの path は小文字に正規化されるため、大文字小文字を無視して照合する。
+            for (Map.Entry<String, Long> entry : newlyCreatedInstances.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(instanceId)) {
+                    matchedId = entry.getKey();
+                    createdAt = entry.getValue();
+                    break;
+                }
+            }
+        }
         if (createdAt == null) {
             return false;
         }
         if (System.currentTimeMillis() - createdAt > NEWLY_CREATED_WINDOW_MILLIS) {
             // 期限切れの記録は破棄し、以降は既存インスタンスとして扱う。
-            newlyCreatedInstances.remove(instanceId, createdAt);
+            newlyCreatedInstances.remove(matchedId, createdAt);
             return false;
         }
         return true;
@@ -1206,7 +1247,8 @@ public class LayerManager {
     /**
      * テンプレートのワールドファイルをインスタンスへ複製する。
      * <p>
-     * {@link #WORLD_COPY_WHITELIST} に含まれる項目（{@code level.dat} と {@code region/}）だけを
+     * {@link #WORLD_COPY_WHITELIST} に含まれる項目
+     * （{@code level.dat} / {@code region/} / {@code data/}）だけを
      * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
      * {@code level.dat_old} などのメタデータやプレイヤーデータは一切コピーしない。
      * 個別ファイルのコピー失敗は警告に留め、複製全体は継続する。
@@ -1447,7 +1489,9 @@ public class LayerManager {
         }
         try {
             Location spawn = world.getSpawnLocation();
-            world.getChunkAt(spawn).load();
+            // Chunk#load は Paper の内部チャンクロード状態とギャップがあるため、
+            // World#loadChunk で同期的に強制ロードする。
+            world.loadChunk(spawn.getBlockX() >> 4, spawn.getBlockZ() >> 4, true);
         } catch (RuntimeException e) {
             plugin.getLogger().warning(
                     "スポーン位置のチャンクをロードできませんでした: " + world.getName()

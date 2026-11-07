@@ -1,6 +1,5 @@
 package com.zeloria.core;
 
-import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -11,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;

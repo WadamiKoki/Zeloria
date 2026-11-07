@@ -67,6 +67,7 @@ import com.zeloria.world.PortalParticleTask;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -1086,6 +1087,44 @@ public final class Zeloria extends JavaPlugin {
      */
     public DeathListener getDeathListener() {
         return deathListener;
+    }
+
+    /**
+     * 頭上ステータス表示タスクを取得する。
+     * <p>
+     * ワールドをまたぐテレポートの前後で {@code suspend} / {@code resume} を呼び、
+     * passenger（頭上表示）による転送失敗を防ぐために使用する。
+     *
+     * @return プラグインの PlayerStatusDisplayTask（onEnable 前は null）
+     */
+    public PlayerStatusDisplayTask getPlayerStatusDisplayTask() {
+        return playerStatusDisplayTask;
+    }
+
+    /**
+     * 頭上ステータス表示を一時的に切り離す（クロスワールド転送の前提条件）。
+     * <p>
+     * Paper は passenger を乗せたプレイヤーのクロスワールド転送を {@code false} で
+     * 拒否するため、転送直前に呼び出す。転送完了後は
+     * {@link #resumePlayerStatusDisplay(Player)} で再装着する。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void suspendPlayerStatusDisplay(Player player) {
+        if (playerStatusDisplayTask != null) {
+            playerStatusDisplayTask.suspend(player);
+        }
+    }
+
+    /**
+     * 頭上ステータス表示の再装着を予約する。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void resumePlayerStatusDisplay(Player player) {
+        if (playerStatusDisplayTask != null) {
+            playerStatusDisplayTask.resume(player);
+        }
     }
 
     /**

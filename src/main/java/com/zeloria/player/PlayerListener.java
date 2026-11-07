@@ -283,17 +283,22 @@ public class PlayerListener implements Listener {
         spawn.setYaw(0.0f);
         spawn.setPitch(0.0f);
 
+        // passenger（頭上ステータス表示）を乗せたままだと Paper がクロスワールド転送を
+        // success=false で拒否するため、転送前に切り離し、完了後に再装着する。
+        plugin.suspendPlayerStatusDisplay(player);
         String playerName = player.getName();
         player.teleportAsync(spawn)
                 .thenAccept(success -> {
                     if (!success) {
                         plugin.getLogger().warning("Hub へのテレポートに失敗しました: " + playerName);
                     }
+                    plugin.resumePlayerStatusDisplay(player);
                 })
                 .exceptionally(throwable -> {
                     plugin.getLogger().warning(
                             "Hub へのテレポート中にエラーが発生しました: " + playerName
                                     + " (" + rootMessage(throwable) + ")");
+                    plugin.resumePlayerStatusDisplay(player);
                     return null;
                 });
     }

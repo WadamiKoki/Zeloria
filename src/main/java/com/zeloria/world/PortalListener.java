@@ -14,7 +14,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
-import org.bukkit.Chunk;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -176,8 +175,8 @@ public class PortalListener implements Listener {
     /**
      * 転送先ワールドの準備が完了した後に、転送先座標の算出とテレポートを開始する（メインスレッド専用）。
      * <p>
-     * しゃがみ継続の確認（20 tick）は呼び出し側で完了しているため、ここでは追加の遅延を挟まず
-     * 転送を実行する。
+     * しゃがみ継続の確認（{@value #SNEAK_HOLD_TICKS} tick）は呼び出し側で完了している。
+     * 転送先のチャンクは転送直前に同期的にロードするため、追加の待機は行わない。
      */
     private void beginWarp(Player player, PortalDefinition portal, LayerConfigService.PortalMatch portalMatch,
                            String targetTemplate, String targetName, World targetWorld) {
@@ -190,7 +189,13 @@ public class PortalListener implements Listener {
         // インスタンス生成待ちでチャンク準備が遅れる場合があるため、待機中であることを明示する。
         player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
 
-        // 未ロードチャンクへの転送は teleportAsync / teleport が success=false を返すため、
+        if (!player.isOnline()) {
+            return;
+        }
+        // Paper は passenger（頭上ステータス表示）を乗せたプレイヤーの
+        // クロスワールド転送を success=false で拒否するため、転送前に切り離す。
+        plugin.suspendPlayerStatusDisplay(player);
+        // 未ロードチャンクへの転送は teleportAsync が success=false を返すため、
         // 転送先のチャンクを明示的にロードしてから実行する。
         loadDestinationChunk(destination);
 
@@ -221,6 +226,19 @@ public class PortalListener implements Listener {
                                       String targetTemplate, String targetName,
                                       World targetWorld, World sourceWorld, String sourceLayer,
                                       Location destination, Boolean success, Throwable throwable) {
+        try {
+            applyTeleportResult(player, portal, targetTemplate, targetName,
+                    targetWorld, sourceWorld, sourceLayer, destination, success, throwable);
+        } finally {
+            // 転送（同期フォールバックを含む）が終わったら頭上表示を再装着する。
+            plugin.resumePlayerStatusDisplay(player);
+        }
+    }
+
+    private void applyTeleportResult(Player player, PortalDefinition portal,
+                                     String targetTemplate, String targetName,
+                                     World targetWorld, World sourceWorld, String sourceLayer,
+                                     Location destination, Boolean success, Throwable throwable) {
         plugin.getLogger().info("[TransferDebug] player=" + player.getName()
                 + ", destination=" + destination
                 + ", world=" + (destination != null && destination.getWorld() != null
@@ -313,19 +331,18 @@ public class PortalListener implements Listener {
      *
      * @param destination 転送先
      */
+    /**
+     * 転送先のチャンクを同期的にロードする。
+     *
+     * @param destination 転送先座標
+     */
     private void loadDestinationChunk(Location destination) {
-        if (destination == null || destination.getWorld() == null) {
+        if (LayerManager.loadChunkSafely(destination)) {
             return;
         }
-        try {
-            Chunk chunk = destination.getChunk();
-            if (!chunk.isLoaded()) {
-                chunk.load(true);
-            }
-        } catch (RuntimeException e) {
+        if (destination != null && destination.getWorld() != null) {
             logWarning("転送先チャンクのロードに失敗: " + formatLocation(destination)
-                    + ", world=" + destination.getWorld().getName()
-                    + ", error=" + rootMessage(e));
+                    + ", world=" + destination.getWorld().getName());
         }
     }
 

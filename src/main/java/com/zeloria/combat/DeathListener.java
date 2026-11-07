@@ -184,7 +184,14 @@ public final class DeathListener implements Listener {
             player.leaveVehicle();
         }
         Location hub = hubLocation(player);
-        player.teleport(hub);
+        // passenger（頭上ステータス表示）を乗せたままだとクロスワールド転送が失敗するため、
+        // 転送前に切り離し、完了後に再装着する。
+        plugin.suspendPlayerStatusDisplay(player);
+        try {
+            player.teleport(hub);
+        } finally {
+            plugin.resumePlayerStatusDisplay(player);
+        }
         player.setFireTicks(0);
         player.setFallDistance(0.0f);
         player.setFlying(false);
@@ -228,11 +235,15 @@ public final class DeathListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
-        Player player = event.getPlayer();
-        if (!awaitingRespawn.contains(player.getUniqueId())) {
+        // PlayerTeleportEvent（PlayerPortalEvent を含む）は PlayerMoveEvent を継承しているため、
+        // 最初に除外する。ポータル転送や建築ワールドへの転送を死亡演出中の移動制限で
+        // 妨げないよう、テレポートはキャンセルも座標の書き換えも行わない。
+        if (event instanceof PlayerTeleportEvent) {
             return;
         }
-        if (event instanceof PlayerTeleportEvent) {
+
+        Player player = event.getPlayer();
+        if (!awaitingRespawn.contains(player.getUniqueId())) {
             return;
         }
 

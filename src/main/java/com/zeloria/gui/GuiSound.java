@@ -3,7 +3,6 @@ package com.zeloria.gui;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 
-import java.util.Objects;
 
 /**
  * GUI 操作時に再生する効果音の設定。

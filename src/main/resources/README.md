@@ -161,31 +161,34 @@ mv ZeloriaServer/zeloria/plugins/Zeloria/worlds/* ZeloriaServer/WorldData/
 ### 使い方
 
 ```text
-/admin build create <templateId>     # テンプレートを複製して建築ワールドを新規作成する
-/admin build join <templateId>       # 開いている建築ワールドへ参加する
-/admin build list                    # 開いている建築ワールドを一覧表示する
-/admin build info [templateId]       # 建築ワールドの状態（テンプレート・ワールド・プレイヤー・作成者）を表示
-/admin build save [templateId] [force]   # 保存して Hub へ戻る（templateId 省略時は開いている全ワールド）
-/admin build unsave [templateId] [force] # 保存せずに破棄して Hub へ戻る（templateId 省略時は開いている全ワールド）
+/admin build create <yml>           # テンプレートを複製して建築ワールドを新規作成する
+/admin build join <yml>             # 開いている建築ワールドへ参加する
+/admin build list                   # 開いている建築ワールドを一覧表示する
+/admin build info [yml]             # 建築ワールドの状態（テンプレート・ワールド・プレイヤー・作成者）を表示
+/admin build save [yml] [force]     # 保存して Hub へ戻る（yml 省略時は開いている全ワールド）
+/admin build unsave [yml] [force]   # 保存せずに破棄して Hub へ戻る（yml 省略時は開いている全ワールド）
 ```
+
+`<yml>` は `config/LayerData/*.yml` のファイル名（拡張子なし）を指定します。
+`Field1` のような YAML 名のほか、`field_1` のようなレイヤー ID でも指定できます。
 
 1. `WorldData/<templateId>`（既定: `ZeloriaServer/WorldData/<templateId>`）に
    建築用のテンプレートワールドを配置します。
 2. 建築権限（`zeloria.admin` と `zeloria.admin.build`）を持つプレイヤーが
-   `/admin build create <templateId>` を実行します。テンプレートが
+   `/admin build create <yml>` を実行します。テンプレートが
    `<メインワールド>/dimensions/minecraft/<templateId>_build`（例:
    `world/dimensions/minecraft/hub_build`）へ複製され、
    `minecraft:<templateId>_build` として建築ワールドがロードされます。
    実行者はクリエイティブモードで建築ワールドへ転送されます。
-3. 建築を終えたら `/admin build save <templateId>` を実行します。建築ワールドをセーブして
+3. 建築を終えたら `/admin build save <yml>` を実行します。建築ワールドをセーブして
    アンロードし、内容をテンプレートへ上書き保存したうえで、複製先のディレクトリを削除します。
    建築ワールドにいた全プレイヤーは Hub のスポーンへ戻り、入場前のゲームモード
    （記録が無い場合はサバイバル）へ復元されます。
 
 - 建築ワールドはテンプレートごとに 1 つ作成され、複数のプレイヤーで共有できます。
-  同じテンプレートで `/admin build join <templateId>` を実行すると、既存の
-  建築ワールドへ参加します（`/admin build <templateId>` も開いていれば参加、
-  無ければ作成として動作します）。
+  同じテンプレートで `/admin build join <yml>` を実行すると、既存の
+  建築ワールドへ参加します。開いていない場合は `/admin build create <yml>` で
+  新規作成してください。
 - 異なるテンプレートの建築ワールドは同時に開けます。`/admin build list` で
   開いているワールドとプレイヤー数・作成者・最終操作時刻を確認できます。
 - 建築ワールドに他のプレイヤーがいる場合、`save` / `unsave` はキャンセルされます。

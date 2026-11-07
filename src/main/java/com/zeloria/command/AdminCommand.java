@@ -8,6 +8,8 @@ import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
 import com.zeloria.world.BuildManager;
 import com.zeloria.world.LayerCleanupTask;
+import com.zeloria.world.LayerConfigService;
+import com.zeloria.world.LayerData;
 import com.zeloria.world.LayerManager;
 import com.zeloria.skill.LevelService;
 import com.zeloria.core.LoggerService;
@@ -81,7 +83,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *         （{@code WeaponData/archer/test} のような階層パス指定にも対応）</li>
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - MobData を指定してモブをスポーンする</li>
- *     <li>{@code /admin create <templateId>} / {@code /admin join <templateId>} - 建築ワールドを作成／参加する</li>
+ *     <li>{@code /admin build create <yml>} / {@code /admin build join <yml>} - 建築ワールドを作成／参加する</li>
  *     <li>{@code /admin build list|info|save|unsave} - チャンネル 1 の建築ワールドを管理する</li>
  *     <li>{@code /admin stop} - プレイヤーデータ保存・レイヤー破棄・ワールド保存を行ってから安全に停止する</li>
  * </ul>
@@ -170,7 +172,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|give|npc|create|join|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|gui|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -205,7 +207,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         String sub = args[0].toLowerCase(Locale.ROOT);
 
         // 建築モードはチャンネル 1 専用。サブコマンドの解析より前に判定する。
-        if ((BUILD.equals(sub) || CREATE.equals(sub) || JOIN.equals(sub)) && !isBuildChannel()) {
+        if (BUILD.equals(sub) && !isBuildChannel()) {
             send(sender, message("build.channel_only", Map.of(),
                     "<red>建築モードはチャンネル1でのみ使用できます</red>"));
             return true;
@@ -229,8 +231,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case GIVE -> handleGive(sender, args);
             case INFO -> handleInfo(sender, args);
             case GUI -> handleGui(sender, args);
-            case CREATE -> handleCreateCommand(sender, args);
-            case JOIN -> handleJoinCommand(sender, args);
             case BUILD -> handleBuild(sender, args);
             case LAYER -> handleLayer(sender, args);
             default -> {
@@ -264,10 +264,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(LAYER);
                 if (isBuildChannel() && plugin.getBuildManager() != null) {
                     candidates.add(BUILD);
-                    if (sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
-                        candidates.add(CREATE);
-                        candidates.add(JOIN);
-                    }
                 }
             }
             if (sender.hasPermission(STOP_PERMISSION)) {
@@ -318,21 +314,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return loader == null ? List.of() : partial(args[1], idsOf(loader, "gui"));
         }
 
-        if (CREATE.equalsIgnoreCase(args[0]) || JOIN.equalsIgnoreCase(args[0])) {
-            BuildManager buildManager = plugin.getBuildManager();
-            if (!isBuildChannel()
-                    || buildManager == null
-                    || !sender.hasPermission(BuildManager.BUILD_PERMISSION)
-                    || args.length != 2) {
-                return List.of();
-            }
-            // config/LayerData/ 配下のテンプレート ID を候補にする。
-            if (CREATE.equalsIgnoreCase(args[0])) {
-                return partial(args[1], buildManager.listTemplateIds());
-            }
-            return partial(args[1], buildManager.getOpenTemplateIds());
-        }
-
         if (BUILD.equalsIgnoreCase(args[0])) {
             BuildManager buildManager = plugin.getBuildManager();
             if (!isBuildChannel()
@@ -341,32 +322,26 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 return List.of();
             }
 
-            boolean canBuild = sender.hasPermission(BuildManager.BUILD_PERMISSION);
-            Set<String> templates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            templates.addAll(buildManager.listTemplateIds());
             Set<String> openTemplates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             openTemplates.addAll(buildManager.getOpenTemplateIds());
 
             if (args.length == 2) {
                 Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-                if (canBuild) {
-                    candidates.add(CREATE);
-                    candidates.add(JOIN);
-                    candidates.add(SAVE);
-                    candidates.add(UNSAVE);
-                }
+                candidates.add(CREATE);
+                candidates.add(JOIN);
                 candidates.add(LIST);
                 candidates.add(INFO);
-                candidates.addAll(templates);
-                candidates.addAll(openTemplates);
+                candidates.add(SAVE);
+                candidates.add(UNSAVE);
                 return partial(args[1], candidates);
             }
             if (args.length == 3) {
                 String action = args[1];
-                if (CREATE.equalsIgnoreCase(action)) {
-                    return partial(args[2], templates);
+                // create / join は config/LayerData/ の YAML 名（拡張子なし）を候補にする。
+                if (CREATE.equalsIgnoreCase(action) || JOIN.equalsIgnoreCase(action)) {
+                    return partial(args[2], buildTemplateNames());
                 }
-                if (JOIN.equalsIgnoreCase(action) || INFO.equalsIgnoreCase(action)) {
+                if (INFO.equalsIgnoreCase(action)) {
                     return partial(args[2], openTemplates);
                 }
                 if (SAVE.equalsIgnoreCase(action) || UNSAVE.equalsIgnoreCase(action)) {
@@ -837,69 +812,14 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin create <templateId>}: テンプレートから建築ワールドを新規作成して入場する。
-     * <p>
-     * 建築モードの主要コマンド。内部的には
-     * {@link BuildManager#createBuildWorldAsync(String, Player)} を呼び出す。
-     *
-     * @param sender 実行者
-     * @param args   コマンド引数
-     */
-    private void handleCreateCommand(CommandSender sender, String[] args) {
-        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
-            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
-            return;
-        }
-        if (args.length != 2) {
-            send(sender, buildUsage());
-            return;
-        }
-        BuildManager buildManager = plugin.getBuildManager();
-        if (buildManager == null) {
-            send(sender, message("build.channel_only", Map.of(),
-                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
-            return;
-        }
-        handleBuildCreate(sender, buildManager, args[1]);
-    }
-
-    /**
-     * {@code /admin join <templateId>}: 開いている建築ワールドへ参加する。
-     * <p>
-     * 建築モードの主要コマンド。内部的には
-     * {@link BuildManager#joinBuildWorld(String, Player)} を呼び出す。
-     *
-     * @param sender 実行者
-     * @param args   コマンド引数
-     */
-    private void handleJoinCommand(CommandSender sender, String[] args) {
-        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
-            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
-            return;
-        }
-        if (args.length != 2) {
-            send(sender, buildUsage());
-            return;
-        }
-        BuildManager buildManager = plugin.getBuildManager();
-        if (buildManager == null) {
-            send(sender, message("build.channel_only", Map.of(),
-                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
-            return;
-        }
-        handleBuildJoin(sender, buildManager, args[1]);
-    }
-
-    /**
      * {@code /admin build}: チャンネル 1 の建築モードを操作する。
      * <ul>
-     *     <li>{@code /admin create <templateId>} - テンプレートから建築ワールドを新規作成する（主要）</li>
-     *     <li>{@code /admin join <templateId>} - 開いている建築ワールドへ参加する（主要）</li>
+     *     <li>{@code /admin build create <yml>} - テンプレートから建築ワールドを新規作成して入場する</li>
+     *     <li>{@code /admin build join <yml>} - 開いている建築ワールドへ参加する</li>
      *     <li>{@code /admin build list} - 開いている建築ワールドを一覧表示する</li>
-     *     <li>{@code /admin build info [templateId]} - 建築ワールドの状態を表示する</li>
-     *     <li>{@code /admin build save [templateId] [force]} - 保存して Hub へ戻る</li>
-     *     <li>{@code /admin build unsave [templateId] [force]} - 保存せずに破棄して Hub へ戻る</li>
-     *     <li>{@code /admin build <templateId>} - {@code /admin create <templateId>} と同じ動作（後方互換）</li>
+     *     <li>{@code /admin build info [yml]} - 建築ワールドの状態を表示する</li>
+     *     <li>{@code /admin build save [yml] [force]} - 保存して Hub へ戻る</li>
+     *     <li>{@code /admin build unsave [yml] [force]} - 保存せずに破棄して Hub へ戻る</li>
      * </ul>
      * 建築モードは {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
      */
@@ -925,7 +845,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                     handleBuildList(sender, buildManager);
                     return;
                 }
-                // 後方互換: テンプレート未指定の info は開いている代表ワールドを表示する。
+                // テンプレート未指定の info は開いている代表ワールドを表示する。
                 String templateId = buildManager.getActiveTemplateId();
                 if (templateId == null) {
                     send(sender, message("build.not_active", Map.of(),
@@ -956,46 +876,39 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        if (SAVE.equalsIgnoreCase(args[1]) || UNSAVE.equalsIgnoreCase(args[1])) {
-            handleBuildSave(sender, buildManager, args, SAVE.equalsIgnoreCase(args[1]));
+        String action = args[1];
+        if (SAVE.equalsIgnoreCase(action) || UNSAVE.equalsIgnoreCase(action)) {
+            handleBuildSave(sender, buildManager, args, SAVE.equalsIgnoreCase(action));
             return;
         }
 
-        if (CREATE.equalsIgnoreCase(args[1])) {
+        if (CREATE.equalsIgnoreCase(action) || JOIN.equalsIgnoreCase(action)) {
             if (args.length != 3) {
                 send(sender, buildUsage());
                 return;
             }
-            handleBuildCreate(sender, buildManager, args[2]);
-            return;
-        }
-
-        if (JOIN.equalsIgnoreCase(args[1])) {
-            if (args.length != 3) {
-                send(sender, buildUsage());
-                return;
+            if (CREATE.equalsIgnoreCase(action)) {
+                handleBuildCreate(sender, buildManager, args[2]);
+            } else {
+                handleBuildJoin(sender, buildManager, args[2]);
             }
-            handleBuildJoin(sender, buildManager, args[2]);
             return;
         }
 
-        if (args.length > 2) {
-            send(sender, buildUsage());
-            return;
-        }
-
-        // 後方互換: /admin build <templateId> は /admin create <templateId> と同じ動作にする。
-        handleBuildCreate(sender, buildManager, args[1]);
+        send(sender, message("command.unknown_subcommand", Map.of("input", args[1]),
+                "<red>不明なサブコマンドです: <white>{input}</white></red>"));
+        send(sender, buildUsage());
     }
 
     /**
-     * {@code /admin create <templateId>}: 建築ワールドを新規作成して入場する。
+     * {@code /admin build create <yml>}: 建築ワールドを新規作成して入場する。
      *
      * @param sender       実行者
      * @param buildManager 建築モード管理
-     * @param templateId   テンプレート ID
+     * @param templateName テンプレート名（{@code config/LayerData/} の YAML 名・拡張子なし）
      */
-    private void handleBuildCreate(CommandSender sender, BuildManager buildManager, String templateId) {
+    private void handleBuildCreate(CommandSender sender, BuildManager buildManager, String templateName) {
+        String templateId = resolveBuildTemplateId(templateName);
         if (buildManager.isBusy()) {
             sendBuildBusy(sender);
             return;
@@ -1006,35 +919,36 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (buildManager.isBuildWorldOpen(templateId)) {
-            send(sender, message("build.already_open", Map.of("template", esc(templateId)),
+            send(sender, message("build.already_open", Map.of("template", esc(templateName)),
                     "<yellow>建築ワールド '<white>{template}</white>' は既に開かれています。"
-                            + "/admin join <white>{template}</white> で参加してください。</yellow>"));
+                            + "/admin build join <white>{template}</white> で参加してください。</yellow>"));
             return;
         }
 
-        send(sender, message("build.preparing", Map.of("template", esc(templateId)),
+        send(sender, message("build.preparing", Map.of("template", esc(templateName)),
                 "<yellow>建築ワールド '<white>{template}</white>' を準備しています...</yellow>"));
         buildManager.createBuildWorldAsync(templateId, player).whenComplete((world, error) -> {
             if (error != null) {
                 send(sender, message("build.open_failed", Map.of(
-                                "template", esc(templateId),
+                                "template", esc(templateName),
                                 "error", esc(rootMessage(error))),
                         "<red>建築ワールドを開けませんでした: <white>{error}</white></red>"));
                 return;
             }
-            send(sender, message("build.opened", Map.of("template", esc(templateId)),
+            send(sender, message("build.opened", Map.of("template", esc(templateName)),
                     "<green>建築ワールド '<white>{template}</white>' を開きました。</green>"));
         });
     }
 
     /**
-     * {@code /admin join <templateId>}: 開いている建築ワールドへ参加する。
+     * {@code /admin build join <yml>}: 開いている建築ワールドへ参加する。
      *
      * @param sender       実行者
      * @param buildManager 建築モード管理
-     * @param templateId   テンプレート ID
+     * @param templateName テンプレート名（{@code config/LayerData/} の YAML 名・拡張子なし）
      */
-    private void handleBuildJoin(CommandSender sender, BuildManager buildManager, String templateId) {
+    private void handleBuildJoin(CommandSender sender, BuildManager buildManager, String templateName) {
+        String templateId = resolveBuildTemplateId(templateName);
         if (buildManager.isBusy()) {
             sendBuildBusy(sender);
             return;
@@ -1045,27 +959,74 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (!buildManager.joinBuildWorld(templateId, player)) {
-            send(sender, message("build.not_open", Map.of("template", esc(templateId)),
+            send(sender, message("build.not_open", Map.of("template", esc(templateName)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
-        send(sender, message("build.joined", Map.of("template", esc(templateId)),
+        send(sender, message("build.joined", Map.of("template", esc(templateName)),
                 "<green>建築ワールド '<white>{template}</white>' に参加しました。</green>"));
     }
 
+    /**
+     * {@code config/LayerData/} 配下の YAML 名（拡張子なし）を候補として返す。
+     *
+     * @return 建築テンプレート名の一覧（大文字小文字を無視して昇順）
+     */
+    private List<String> buildTemplateNames() {
+        YamlLoader yamlLoader = plugin.getYamlLoader();
+        if (yamlLoader == null) {
+            return List.of();
+        }
+        Set<String> names = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (String key : yamlLoader.getKeys()) {
+            if ("LayerData".equalsIgnoreCase(folderOf(key))) {
+                names.add(stripExtension(fileNameOf(key)));
+            }
+        }
+        return new ArrayList<>(names);
+    }
+
+    /**
+     * 入力されたテンプレート名を建築テンプレート ID へ変換する。
+     * <p>
+     * {@code Field1} のような YAML 名のほか、{@code field_1} のようなレイヤー ID・
+     * テンプレート ID でも指定できる。一致する LayerData が無い場合は入力をそのまま返す。
+     *
+     * @param input 入力されたテンプレート名
+     * @return 建築テンプレート ID
+     */
+    private String resolveBuildTemplateId(String input) {
+        if (input == null || input.isBlank()) {
+            return input;
+        }
+        String name = input.trim();
+        LayerConfigService layerConfigService = plugin.getLayerConfigService();
+        if (layerConfigService == null) {
+            return name;
+        }
+        for (LayerData layer : layerConfigService.getLayers()) {
+            String sourceName = stripExtension(fileNameOf(layer.getSourceKey()));
+            if (sourceName.equalsIgnoreCase(name)
+                    || layer.getId().equalsIgnoreCase(name)
+                    || layer.getTemplateId().equalsIgnoreCase(name)) {
+                return layer.getTemplateId();
+            }
+        }
+        return name;
+    }
 
     /**
      * {@code /admin build} の使用方法メッセージを返す。
      */
     private String buildUsage() {
         return message("build.usage", Map.of(),
-                "<gray>使い方:</gray> <white>/admin create <templateId></white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin join <templateId></white> "
+                "<gray>使い方:</gray> <white>/admin build create <yml></white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build join <yml></white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build list</white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build info [templateId]</white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build save [templateId] [force]</white> "
-                        + "<dark_gray>|</dark_gray> <white>/admin build unsave [templateId] [force]</white>");
+                        + "<dark_gray>|</dark_gray> <white>/admin build info [yml]</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build save [yml] [force]</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build unsave [yml] [force]</white>");
     }
 
     /**
@@ -1081,10 +1042,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             if (FORCE.equalsIgnoreCase(args[2])) {
                 force = true;
             } else {
-                templateId = args[2];
+                templateId = resolveBuildTemplateId(args[2]);
             }
         } else if (args.length == 4 && FORCE.equalsIgnoreCase(args[3])) {
-            templateId = args[2];
+            templateId = resolveBuildTemplateId(args[2]);
             force = true;
         } else if (args.length != 2) {
             send(sender, buildUsage());
@@ -1099,7 +1060,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         Player executor = sender instanceof Player player ? player : null;
 
         if (templateId == null) {
-            // テンプレート未指定時は開いているすべての建築ワールドを対象にする（後方互換）。
+            // テンプレート未指定時は開いているすべての建築ワールドを対象にする。
             Set<String> templateIds = buildManager.getOpenTemplateIds();
             if (templateIds.isEmpty()) {
                 send(sender, message("build.not_active", Map.of(),
@@ -1125,7 +1086,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (!buildManager.isBuildWorldOpen(templateId)) {
             send(sender, message("build.not_open", Map.of("template", esc(templateId)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
         if (!force && buildManager.hasOtherPlayers(templateId, executor)) {
@@ -1231,25 +1192,26 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin build info [templateId]}: 建築ワールドの状態を表示する。
+     * {@code /admin build info [yml]}: 建築ワールドの状態を表示する。
      *
      * @param sender       実行者
      * @param buildManager 建築モード管理
-     * @param templateId   テンプレート ID
+     * @param templateName テンプレート名（{@code config/LayerData/} の YAML 名・拡張子なし）
      */
-    private void handleBuildInfo(CommandSender sender, BuildManager buildManager, String templateId) {
+    private void handleBuildInfo(CommandSender sender, BuildManager buildManager, String templateName) {
+        String templateId = resolveBuildTemplateId(templateName);
         World world = buildManager.getBuildWorld(templateId);
         if (world == null) {
-            send(sender, message("build.not_open", Map.of("template", esc(templateId)),
+            send(sender, message("build.not_open", Map.of("template", esc(templateName)),
                     "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。"
-                            + "/admin create <white>{template}</white> で作成してください。</yellow>"));
+                            + "/admin build create <white>{template}</white> で作成してください。</yellow>"));
             return;
         }
 
         List<String> playerNames = buildManager.getActivePlayerNames(templateId);
         String players = playerNames.isEmpty() ? "なし" : String.join(", ", playerNames);
         send(sender, message("build.info", Map.of(
-                        "template", esc(templateId),
+                        "template", esc(templateName),
                         "world", esc(world.getName()),
                         "players", esc(players),
                         "owner", esc(ownerName(buildManager.getBuildWorldOwner(templateId))),
