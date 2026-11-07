@@ -3,6 +3,7 @@ package com.zeloria.world;
 import com.zeloria.core.Zeloria;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -67,18 +68,6 @@ public class BuildManager {
     /** メインワールドのレベル名が取得できなかった場合に使用する既定値。 */
     private static final String DEFAULT_MAIN_WORLD_NAME = "world";
 
-    /**
-     * 複製対象外とするファイル名（小文字で比較）。
-     * <ul>
-     *     <li>{@code session.lock} - ワールドロックファイル。コピーすると排他ロックが競合する</li>
-     *     <li>{@code uid.dat} - ワールド UUID 識別ファイル。コピーするとワールド間で UUID が重複する</li>
-     * </ul>
-     */
-    private static final Set<String> EXCLUDED_FILES = Set.of(
-            "session.lock",
-            "uid.dat"
-    );
-
     /** テンプレート保存時に使用する一時ディレクトリの接尾辞。 */
     private static final String TEMP_SUFFIX = ".tmp";
 
@@ -93,6 +82,10 @@ public class BuildManager {
 
     /** 建築ワールドが無人になってから自動保存するまでの時間（ミリ秒）。 */
     public static final long AUTO_SAVE_IDLE_MILLIS = 60_000L;
+
+    /** 転送待機中にアクションバーへ表示するメッセージ。 */
+    private static final Component TRANSFER_PREPARING =
+            MiniMessage.miniMessage().deserialize("<gray>転送準備中...</gray>");
 
     private final Zeloria plugin;
 
@@ -177,7 +170,7 @@ public class BuildManager {
                         "既に別の建築ワールド（" + existingTemplate + "）が開かれています。"
                                 + "先に /admin build save で保存してください"));
             }
-            enterBuildWorld(player, existing);
+            enterBuildWorld(player, existing, false);
             return CompletableFuture.completedFuture(existing);
         }
 
@@ -408,7 +401,7 @@ public class BuildManager {
         if (world == null) {
             return false;
         }
-        enterBuildWorld(player, world);
+        enterBuildWorld(player, world, false);
         return true;
     }
 
@@ -521,12 +514,39 @@ public class BuildManager {
 
     /**
      * 指定したワールドが建築ワールドか判定する。
+     * <p>
+     * {@code zeloria_build} 名前空間を共有するレイヤーインスタンス
+     * （{@code zeloria_build:<instanceId>}）は建築ワールドではないため除外する。
      *
      * @param world 判定対象のワールド
      * @return 建築ワールドの場合は {@code true}
      */
     public static boolean isBuildWorld(World world) {
-        return world != null && BUILD_NAMESPACE.equals(world.getKey().getNamespace());
+        if (world == null || !BUILD_NAMESPACE.equals(world.getKey().getNamespace())) {
+            return false;
+        }
+        // 所有権マーカーを持つディレクトリはレイヤーインスタンスであり、建築ワールドではない。
+        if (LayerManager.isInstanceDirectory(world.getWorldPath())) {
+            return false;
+        }
+        return !LayerManager.isInstanceId(world.getKey().getKey());
+    }
+
+    /**
+     * 指定したワールドが「現在開いている」建築ワールドか判定する。
+     * <p>
+     * テレポート制限では、同じ名前空間を共有するレイヤーインスタンスへの転送を
+     * 妨げないよう、この判定で建築ワールドを限定する。
+     *
+     * @param world 判定対象のワールド
+     * @return 現在の建築ワールドの場合は {@code true}
+     */
+    public boolean isActiveBuildWorld(World world) {
+        if (world == null) {
+            return false;
+        }
+        World current = resolveCurrentWorld();
+        return current != null && current.equals(world);
     }
 
     /**
@@ -710,15 +730,19 @@ public class BuildManager {
                     return;
                 }
                 debugEnterBuildWorld(player, existing);
-                enterBuildWorld(player, existing);
+                enterBuildWorld(player, existing, false);
                 result.complete(existing);
                 return;
             }
 
             World world;
+            // ロード済みでない場合は、これからテンプレートから新規生成されるワールド。
+            // 新規生成時はチャンク準備に時間がかかるため、転送遅延を長めに取る。
+            boolean newlyCreated;
             try {
                 world = findLoadedWorld(templateId);
-                if (world == null) {
+                newlyCreated = world == null;
+                if (newlyCreated) {
                     WorldCreator creator = WorldCreator.ofKey(keyOf(templateId))
                             .environment(World.Environment.NORMAL)
                             .generateStructures(false)
@@ -750,7 +774,7 @@ public class BuildManager {
             // 管理者が手動で移動できるようエラーメッセージとフォールバックを行う。
             try {
                 debugEnterBuildWorld(player, world);
-                enterBuildWorld(player, world);
+                enterBuildWorld(player, world, newlyCreated);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "建築ワールドへのプレイヤー転送に失敗しました: template=" + templateId
@@ -777,10 +801,12 @@ public class BuildManager {
     /**
      * プレイヤーをクリエイティブモードにして建築ワールドへ転送する。
      *
-     * @param player 対象プレイヤー（{@code null} またはオフラインの場合は何もしない）
-     * @param world  建築ワールド
+     * @param player       対象プレイヤー（{@code null} またはオフラインの場合は何もしない）
+     * @param world        建築ワールド
+     * @param newlyCreated {@code true} の場合はワールドを新規生成した直後
+     *                     （チャンク準備待ちの遅延を長めに取る）
      */
-    private void enterBuildWorld(Player player, World world) {
+    private void enterBuildWorld(Player player, World world, boolean newlyCreated) {
         if (player == null || !player.isOnline()) {
             return;
         }
@@ -788,7 +814,8 @@ public class BuildManager {
         Location spawn = buildSpawn(world, player);
         plugin.getLogger().info("[TransferDebug] player=" + player.getName()
                 + ", destination=" + spawn
-                + ", world=" + (spawn.getWorld() != null ? spawn.getWorld().getName() : "null"));
+                + ", world=" + (spawn.getWorld() != null ? spawn.getWorld().getName() : "null")
+                + ", newlyCreated=" + newlyCreated);
 
         // 建築ワールドへ入る直前のゲームモードを記録し、退出時に戻す。
         // 既に建築ワールド内にいる場合は、最初の入場時の値を保持する。
@@ -797,8 +824,11 @@ public class BuildManager {
         }
         player.setGameMode(GameMode.CREATIVE);
 
-        // ワールドロード直後はチャンクの準備が整っておらず同期テレポートが失敗するため、
-        // 5 tick 待ってから同期テレポートを試み、失敗時は非同期テレポートへフォールバックする。
+        // 新規生成直後はチャンクの準備に時間がかかり、テレポートが false で失敗しやすい。
+        // そのため新規生成時は 20 tick（1 秒）、既にロード済みなら 5 tick（0.25 秒）待つ。
+        long delay = newlyCreated ? 20L : 5L;
+        player.sendActionBar(TRANSFER_PREPARING);
+
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) {
                 return;
@@ -827,7 +857,7 @@ public class BuildManager {
                     restoreGameMode(player);
                 });
             });
-        }, 5L);
+        }, delay);
     }
 
     /**
@@ -937,52 +967,45 @@ public class BuildManager {
     }
 
     /**
-     * ディレクトリを再帰的に複製する。
+     * ワールドファイルを再帰的に複製する。
      * <p>
-     * {@link #EXCLUDED_FILES} に含まれるファイルは複製しない。
+     * {@link LayerManager#WORLD_COPY_WHITELIST}（{@code level.dat} と {@code region/}）だけを
+     * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
+     * {@code level.dat_old} などのメタデータは複製せず、テンプレート保存時に
+     * 新しいワールド UID が Paper 側で生成される。
      *
      * @param source 複製元
      * @param target 複製先
      * @throws IOException 複製に失敗した場合
      */
     private void copyDirectory(Path source, Path target) throws IOException {
-        Files.walkFileTree(source, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                Files.createDirectories(target.resolve(source.relativize(dir)));
-                return FileVisitResult.CONTINUE;
+        List<Path> paths;
+        try (Stream<Path> stream = Files.walk(source)) {
+            paths = stream.toList();
+        }
+
+        for (Path path : paths) {
+            Path relative = source.relativize(path);
+            if (relative.getNameCount() == 0) {
+                continue;
+            }
+            String topLevel = relative.getName(0).toString();
+            if (!LayerManager.WORLD_COPY_WHITELIST.contains(topLevel)) {
+                continue;
             }
 
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (attrs.isRegularFile() && !isExcluded(file)) {
-                    Path destination = target.resolve(source.relativize(file));
-                    Path parent = destination.getParent();
-                    if (parent != null) {
-                        Files.createDirectories(parent);
-                    }
-                    Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
-                }
-                return FileVisitResult.CONTINUE;
+            Path destination = target.resolve(relative);
+            if (Files.isDirectory(path)) {
+                Files.createDirectories(destination);
+                continue;
             }
 
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                throw exc;
+            Path parent = destination.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
             }
-        });
-    }
-
-    /**
-     * 複製対象外のファイルか判定する。
-     *
-     * @param file 判定対象
-     * @return 複製対象外の場合は {@code true}
-     */
-    private boolean isExcluded(Path file) {
-        Path name = file.getFileName();
-        return name != null
-                && EXCLUDED_FILES.contains(name.toString().toLowerCase(Locale.ROOT));
+            Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /**

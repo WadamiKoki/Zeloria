@@ -2,24 +2,22 @@ package com.zeloria.world;
 
 import com.zeloria.core.Zeloria;
 import com.zeloria.mob.SpawnerManager;
+import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.WorldType;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,19 +32,23 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * テンプレートワールドからレイヤーインスタンスを生成・管理するクラス。
  * <p>
  * テンプレートは {@code WorldData/{templateId}}（既定: {@code ZeloriaServer/WorldData/{templateId}}）に配置し、
- * 生成されたインスタンスは Paper 26.3 の標準ディメンション配置先である
- * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/{instanceId}}
- * （例: {@code ZeloriaServer/world/dimensions/minecraft/hub_instance_1}）に展開される。
+ * 生成されたインスタンスは {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/{instanceId}}
+ * （例: {@code ZeloriaServer/world/dimensions/zeloria_build/hub_instance_1}）に展開される。
  * <p>
- * {@link WorldCreator} に渡す名前は {@code instanceId} そのもの（例: {@code hub_instance_1}）とする。
- * サーバー実行ルート直下へ展開した場合、Paper 26.3 の
- * {@code LegacyCraftBukkitWorldMigration} により {@code world/dimensions/minecraft/...} 配下へ
- * 自動移動され、パス不整合が発生するため、コピー先を標準配置先に合わせる。
+ * {@link WorldCreator} に渡すキーは {@code zeloria_build:<instanceId>}
+ * （例: {@code zeloria_build:hub_instance_1}）とし、{@link World.Environment#CUSTOM} +
+ * {@code customEnvironmentKey} でロードする。これによりテンプレートの {@code level.dat} が持つ
+ * {@code minecraft:overworld} のディメンションキーと衝突せず、
+ * 「duplicate of another world」でロードを拒否されない。
+ * <p>
+ * コピー対象は {@link #WORLD_COPY_WHITELIST}（{@code level.dat} と {@code region/}）のみとし、
+ * UID・ロック・プレイヤーデータなどのメタデータは引き継がない。
  * <p>
  * ワールド操作を伴うため、すべてのメソッドはメインスレッドから呼び出すこと。
  */
@@ -59,33 +61,18 @@ public class LayerManager {
     private static final Pattern ID_PATTERN = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     /**
-     * 複製対象外とするファイル名（小文字で比較）。
-     * <ul>
-     *     <li>{@code session.lock} - ワールドロックファイル。コピーすると排他ロックが競合する</li>
-     *     <li>{@code uid.dat} - ワールド UUID 識別ファイル。コピーするとインスタンス間で UUID が重複する</li>
-     * </ul>
+     * ワールドとしてコピーする対象（これだけをコピーする）。
+     * <p>
+     * ホワイトリスト方式にすることで、{@code session.lock} / {@code uid.dat} /
+     * {@code level.dat_old} / {@code playerdata} / {@code players} / {@code entities} /
+     * {@code data} / {@code datapacks} / {@code paper-world.yml} などは一切コピーされない。
+     * 結果として Paper がインスタンス用の新しいワールド UID を自動生成する。
+     * <p>
+     * {@link BuildManager} のテンプレート保存処理からも共有参照される。
      */
-    private static final Set<String> EXCLUDED_FILES = Set.of(
-            "session.lock",
-            "uid.dat"
-    );
-
-    /**
-     * 複製対象外とするディレクトリ名（小文字で比較）。
-     * いずれもテンプレート固有の状態を持つため、インスタンスへ引き継ぐと
-     * 他プレイヤーのデータ混入や不整合を招く。
-     * <ul>
-     *     <li>{@code playerdata} - プレイヤーデータ</li>
-     *     <li>{@code stats} - 統計データ</li>
-     *     <li>{@code advancements} - 進捗データ</li>
-     *     <li>{@code datapacks} - データパック</li>
-     * </ul>
-     */
-    private static final Set<String> EXCLUDED_DIRECTORIES = Set.of(
-            "playerdata",
-            "stats",
-            "advancements",
-            "datapacks"
+    public static final Set<String> WORLD_COPY_WHITELIST = Set.of(
+            "level.dat",
+            "region"
     );
 
     /**
@@ -138,7 +125,7 @@ public class LayerManager {
 
     /**
      * 生成インスタンス配置先の親ディレクトリ:
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft}
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build}
      */
     private final Path instanceRoot;
 
@@ -146,6 +133,21 @@ public class LayerManager {
      * 読み込み済みのインスタンスワールド。
      */
     private final Map<String, World> loadedWorlds = new ConcurrentHashMap<>();
+
+    /**
+     * 新規生成直後のインスタンス ID → 生成時刻（エポックミリ秒）。
+     * <p>
+     * 生成直後はチャンクの準備が整っておらず、すぐにテレポートすると失敗する。
+     * 転送側（{@link #isNewlyCreated(String)}）はこの情報を参照し、
+     * 新規生成されたインスタンスへの転送だけ遅延を長めに取る。
+     */
+    private final Map<String, Long> newlyCreatedInstances = new ConcurrentHashMap<>();
+
+    /**
+     * {@link #isNewlyCreated(String)} が {@code true} を返す期間（ミリ秒）。
+     * 生成からこの時間を過ぎたインスタンスは「既存」として扱う。
+     */
+    private static final long NEWLY_CREATED_WINDOW_MILLIS = 60_000L;
 
     /**
      * インスタンス ID → 生成元テンプレート ID の対応。
@@ -215,13 +217,13 @@ public class LayerManager {
     }
 
     /**
-     * Paper 26.3 の標準ディメンション配置先
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft} を解決する。
+     * Paper のカスタムディメンション配置先
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build} を解決する。
      * <p>
      * {@link World#getWorldPath()} は Paper 26.3 では
      * {@code <worldContainer>/world/overworld} のようにディメンション名まで含むことがある。
-     * その値へ {@code dimensions/minecraft} を連結すると
-     * {@code world/overworld/dimensions/minecraft} という不正なパスになるため、
+     * その値へ {@code dimensions/zeloria_build} を連結すると
+     * {@code world/overworld/dimensions/zeloria_build} という不正なパスになるため、
      * このメソッドでは<b>ワールドコンテナから直接</b>構造を組み立てる。
      * <p>
      * レベル名はメインワールド名の先頭セグメントのみを使用し、取得できない場合は
@@ -236,7 +238,8 @@ public class LayerManager {
         return container
                 .resolve(mainWorldLevelName(container))
                 .resolve("dimensions")
-                .resolve("minecraft")
+                // ワールドキーの名前空間と一致させる（Paper は dimensions/<namespace>/<key> を参照する）。
+                .resolve(BuildManager.BUILD_NAMESPACE)
                 .normalize();
     }
 
@@ -281,18 +284,48 @@ public class LayerManager {
     }
 
     /**
-     * インスタンス ID から Bukkit のワールド名を導出する。
+     * インスタンス ID から Bukkit のワールド名（ディメンションキー文字列）を導出する。
      * <p>
-     * Paper 26.3 は {@code instanceId} を標準配置先
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>} から解決するため、
-     * {@link WorldCreator} には {@code instanceId} のみを渡す。名前にスラッシュを含めると
-     * 追加の移設処理が走りパス不整合を招く。
+     * レイヤーインスタンスは {@code zeloria_build} 名前空間のカスタムディメンションとして
+     * ロードするため、名前は {@code zeloria_build:<instanceId>} となる。
+     * 実体は {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>}。
+     * 名前にスラッシュを含めると追加の移設処理が走りパス不整合を招くため、
+     * ID 部分にはパス区切り文字を許可しない。
      *
      * @param instanceId インスタンス ID
-     * @return {@code instanceId}
+     * @return {@code zeloria_build:<instanceId>}
      */
     public static String worldName(String instanceId) {
-        return Objects.requireNonNull(instanceId, "instanceId");
+        Objects.requireNonNull(instanceId, "instanceId");
+        // ディメンションキーの path は小文字のみ許可されるため正規化する。
+        return BuildManager.BUILD_NAMESPACE + ":" + instanceId.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 指定 ID がレイヤーインスタンス ID の形式（{@code <templateId>_instance_<番号>}）か判定する。
+     * <p>
+     * レイヤーインスタンスと建築ワールドは同じ {@code zeloria_build} 名前空間を共有するため、
+     * 建築ワールド側（{@link BuildManager#isBuildWorld(World)}）がインスタンスを
+     * 建築ワールドと誤認しないようにするための識別子として使用する。
+     *
+     * @param id 判定対象の ID
+     * @return レイヤーインスタンス ID の形式なら {@code true}
+     */
+    public static boolean isInstanceId(String id) {
+        return id != null && id.matches(".+_instance_\\d+");
+    }
+
+    /**
+     * 指定ディレクトリが本プラグインの生成したレイヤーインスタンスか判定する。
+     * <p>
+     * 生成時に書き込まれる所有権マーカー（{@link #OWNERSHIP_MARKER_FILE}）の有無で判定する。
+     * 建築ワールド（{@code zeloria_build} 名前空間を共有する）と区別するために使用する。
+     *
+     * @param directory 判定対象ディレクトリ
+     * @return レイヤーインスタンスのディレクトリなら {@code true}
+     */
+    public static boolean isInstanceDirectory(Path directory) {
+        return directory != null && Files.isRegularFile(directory.resolve(OWNERSHIP_MARKER_FILE));
     }
 
     /**
@@ -300,7 +333,7 @@ public class LayerManager {
      *
      * @param templateId テンプレート ID（{@code WorldData} 配下のディレクトリ名）
      * @param instanceId 生成するインスタンス ID
-     *                   （{@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft} 配下のディレクトリ名）
+     *                   （{@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build} 配下のディレクトリ名）
      * @return ロードされたワールド
      * @throws IllegalArgumentException テンプレートが存在しない、または ID が不正な場合
      * @throws IllegalStateException    同一 ID のインスタンスが既に存在する、またはワールドのロードに失敗した場合
@@ -323,7 +356,7 @@ public class LayerManager {
         Path instanceDir = prepareInstancePath(instanceId);
 
         try {
-            copyDirectory(templateDir, instanceDir);
+            copyWorldFiles(templateDir, instanceDir);
             // 本プラグインが生成したディレクトリであることを記録する。
             // クリーンアップはこのマーカーが存在するディレクトリのみを削除対象とする。
             writeOwnershipMarker(instanceDir, templateId, instanceId);
@@ -339,7 +372,7 @@ public class LayerManager {
     /**
      * テンプレートを複製し、レイヤーインスタンスを非同期で生成・ロードする。
      * <p>
-     * ファイルコピー（{@link #copyDirectory(Path, Path)}）は専用スレッドで実行し、
+     * ファイルコピー（{@link #copyWorldFiles(Path, Path)}）は専用スレッドで実行し、
      * {@link Bukkit#createWorld(WorldCreator)} を含むワールド操作は
      * {@link Bukkit#getScheduler()} 経由でメインスレッドへ戻してから実行する。
      * これにより大容量テンプレートの複製中もサーバーの Tick を止めない。
@@ -399,7 +432,7 @@ public class LayerManager {
     private Path copyTemplate(Path templateDir, Path instanceDir,
                               String templateId, String instanceId) {
         try {
-            copyDirectory(templateDir, instanceDir);
+            copyWorldFiles(templateDir, instanceDir);
             // マーカーが無いとクリーンアップ対象外となり残骸が残るため、複製直後に書き込む。
             writeOwnershipMarker(instanceDir, templateId, instanceId);
             return instanceDir;
@@ -465,9 +498,8 @@ public class LayerManager {
      * @throws IllegalStateException 同名ワールド／ディレクトリが既に存在する場合
      */
     private Path prepareInstancePath(String instanceId) {
-        // Bukkit 上のワールド名は instanceId そのもの（実体は dimensions/minecraft 配下）。
         String bukkitWorldName = LayerManager.worldName(instanceId);
-        if (Bukkit.getWorld(bukkitWorldName) != null) {
+        if (findLoadedInstanceWorld(instanceId) != null) {
             throw new IllegalStateException("ワールド '" + bukkitWorldName + "' は既にロードされています。");
         }
 
@@ -500,11 +532,17 @@ public class LayerManager {
         String bukkitWorldName = LayerManager.worldName(instanceId);
         World world;
         try {
-            // ワールド名は instanceId のみを渡す。Paper 26.3 は実体を
-            // <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId> から解決する。
-            WorldCreator creator = new WorldCreator(bukkitWorldName)
-                    .environment(World.Environment.NORMAL)
-                    .type(WorldType.FLAT)
+            // ディメンションキーを zeloria_build 名前空間へ変更する。
+            // テンプレートの level.dat に含まれる minecraft:overworld のキーと衝突せず、
+            // 「duplicate of another world」でロードを拒否されない。
+            NamespacedKey dimensionKey = Objects.requireNonNull(
+                    NamespacedKey.fromString(bukkitWorldName),
+                    "dimensionKey");
+            WorldCreator creator = WorldCreator.ofKey(dimensionKey)
+                    .environment(World.Environment.CUSTOM)
+                    .customEnvironmentKey(dimensionKey)
+                    // スポーン位置を常時ロードしない（新規生成時の負荷・競合を避ける）。
+                    .keepSpawnLoaded(TriState.FALSE)
                     .generateStructures(false)
                     // 空の ChunkGenerator によりブロック生成を抑止する（Void ワールド）。
                     .generator(new ChunkGenerator() {
@@ -532,6 +570,8 @@ public class LayerManager {
         // オンメモリキャッシュのキーは常にインスタンス ID で統一する。
         loadedWorlds.put(instanceId, world);
         instanceTemplates.put(instanceId, templateId);
+        // 生成直後であることを記録し、転送側がチャンク準備待ちの遅延を取れるようにする。
+        newlyCreatedInstances.put(instanceId, System.currentTimeMillis());
 
         // LayerData に npcs が定義されていれば、ワールドロード直後に配置する。
         // NPC 配置の失敗でレイヤー生成自体を失敗させない。
@@ -702,6 +742,33 @@ public class LayerManager {
     }
 
     /**
+     * 指定インスタンスが「新規生成直後」かどうかを返す。
+     * <p>
+     * 生成直後はテレポート先チャンクの準備が整っておらず転送に失敗しやすいため、
+     * 転送側はこのメソッドが {@code true} を返す間だけ遅延を長めに取る。
+     * 生成から {@link #NEWLY_CREATED_WINDOW_MILLIS} 経過したインスタンスは
+     * 既存扱いとなり {@code false} を返す。
+     *
+     * @param instanceId インスタンス ID（ワールドキー {@code zeloria_build:<instanceId>} の ID 部分）
+     * @return 新規生成直後なら {@code true}
+     */
+    public boolean isNewlyCreated(String instanceId) {
+        if (instanceId == null) {
+            return false;
+        }
+        Long createdAt = newlyCreatedInstances.get(instanceId);
+        if (createdAt == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() - createdAt > NEWLY_CREATED_WINDOW_MILLIS) {
+            // 期限切れの記録は破棄し、以降は既存インスタンスとして扱う。
+            newlyCreatedInstances.remove(instanceId, createdAt);
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * テンプレートをロックし、新規レイヤーの生成を抑止する。
      * <p>
      * 建築モードがテンプレートを上書き保存している間、複製処理が
@@ -753,6 +820,7 @@ public class LayerManager {
         copyExecutor.shutdownNow();
         pendingInstances.clear();
         pendingTemplates.clear();
+        newlyCreatedInstances.clear();
     }
 
     /**
@@ -792,7 +860,7 @@ public class LayerManager {
      * ワールド内にプレイヤーがいる場合は、メインワールド／ハブ等の別ワールドへ
      * 退避させてからアンロードする（キックは発生しない）。
      * ディレクトリ削除は
-     * {@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>} 直下のみを対象とし、
+     * {@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>} 直下のみを対象とし、
      * バニラの標準ディメンション（{@code overworld} / {@code the_nether} / {@code the_end}）や
      * インスタンス配置先の外側は決して削除しない。
      * <p>
@@ -827,8 +895,8 @@ public class LayerManager {
 
         World world = loadedWorlds.get(instanceId);
         if (world == null) {
-            // キャッシュに無くても Bukkit 側でロード済みなら拾う（名前は instanceId）。
-            world = Bukkit.getWorld(bukkitWorldName);
+            // キャッシュに無くても Bukkit 側でロード済みなら拾う（キーは zeloria_build:<instanceId>）。
+            world = findLoadedInstanceWorld(instanceId);
         }
 
         // プライマリワールド（メインワールド）は誤って削除しないよう保護する。
@@ -891,6 +959,7 @@ public class LayerManager {
 
         loadedWorlds.remove(instanceId);
         instanceTemplates.remove(instanceId);
+        newlyCreatedInstances.remove(instanceId);
 
         if (!Files.exists(deleteTarget)) {
             // ワールドが未ロードかつディレクトリも無い場合は、既に削除済みとして成功扱いにする。
@@ -1040,7 +1109,7 @@ public class LayerManager {
                 continue;
             }
 
-            boolean loaded = isLoaded(instanceId) || Bukkit.getWorld(worldName(instanceId)) != null;
+            boolean loaded = isLoaded(instanceId) || findLoadedInstanceWorld(instanceId) != null;
             if (loaded) {
                 // ロード中のワールドは退避・アンロードを伴う通常の削除経路に委譲する。
                 if (unloadAndDeleteLayer(instanceId)) {
@@ -1130,69 +1199,42 @@ public class LayerManager {
     }
 
     /**
-     * テンプレートディレクトリを再帰的にコピーする。
+     * テンプレートのワールドファイルをインスタンスへ複製する。
      * <p>
-     * {@link #EXCLUDED_FILES} に含まれるファイルはコピーせず、
-     * {@link #EXCLUDED_DIRECTORIES} に含まれるディレクトリは
-     * {@link FileVisitResult#SKIP_SUBTREE} により中身ごと走査対象から除外する。
-     * テンプレート直下（ルート）は名前に関わらず常にコピー対象とする。
+     * {@link #WORLD_COPY_WHITELIST} に含まれる項目（{@code level.dat} と {@code region/}）だけを
+     * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
+     * {@code level.dat_old} などのメタデータやプレイヤーデータは一切コピーしない。
+     * 個別ファイルのコピー失敗は警告に留め、複製全体は継続する。
+     *
+     * @param source 複製元（テンプレートディレクトリ）
+     * @param target 複製先（インスタンスディレクトリ）
+     * @throws IOException 複製元の走査に失敗した場合
      */
-    private void copyDirectory(Path source, Path target) throws IOException {
-        Files.walkFileTree(source, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                Path relative = source.relativize(dir);
-
-                // ルート（相対パスが空）は常にコピーし、除外判定はその子孫にのみ適用する。
-                if (!relative.toString().isEmpty() && isExcludedDirectory(dir)) {
-                    return FileVisitResult.SKIP_SUBTREE;
+    private void copyWorldFiles(Path source, Path target) throws IOException {
+        try (Stream<Path> stream = Files.walk(source)) {
+            stream.forEach(path -> {
+                Path relative = source.relativize(path);
+                if (relative.getNameCount() == 0) {
+                    return;
                 }
-
-                Files.createDirectories(target.resolve(relative));
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (attrs.isRegularFile() && !isExcludedFile(file)) {
-                    Path destination = target.resolve(source.relativize(file));
-                    Files.createDirectories(destination.getParent());
-                    Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+                String topLevel = relative.getName(0).toString();
+                if (!WORLD_COPY_WHITELIST.contains(topLevel)) {
+                    return;
                 }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                // 個別エントリの失敗（ロック中など）でコピー全体を中断しない。
-                plugin.getLogger().warning(
-                        "コピーできなかったエントリをスキップしました: " + file + " (" + exc.getMessage() + ")");
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    /**
-     * ファイルがコピー除外対象か判定する。
-     * 大文字・小文字の差異に影響されないよう小文字で比較する。
-     */
-    private boolean isExcludedFile(Path file) {
-        String name = fileNameLower(file);
-        return name != null && EXCLUDED_FILES.contains(name);
-    }
-
-    /**
-     * ディレクトリがコピー除外対象か判定する。
-     * 大文字・小文字の差異に影響されないよう小文字で比較する。
-     */
-    private boolean isExcludedDirectory(Path dir) {
-        String name = fileNameLower(dir);
-        return name != null && EXCLUDED_DIRECTORIES.contains(name);
-    }
-
-    private static String fileNameLower(Path path) {
-        Path fileName = path.getFileName();
-        return fileName == null ? null : fileName.toString().toLowerCase(Locale.ROOT);
+                Path targetPath = target.resolve(relative);
+                try {
+                    if (Files.isDirectory(path)) {
+                        Files.createDirectories(targetPath);
+                    } else {
+                        Files.createDirectories(targetPath.getParent());
+                        Files.copy(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException e) {
+                    plugin.getLogger().warning(
+                            "コピー失敗: " + path + " -> " + targetPath + " (" + e.getMessage() + ")");
+                }
+            });
+        }
     }
 
     /**
@@ -1376,12 +1418,34 @@ public class LayerManager {
     }
 
     /**
+     * 指定インスタンス ID のロード済みワールドを Bukkit から検索する。
+     * <p>
+     * レイヤーインスタンスは {@code zeloria_build:<instanceId>} キーでロードされるため、
+     * 名前文字列ではなくディメンションキーで照合する。
+     *
+     * @param instanceId インスタンス ID
+     * @return ロード済みのワールド。存在しない場合は {@code null}
+     */
+    private static World findLoadedInstanceWorld(String instanceId) {
+        NamespacedKey key = NamespacedKey.fromString(worldName(instanceId));
+        if (key == null) {
+            return null;
+        }
+        for (World world : Bukkit.getWorlds()) {
+            if (key.equals(world.getKey())) {
+                return world;
+            }
+        }
+        return null;
+    }
+
+    /**
      * インスタンス ID から展開先ディレクトリ
-     * （{@code <worldContainer>/<mainWorldLevel>/dimensions/minecraft/<instanceId>}）を解決する。
+     * （{@code <worldContainer>/<mainWorldLevel>/dimensions/zeloria_build/<instanceId>}）を解決する。
      * <p>
      * テンプレートのコピー先・存在チェック・削除対象はいずれもこのパスを参照する。
-     * Paper 26.3 の標準配置先と一致させることで、
-     * {@code LegacyCraftBukkitWorldMigration} による自動移設を発生させない。
+     * ワールドキーの名前空間（{@code zeloria_build}）と一致させることで、
+     * Paper がコピー済みのワールドデータをそのまま読み込む。
      *
      * @param instanceId インスタンス ID
      * @return インスタンスディレクトリ

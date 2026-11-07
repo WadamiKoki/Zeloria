@@ -8,6 +8,8 @@ import com.zeloria.world.LayerManager;
 import com.zeloria.world.PortalDefinition;
 import com.zeloria.core.LoggerService;
 import com.zeloria.core.MessageService;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.SoundCategory;
@@ -123,7 +125,12 @@ public class PortalListener implements Listener {
             return;
         }
 
-        if (!worldFuture.isDone()) {
+        // 生成が完了していない＝この転送のために新規生成されたインスタンス。
+        // 新規生成直後はチャンク準備に時間がかかり teleportAsync が失敗しやすいため、
+        // 転送側で遅延を長めに取れるようフラグを引き継ぐ。
+        boolean newlyCreated = !worldFuture.isDone();
+
+        if (newlyCreated) {
             // 複製・生成中は待機メッセージを出し、連続発動を防ぐためクールダウンを先に消費する。
             cooldowns.put(player.getUniqueId(), now);
             actionBar(player, "portal.creating", Map.of("layer_name", targetName));
@@ -147,7 +154,8 @@ public class PortalListener implements Listener {
                 if (!player.isOnline()) {
                     return;
                 }
-                beginWarp(player, portal, portalMatch, targetTemplate, targetName, targetWorld, now);
+                beginWarp(player, portal, portalMatch, targetTemplate, targetName,
+                        targetWorld, now, newlyCreated);
             };
             if (Bukkit.isPrimaryThread()) {
                 task.run();
@@ -159,9 +167,13 @@ public class PortalListener implements Listener {
 
     /**
      * 転送先ワールドの準備が完了した後に、転送先座標の算出とテレポートを開始する（メインスレッド専用）。
+     *
+     * @param newlyCreated {@code true} の場合は転送先ワールドを新規生成した直後
+     *                     （チャンク準備待ちの遅延を長めに取る）
      */
     private void beginWarp(Player player, PortalDefinition portal, LayerConfigService.PortalMatch portalMatch,
-                           String targetTemplate, String targetName, World targetWorld, long now) {
+                           String targetTemplate, String targetName, World targetWorld, long now,
+                           boolean newlyCreated) {
         cooldowns.put(player.getUniqueId(), now);
         actionBar(player, "portal.warping", Map.of("layer_name", targetName));
 
@@ -169,8 +181,17 @@ public class PortalListener implements Listener {
         World sourceWorld = player.getWorld();
         String sourceLayer = portalMatch.layer().getId();
 
-        // ワールドロード直後は転送先チャンクの準備が整っておらず teleportAsync が
-        // false を返すことがあるため、5 tick 待ってから転送を開始する。
+        // 新規生成直後はチャンク準備に時間がかかり teleportAsync が false を返すことがある。
+        // そのため新規生成時は 20 tick（1 秒）、既にロード済みなら 5 tick（0.25 秒）待つ。
+        LayerManager layerManager = plugin.getLayerManager();
+        boolean fresh = newlyCreated
+                || (layerManager != null && layerManager.isNewlyCreated(instanceIdOf(targetWorld)));
+        long delay = fresh ? 20L : 5L;
+        if (fresh) {
+            // 遅延中であることをプレイヤーへ明示する。
+            player.sendActionBar(Component.text("転送準備中...", NamedTextColor.GRAY));
+        }
+
         // teleportAsync の完了コールバックは実行スレッドが保証されないため、
         // プレイヤー操作を伴う処理はメインスレッドへ戻してから実行する。
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -182,7 +203,22 @@ public class PortalListener implements Listener {
                             player, portal, targetTemplate, targetName,
                             targetWorld, sourceWorld, sourceLayer, destination,
                             success, throwable)));
-        }, 5L);
+        }, delay);
+    }
+
+    /**
+     * ワールド名からインスタンス ID 部分（名前空間接頭辞を除いた値）を取り出す。
+     * <p>
+     * レイヤーインスタンスは {@code zeloria_build:<instanceId>} という名前でロードされるため、
+     * {@link LayerManager#isNewlyCreated(String)} へ渡す前に接頭辞を除去する。
+     *
+     * @param world 対象ワールド
+     * @return インスタンス ID
+     */
+    private static String instanceIdOf(World world) {
+        String name = world.getName();
+        int separator = name.indexOf(':');
+        return separator >= 0 ? name.substring(separator + 1) : name;
     }
 
     /**

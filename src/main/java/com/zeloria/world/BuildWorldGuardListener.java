@@ -2,6 +2,7 @@ package com.zeloria.world;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -38,6 +39,10 @@ public class BuildWorldGuardListener implements Listener {
 
     /**
      * 建築ワールドへのテレポートを検証する。
+     * <p>
+     * 建築権限（{@link BuildManager#BUILD_PERMISSION}）を持たないプレイヤーでも、
+     * OP 権限（{@link Player#isOp()}）を持つ場合は許可する。サーバー管理者が
+     * 権限ノード未付与のまま転送できなくなる事態を避けるため。
      *
      * @param event テレポートイベント
      */
@@ -49,19 +54,40 @@ public class BuildWorldGuardListener implements Listener {
         }
 
         // キャンセル対象は「建築ワールド（zeloria_build 名前空間）への入場」のみ。
-        // 通常のレイヤーワールド（minecraft 名前空間）への転送や、
+        // 同じ名前空間を共有するレイヤーインスタンス（zeloria_build:<instanceId>）や、
         // 建築ワールドからの退出はキャンセルしない。
         if (!BuildManager.BUILD_NAMESPACE.equals(destination.getWorld().getKey().getNamespace())) {
             return;
         }
-
-        Player player = event.getPlayer();
-        if (player.hasPermission(BuildManager.BUILD_PERMISSION)) {
+        if (!buildManager.isActiveBuildWorld(destination.getWorld())) {
             return;
         }
 
-        event.setCancelled(true);
-        player.sendMessage(DENIED);
+        Player player = event.getPlayer();
+        if (!player.hasPermission(BuildManager.BUILD_PERMISSION) && !player.isOp()) {
+            event.setCancelled(true);
+            player.sendMessage(DENIED);
+        }
+
+        logDebug(player, destination, event.isCancelled());
+    }
+
+    /**
+     * 建築ワールド向けテレポートの判定結果をログに出力する。
+     * <p>
+     * 転送失敗の原因（イベントキャンセルか、それ以外か）を切り分けるための調査用ログ。
+     *
+     * @param player      対象プレイヤー
+     * @param destination 転送先
+     * @param cancelled   判定後のキャンセル状態
+     */
+    private void logDebug(Player player, Location destination, boolean cancelled) {
+        String worldName = destination != null && destination.getWorld() != null
+                ? destination.getWorld().getName()
+                : "null";
+        Bukkit.getLogger().info("[BuildGuardDebug] teleport event: player=" + player.getName()
+                + ", to=" + worldName
+                + ", cancelled=" + cancelled);
     }
 
     /**
