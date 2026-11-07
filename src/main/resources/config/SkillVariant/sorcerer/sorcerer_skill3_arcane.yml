@@ -1,0 +1,12 @@
+variantId: sorcerer_skill3_arcane
+baseSkill: sorcerer_skill3
+displayName: "天雷崩落"
+description: "天から無数の雷を落とす"
+actions:
+  - type: DAMAGE
+    multiplier: 3.5
+  - type: PARTICLE
+    particle: ELECTRIC_SPARK
+    count: 30
+  - type: SOUND
+    sound: ENTITY_LIGHTNING_BOLT_THUNDER

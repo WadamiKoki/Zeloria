@@ -1,0 +1,12 @@
+variantId: vanguard_skill1_charge
+baseSkill: vanguard_skill1
+displayName: "破軍突進"
+description: "陣形ごと敵を薙ぎ払う突進"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: PARTICLE
+    particle: CRIT
+    count: 15
+  - type: SOUND
+    sound: ENTITY_RAVAGER_ROAR

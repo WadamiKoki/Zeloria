@@ -1,0 +1,12 @@
+variantId: knight_skill1_guard
+baseSkill: knight_skill1
+displayName: "聖盾爆砕"
+description: "盾の衝撃を爆発させ、周囲を吹き飛ばす"
+actions:
+  - type: DAMAGE
+    multiplier: 2.5
+  - type: PARTICLE
+    particle: CRIT
+    count: 12
+  - type: SOUND
+    sound: BLOCK_ANVIL_LAND

@@ -3,6 +3,7 @@ package com.zeloria.gui;
 import com.zeloria.core.Zeloria;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerService;
+import com.zeloria.player.PlayerStatsService;
 import com.zeloria.skill.ClassTreeData;
 import com.zeloria.skill.ClassTreeManager;
 import com.zeloria.skill.ClassTreeNode;
@@ -18,6 +19,8 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -28,6 +31,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -62,6 +66,15 @@ public final class ClassTreeGUI implements Listener {
 
     /** 固定ボタン列を埋める背景アイテム。 */
     private static final Material FILLER_MATERIAL = Material.GRAY_STAINED_GLASS_PANE;
+
+    /** リセット確認 GUI のサイズ（3 行チェスト）。 */
+    private static final int RESET_CONFIRM_SIZE = 27;
+
+    /** リセット確認 GUI の「リセットする」スロット。 */
+    private static final int RESET_CONFIRM_ACCEPT_SLOT = 11;
+
+    /** リセット確認 GUI の「キャンセル」スロット。 */
+    private static final int RESET_CONFIRM_CANCEL_SLOT = 15;
 
     private static final GuiSound SOUND_OPEN =
             new GuiSound("block.ender_chest.open", 0.8f, 1.2f);
@@ -259,6 +272,17 @@ public final class ClassTreeGUI implements Listener {
             return item;
         }
 
+        // 解放済み・解放可能ノードは光沢（エンチャント＋HIDE_ENCHANTS）で強調する。
+        if (status == AllocationStatus.ALLOCATED
+                || status == AllocationStatus.UNLOCKABLE) {
+            Enchantment glow = Registry.ENCHANTMENT.get(
+                    NamespacedKey.minecraft("unbreaking"));
+            if (glow != null) {
+                meta.addEnchant(glow, 1, true);
+            }
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        }
+
         meta.displayName(Component.empty()
                 .append(statusPrefix(status))
                 .append(node.displayName()));
@@ -267,12 +291,12 @@ public final class ClassTreeGUI implements Listener {
         List<Component> lore = new ArrayList<>();
         lore.addAll(node.description());
 
-        if (!node.effects().isEmpty()) {
+        if (!node.effectLore().isEmpty()) {
             if (!lore.isEmpty()) {
                 lore.add(Component.empty());
             }
             lore.add(MINI.deserialize("<gray>効果</gray>"));
-            lore.addAll(node.effects());
+            lore.addAll(node.effectLore());
         }
 
         lore.add(Component.empty());
@@ -353,7 +377,7 @@ public final class ClassTreeGUI implements Listener {
     private ItemStack createResetButton(int points, int level) {
         return createButton(Material.BARRIER, "<red><bold>ツリーをリセット</bold></red>",
                 List.of(
-                        "<gray>Shift+クリックで解放済みノードをすべて戻し、</gray>",
+                        "<gray>クリックで確認画面を開き、解放済みノードをすべて戻して</gray>",
                         "<gray>消費したツリーポイントを返還します。</gray>",
                         "",
                         "<yellow>残りツリーポイント: " + points + "</yellow>",
@@ -440,6 +464,11 @@ public final class ClassTreeGUI implements Listener {
             return;
         }
 
+        if (holder.mode == HolderMode.RESET_CONFIRM) {
+            handleResetConfirm(player, event.getRawSlot());
+            return;
+        }
+
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         if (data == null) {
             SOUND_ERROR.play(player);
@@ -463,8 +492,7 @@ public final class ClassTreeGUI implements Listener {
                 0, tree.maxScrollOffset());
 
         if (slot == tree.resetSlot()) {
-            handleReset(player, top, event.isShiftClick(), data, classId,
-                    classTree, tree, offset);
+            handleReset(player, data, classId);
             return;
         }
         if (slot == tree.closeSlot()) {
@@ -488,27 +516,104 @@ public final class ClassTreeGUI implements Listener {
         handleNodeClick(player, top, data, classId, classTree, tree, offset, nodeId);
     }
 
-    private void handleReset(Player player, Inventory top, boolean shiftClick,
-                             PlayerData data, String classId, ClassTreeData classTree,
-                             TreeData tree, int offset) {
-        if (!shiftClick) {
+    /**
+     * リセット確認 GUI を開く。
+     */
+    private void handleReset(Player player, PlayerData data, String classId) {
+        SOUND_CLICK.play(player);
+
+        int allocated = data.getAllocatedClassNodes(classId).size();
+        Holder holder = new Holder(this, HolderMode.RESET_CONFIRM);
+        Inventory inventory = Bukkit.createInventory(
+                holder,
+                RESET_CONFIRM_SIZE,
+                MINI.deserialize("<dark_red><bold>ツリーのリセット確認</bold></dark_red>"));
+        holder.inventory = inventory;
+
+        ItemStack filler = createFiller();
+        for (int slot = 0; slot < RESET_CONFIRM_SIZE; slot++) {
+            inventory.setItem(slot, filler);
+        }
+
+        inventory.setItem(RESET_CONFIRM_ACCEPT_SLOT, createButton(
+                Material.RED_CONCRETE,
+                "<red><bold>リセットする</bold></red>",
+                List.of(
+                        "<gray>解放済みノード: <yellow>" + allocated + "</yellow></gray>",
+                        "<gray>消費したツリーポイントをすべて返還します。</gray>",
+                        "<dark_red>この操作は取り消せません。</dark_red>")));
+        inventory.setItem(RESET_CONFIRM_CANCEL_SLOT, createButton(
+                Material.LIME_CONCRETE,
+                "<green><bold>キャンセル</bold></green>",
+                List.of("<gray>ツリー画面に戻ります。</gray>")));
+
+        player.openInventory(inventory);
+    }
+
+    /**
+     * リセット確認 GUI のクリックを処理する。
+     */
+    private void handleResetConfirm(Player player, int slot) {
+        if (slot == RESET_CONFIRM_CANCEL_SLOT) {
             SOUND_CLICK.play(player);
-            notify(player, "<yellow>リセットするには Shift+クリックしてください。</yellow>");
+            PlayerData data = PlayerData.getCached(player.getUniqueId());
+            player.closeInventory();
+            reopenTree(player, data);
+            return;
+        }
+        if (slot != RESET_CONFIRM_ACCEPT_SLOT) {
             return;
         }
 
-        boolean hadNodes = !data.getAllocatedClassNodes(classId).isEmpty();
-        int refund = classTreeService.reset(data, classId);
-        if (!hadNodes) {
+        PlayerData data = PlayerData.getCached(player.getUniqueId());
+        if (data == null) {
+            SOUND_ERROR.play(player);
+            notify(player, "<red>プレイヤーデータが読み込まれていません。</red>");
+            player.closeInventory();
+            return;
+        }
+
+        String classId = data.getClassData().currentClassIdOrNull();
+        if (classId == null || classId.isBlank()) {
+            SOUND_ERROR.play(player);
+            notify(player, "<red>クラスが選択されていません。</red>");
+            player.closeInventory();
+            return;
+        }
+
+        if (data.getAllocatedClassNodes(classId).isEmpty()) {
             SOUND_ERROR.play(player);
             notify(player, "<gray>リセットするノードがありません。</gray>");
+            player.closeInventory();
+            reopenTree(player, data);
             return;
+        }
+
+        int refund = classTreeService.reset(data, classId);
+        PlayerStatsService statsService = plugin.getPlayerStatsService();
+        if (statsService != null) {
+            statsService.apply(player);
         }
 
         SOUND_CLICK.play(player);
         notify(player, "<green>ツリーをリセットしました。</green> <gray>返還: <yellow>"
                 + refund + "</yellow></gray>");
-        render(top, data, classId, classTree, tree, offset);
+        player.closeInventory();
+        reopenTree(player, data);
+    }
+
+    /**
+     * ツリー GUI を次のティックで再描画する。
+     */
+    private void reopenTree(Player player, PlayerData data) {
+        if (data == null) {
+            return;
+        }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) {
+                openNow(player, data);
+            }
+        });
     }
 
     private void handleScroll(Player player, Inventory top, PlayerData data,
@@ -554,6 +659,10 @@ public final class ClassTreeGUI implements Listener {
                         data, classId, node.id());
                 if (result == AllocationResult.SUCCESS) {
                     SOUND_CLICK.play(player);
+                    PlayerStatsService statsService = plugin.getPlayerStatsService();
+                    if (statsService != null) {
+                        statsService.apply(player);
+                    }
                     player.sendActionBar(Component.empty()
                             .append(MINI.deserialize("<green>解放しました: </green>"))
                             .append(node.displayName()));
@@ -597,7 +706,8 @@ public final class ClassTreeGUI implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onInventoryClose(InventoryCloseEvent event) {
         Holder holder = resolveHolder(event.getView().getTopInventory());
-        if (holder == null || holder.gui != this) {
+        if (holder == null || holder.gui != this
+                || holder.mode != HolderMode.TREE) {
             return;
         }
         scrollOffsets.remove(event.getPlayer().getUniqueId());
@@ -660,13 +770,26 @@ public final class ClassTreeGUI implements Listener {
     /**
      * この GUI のインベントリを識別するホルダー。
      */
+    private enum HolderMode {
+        /** クラスツリー本体。 */
+        TREE,
+        /** リセット確認画面。 */
+        RESET_CONFIRM
+    }
+
     private static final class Holder implements InventoryHolder {
 
         private final ClassTreeGUI gui;
+        private final HolderMode mode;
         private Inventory inventory;
 
         private Holder(ClassTreeGUI gui) {
+            this(gui, HolderMode.TREE);
+        }
+
+        private Holder(ClassTreeGUI gui, HolderMode mode) {
             this.gui = gui;
+            this.mode = mode;
         }
 
         @Override

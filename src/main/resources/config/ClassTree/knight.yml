@@ -1,139 +1,161 @@
 # ============================================================================
 # ナイト用クラスツリー
-# ----------------------------------------------------------------------------
 # 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
-# 同じノード ID でも、クラスごとに表示名・効果・条件を変えられる。
 # ============================================================================
 
 id: "knight"
-title: "<gradient:#FFD700:#B8860B><bold>ナイト・ツリー</bold></gradient>"
+title: "<gradient:#4FC3F7:#1565C0><bold>ナイト・ツリー</bold></gradient>"
 
 nodes:
   root:
-    displayName: "<gold><bold>騎士の誓い</bold></gold>"
-    description:
-      - "<gray>ナイトのクラスツリーの起点。</gray>"
-      - "<gray>守りと攻め、どちらの道もここから始まる。</gray>"
+    displayName: "<aqua><bold>騎士の誓い</bold></aqua>"
+    description: ["<gray>ナイトのクラスツリーの起点。</gray>", "<gray>守りと攻めの基盤を築く。</gray>"]
     cost: 0
-    effects:
-      - "<gold>・クラスツリーを解放できるようになる</gold>"
+    effectLore: ["<green>・クラスツリーを解放できるようになる</green>"]
 
-  offense_1:
-    displayName: "<red>剣術鍛錬 I</red>"
-    description:
-      - "<gray>基本の斬撃を繰り返し、確実な一撃を身につける。</gray>"
+  green_1:
+    displayName: "<green>剣術鍛錬 I</green>"
+    description: ["<gray>基本の斬撃を反復し、攻撃力を高める。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<red>・攻撃力 +2</red>"
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
 
-  offense_2:
-    displayName: "<red>剣術鍛錬 II</red>"
-    description:
-      - "<gray>体重を乗せた重い斬撃を習得する。</gray>"
-    cost: 2
-    requires: ["offense_1"]
-    effects:
-      - "<red>・攻撃力 +3</red>"
-      - "<red>・クリティカルダメージ +5%</red>"
-
-  offense_3:
-    displayName: "<red>鎧砕き</red>"
-    description:
-      - "<gray>敵の防御ごと叩き割る強力な一振り。</gray>"
-    cost: 2
-    requires: ["offense_2"]
-    effects:
-      - "<red>・攻撃力 +4</red>"
-      - "<red>・物理防御無視 +5%</red>"
-
-  offense_4:
-    displayName: "<dark_red>獅子の一撃</dark_red>"
-    description:
-      - "<gray>騎士の全てを込めた、決戦の一撃。</gray>"
-    cost: 3
-    requires: ["offense_3"]
-    effects:
-      - "<red>・攻撃力 +8</red>"
-      - "<red>・クリティカル率 +5%</red>"
-
-  precision_1:
-    displayName: "<aqua>守勢 I</aqua>"
-    description:
-      - "<gray>盾の構えを学び、敵の攻撃を受け流す。</gray>"
+  green_2:
+    displayName: "<green>鉄壁の構え I</green>"
+    description: ["<gray>防御の基本を身につける。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<aqua>・防御力 +2</aqua>"
+    effectLore: ["<green>・最大体力 +6</green>"]
+    statEffects: { maxHealth: 6.0 }
 
-  precision_2:
-    displayName: "<aqua>守勢 II</aqua>"
-    description:
-      - "<gray>重装備でも崩れない安定した防御姿勢。</gray>"
-    cost: 2
-    requires: ["precision_1"]
-    effects:
-      - "<aqua>・防御力 +3</aqua>"
-      - "<aqua>・最大HP +5</aqua>"
-
-  precision_3:
-    displayName: "<aqua>鉄壁</aqua>"
-    description:
-      - "<gray>あらゆる攻撃を弾く、揺るぎない守り。</gray>"
-    cost: 2
-    requires: ["precision_2"]
-    effects:
-      - "<aqua>・防御力 +4</aqua>"
-      - "<aqua>・最大HP +10</aqua>"
-
-  utility_1:
-    displayName: "<yellow>鼓舞 I</yellow>"
-    description:
-      - "<gray>周囲を奮い立たせる騎士の統率力。</gray>"
+  green_3:
+    displayName: "<green>盾術訓練 I</green>"
+    description: ["<gray>盾で受け流す技術を磨く。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<yellow>・最大HP +5</yellow>"
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
 
-  utility_2:
-    displayName: "<yellow>鼓舞 II</yellow>"
-    description:
-      - "<gray>戦場を支える指揮官としての立ち振る舞い。</gray>"
+  green_4:
+    displayName: "<green>剣術鍛錬 II</green>"
+    description: ["<gray>重い一撃を扱えるようになる。</gray>"]
+    cost: 1
+    requires: ["green_1"]
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
+
+  green_5:
+    displayName: "<green>鉄壁の構え II</green>"
+    description: ["<gray>守りをさらに堅固にする。</gray>"]
+    cost: 1
+    requires: ["green_2"]
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
+
+  green_6:
+    displayName: "<green>持久力錬成</green>"
+    description: ["<gray>長期戦に耐える体力を養う。</gray>"]
+    cost: 1
+    requires: ["green_3"]
+    effectLore: ["<green>・最大体力 +4</green>"]
+    statEffects: { maxHealth: 4.0 }
+
+  green_7:
+    displayName: "<green>守護の心得</green>"
+    description: ["<gray>防御の効率を高める。</gray>"]
+    cost: 1
+    requires: ["green_4"]
+    effectLore: ["<green>・防御力 +5%</green>"]
+    statEffects: { defense1Percent: 5.0 }
+
+  blue_1:
+    displayName: "<aqua><bold>シールドバッシュ強化 I</bold></aqua>"
+    description: ["<gray>盾撃スキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_4", "green_5"]
+    effectLore: ["<aqua>・スキル1のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_knight_skill1: 0.1 }
+
+  blue_2:
+    displayName: "<aqua><bold>ホーリーストライク強化 I</bold></aqua>"
+    description: ["<gray>聖なる一撃の威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_5", "green_6"]
+    effectLore: ["<aqua>・スキル2のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_knight_skill2: 0.1 }
+
+  blue_3:
+    displayName: "<aqua><bold>ガーディアン強化 I</bold></aqua>"
+    description: ["<gray>守護スキルの効果を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_6", "green_7"]
+    effectLore: ["<aqua>・スキル3のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_knight_skill3: 0.1 }
+
+  blue_4:
+    displayName: "<aqua><bold>騎士の極意</bold></aqua>"
+    description: ["<gray>盾撃スキルの完成度を高める。</gray>"]
+    cost: 1
+    requires: ["blue_1"]
+    effectLore: ["<aqua>・スキル1のダメージ +5%</aqua>"]
+    skillEffects: { skillDamage_knight_skill1: 0.05 }
+
+  red_1:
+    displayName: "<red><bold>聖盾爆砕</bold></red>"
+    description: ["<gray>盾の衝撃を爆発させ、周囲を吹き飛ばす。</gray>"]
     cost: 2
-    requires: ["utility_1"]
-    effects:
-      - "<yellow>・最大HP +5</yellow>"
-      - "<yellow>・HP自然回復 +1</yellow>"
+    requires: ["blue_1"]
+    effectLore: ["<red>・シールドバッシュが聖盾爆砕に変化</red>"]
+    replaceSkill: "knight_skill1_guard"
 
-  utility_3:
-    displayName: "<yellow>不動の意志</yellow>"
-    description:
-      - "<gray>痛みに耐え、前線に立ち続ける精神力。</gray>"
+  red_2:
+    displayName: "<red><bold>裁きの光</bold></red>"
+    description: ["<gray>聖なる光で敵を貫く。</gray>"]
     cost: 2
-    requires: ["utility_2"]
-    effects:
-      - "<yellow>・最大HP +10</yellow>"
-      - "<yellow>・被ダメージ軽減 +3%</yellow>"
+    requires: ["blue_2"]
+    effectLore: ["<red>・ホーリーストライクが裁きの光に変化</red>"]
+    replaceSkill: "knight_skill2_guard"
 
-  fusion:
-    displayName: "<light_purple>攻守一体</light_purple>"
-    description:
-      - "<gray>攻撃・守勢・鼓舞のうち 2 系統を修めた者だけが</gray>"
-      - "<gray>習得できる複合技術。</gray>"
-    cost: 3
-    requiresAny: ["offense_2", "precision_2", "utility_2"]
-    effects:
-      - "<light_purple>・攻撃力 +3</light_purple>"
-      - "<light_purple>・防御力 +3</light_purple>"
+  red_3:
+    displayName: "<red><bold>不落の守護</bold></red>"
+    description: ["<gray>味方を守る強固な障壁を展開する。</gray>"]
+    cost: 2
+    requires: ["blue_3"]
+    effectLore: ["<red>・ガーディアンが不落の守護に変化</red>"]
+    replaceSkill: "knight_skill3_guard"
 
-  ultimate:
-    displayName: "<gold><bold>聖騎士の威光</bold></gold>"
-    description:
-      - "<gray>ナイトの最終奥義。守りを力に変えて戦場を制する。</gray>"
-    cost: 5
-    requires: ["fusion"]
-    requiresAny: ["offense_3", "precision_3", "utility_3"]
-    effects:
-      - "<gold>・攻撃力 +5</gold>"
-      - "<gold>・防御力 +5</gold>"
-      - "<gold>・最大HP +20</gold>"
+  green_8:
+    displayName: "<green>剣術鍛錬 III</green>"
+    description: ["<gray>騎士団長級の剣技を身につける。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・攻撃力 +3</green>"]
+    statEffects: { attackPower: 3.0 }
+
+  green_9:
+    displayName: "<green>鉄壁の構え III</green>"
+    description: ["<gray>揺るがぬ守りを完成させる。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・最大体力 +6</green>"]
+    statEffects: { maxHealth: 6.0 }
+
+  green_10:
+    displayName: "<green>盾術訓練 II</green>"
+    description: ["<gray>あらゆる攻撃を受け止める。</gray>"]
+    cost: 1
+    requires: ["red_2"]
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
+
+  green_11:
+    displayName: "<green><bold>騎士の極意</bold></green>"
+    description: ["<gray>騎士の体力を極限まで高める。</gray>"]
+    cost: 2
+    requiresAny: ["green_8", "green_9", "green_10"]
+    effectLore: ["<green>・最大体力 +5%</green>"]
+    statEffects: { maxHealthPercent: 5.0 }

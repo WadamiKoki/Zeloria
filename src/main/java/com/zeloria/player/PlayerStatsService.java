@@ -4,11 +4,15 @@ import com.zeloria.combat.CombatService;
 import com.zeloria.combat.CombatStateService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.skill.ClassManager;
+import com.zeloria.skill.ClassTreeService;
 import com.zeloria.skill.LevelService;
 import org.bukkit.entity.Player;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.DoubleConsumer;
+import java.util.function.DoubleSupplier;
 
 /**
  * プレイヤーの RPG ステータスを Bukkit のプレイヤーへ反映するサービス。
@@ -89,7 +93,103 @@ public final class PlayerStatsService {
             return;
         }
         refreshClassStats(data);
+        applyClassTreeStats(data);
         apply(player, data.getStats());
+    }
+
+    /**
+     * 解放済みツリーノードの {@code statEffects} を基礎ステータスへ加算する。
+     * <p>
+     * 計算順序は「基礎値 → 装備補正 → ツリー固定値 → ツリー割合」。
+     * 割合キーは {@code <項目名>Percent}（例: {@code attackPowerPercent}）。
+     * 装備補正は {@link PlayerStats.Bonuses} に分離されているため、ここでは
+     * 基礎値に対して割合を計算し、基礎値側へ上乗せする（基礎値が 0 の項目のみ
+     * 装備補正込みの現在値を基準にする）。
+     */
+    private void applyClassTreeStats(PlayerData data) {
+        ClassTreeService classTreeService = plugin.getClassTreeService();
+        if (classTreeService == null) {
+            return;
+        }
+        String classId = data.getClassData().currentClassIdOrNull();
+        if (classId == null || classId.isBlank()) {
+            return;
+        }
+        ClassManager classManager = plugin.getClassManager();
+        if (classManager == null
+                || classManager.current(data.getClassData()).isEmpty()) {
+            // refreshClassStats が基礎値を更新できていない場合は、
+            // ツリー効果を重複加算しないよう何もしない。
+            return;
+        }
+
+        Map<String, Double> effects = classTreeService.getAggregatedStatEffects(data, classId);
+        if (effects.isEmpty()) {
+            return;
+        }
+
+        PlayerStats stats = data.getStats();
+        applyTreeEffect(effects, "maxHealth",
+                stats::getBaseMaxHealth, stats::getMaxHealth, stats::setMaxHealth);
+        applyTreeEffect(effects, "maxMana",
+                stats::getBaseMaxMana, stats::getMaxMana, stats::setMaxMana);
+        applyTreeEffect(effects, "attackPower",
+                stats::getBaseAttackPower, stats::getAttackPower, stats::setAttackPower);
+        applyTreeEffect(effects, "defense1",
+                stats::getBaseDefense1, stats::getDefense1, stats::setDefense1);
+        applyTreeEffect(effects, "defense2",
+                stats::getBaseDefense2, stats::getDefense2, stats::setDefense2);
+        applyTreeEffect(effects, "criticalRate",
+                stats::getBaseCriticalRate, stats::getCriticalRate, stats::setCriticalRate);
+        applyTreeEffect(effects, "criticalDamage",
+                stats::getBaseCriticalDamage, stats::getCriticalDamage, stats::setCriticalDamage);
+        applyTreeEffect(effects, "accuracy",
+                stats::getBaseAccuracy, stats::getAccuracy, stats::setAccuracy);
+        applyTreeEffect(effects, "evasion",
+                stats::getBaseEvasion, stats::getEvasion, stats::setEvasion);
+        applyTreeEffect(effects, "dodgeCooldownReduction",
+                stats::getBaseDodgeCooldownReduction, stats::getDodgeCooldownReduction,
+                stats::setDodgeCooldownReduction);
+        applyTreeEffect(effects, "cooldownReduction",
+                stats::getBaseCooldownReduction, stats::getCooldownReduction,
+                stats::setCooldownReduction);
+        applyTreeEffect(effects, "moveSpeed",
+                stats::getBaseMoveSpeed, stats::getMoveSpeed, stats::setMoveSpeed);
+        applyTreeEffect(effects, "healthRegenFlat",
+                stats::getBaseHealthRegenFlat, stats::getHealthRegenFlat,
+                stats::setHealthRegenFlat);
+        applyTreeEffect(effects, "healthRegenPercent",
+                stats::getBaseHealthRegenPercent, stats::getHealthRegenPercent,
+                stats::setHealthRegenPercent);
+        applyTreeEffect(effects, "manaRegenFlat",
+                stats::getBaseManaRegenFlat, stats::getManaRegenFlat,
+                stats::setManaRegenFlat);
+        applyTreeEffect(effects, "manaRegenPercent",
+                stats::getBaseManaRegenPercent, stats::getManaRegenPercent,
+                stats::setManaRegenPercent);
+        applyTreeEffect(effects, "armorPenetration",
+                stats::getBaseArmorPenetration, stats::getArmorPenetration,
+                stats::setArmorPenetration);
+        applyTreeEffect(effects, "lifesteal",
+                stats::getBaseLifesteal, stats::getLifesteal, stats::setLifesteal);
+    }
+
+    /**
+     * 1 項目分の固定値・割合効果を適用する。
+     */
+    private static void applyTreeEffect(Map<String, Double> effects,
+                                        String key,
+                                        DoubleSupplier baseValue,
+                                        DoubleSupplier currentValue,
+                                        DoubleConsumer setter) {
+        double flat = effects.getOrDefault(key, 0.0);
+        double percent = effects.getOrDefault(key + "Percent", 0.0);
+        if (flat == 0.0 && percent == 0.0) {
+            return;
+        }
+        double base = baseValue.getAsDouble();
+        double percentBase = base != 0.0 ? base : currentValue.getAsDouble();
+        setter.accept(base + flat + percentBase * percent / 100.0);
     }
 
     /**

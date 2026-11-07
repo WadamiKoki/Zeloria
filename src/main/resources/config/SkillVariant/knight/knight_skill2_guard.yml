@@ -1,0 +1,12 @@
+variantId: knight_skill2_guard
+baseSkill: knight_skill2
+displayName: "裁きの光"
+description: "聖なる光で敵を貫く"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: PARTICLE
+    particle: END_ROD
+    count: 12
+  - type: SOUND
+    sound: ENTITY_LIGHTNING_BOLT_THUNDER

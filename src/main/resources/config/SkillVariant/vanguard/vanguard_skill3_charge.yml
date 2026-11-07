@@ -1,0 +1,16 @@
+variantId: vanguard_skill3_charge
+baseSkill: vanguard_skill3
+displayName: "覇者の雄叫び"
+description: "戦場を震わせる雄叫びを上げる"
+actions:
+  - type: DAMAGE
+    multiplier: 2.5
+  - type: APPLY_EFFECT
+    effect: STRENGTH
+    duration: 6
+    amplifier: 1
+  - type: PARTICLE
+    particle: TOTEM_OF_UNDYING
+    count: 20
+  - type: SOUND
+    sound: ENTITY_RAVAGER_ROAR

@@ -3,8 +3,10 @@ package com.zeloria.skill;
 import net.kyori.adventure.text.Component;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -19,7 +21,10 @@ import java.util.Set;
  * @param cost         解放に必要なツリーポイント
  * @param requires     すべて満たす必要がある前提ノード ID
  * @param requiresAny  1 つ以上満たす必要がある前提ノード ID
- * @param effects      効果説明（MiniMessage 解決済み）
+ * @param effectLore   効果説明（MiniMessage 解決済み）
+ * @param statEffects  ステータス効果（キーは PlayerStats の項目名）
+ * @param skillEffects スキル強化効果（{@code skillDamage_<skillId>} など）
+ * @param replaceSkill 派生スキル ID（未設定時は {@code null}）
  */
 public record ClassTreeNode(
         String id,
@@ -28,7 +33,10 @@ public record ClassTreeNode(
         int cost,
         Set<String> requires,
         Set<String> requiresAny,
-        List<Component> effects
+        List<Component> effectLore,
+        Map<String, Double> statEffects,
+        Map<String, Double> skillEffects,
+        String replaceSkill
 ) {
 
     public ClassTreeNode {
@@ -38,7 +46,12 @@ public record ClassTreeNode(
         cost = Math.max(0, cost);
         requires = normalizeIds(requires);
         requiresAny = normalizeIds(requiresAny);
-        effects = effects == null ? List.of() : List.copyOf(effects);
+        effectLore = effectLore == null ? List.of() : List.copyOf(effectLore);
+        statEffects = normalizeEffects(statEffects);
+        skillEffects = normalizeEffects(skillEffects);
+        replaceSkill = replaceSkill == null || replaceSkill.isBlank()
+                ? null
+                : DefinitionParser.normalizeId(replaceSkill);
     }
 
     /**
@@ -61,4 +74,20 @@ public record ClassTreeNode(
         }
         return Collections.unmodifiableSet(normalized);
     }
+
+    private static Map<String, Double> normalizeEffects(Map<String, Double> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Double> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Double> entry : source.entrySet()) {
+            String key = entry.getKey() == null ? "" : entry.getKey().trim();
+            Double value = entry.getValue();
+            if (!key.isEmpty() && value != null && Double.isFinite(value)) {
+                normalized.put(key, value);
+            }
+        }
+        return Collections.unmodifiableMap(normalized);
+    }
 }
+

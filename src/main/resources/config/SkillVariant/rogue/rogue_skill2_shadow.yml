@@ -1,0 +1,16 @@
+variantId: rogue_skill2_shadow
+baseSkill: rogue_skill2
+displayName: "致命毒刃"
+description: "毒を極限まで濃縮し、致命傷を与える"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: APPLY_EFFECT
+    effect: POISON
+    duration: 5
+    amplifier: 1
+  - type: PARTICLE
+    particle: SPELL_WITCH
+    count: 15
+  - type: SOUND
+    sound: ENTITY_SPIDER_HURT

@@ -3,7 +3,9 @@ package com.zeloria.skill;
 import com.zeloria.player.PlayerData;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -145,6 +147,94 @@ public final class ClassTreeService {
         data.clearAllocatedClassNodes(classId);
         data.addClassTreePoints(classId, refund);
         return refund;
+    }
+
+    /**
+     * 解放済みノードの {@code statEffects} を合算して返す。
+     *
+     * @param data    対象プレイヤーデータ
+     * @param classId クラス ID
+     * @return ステータス項目 → 加算値（該当なしの場合は空マップ）
+     */
+    public Map<String, Double> getAggregatedStatEffects(PlayerData data, String classId) {
+        return aggregateEffects(data, classId, true);
+    }
+
+    /**
+     * 解放済みノードの {@code skillEffects} を合算して返す。
+     *
+     * @param data    対象プレイヤーデータ
+     * @param classId クラス ID
+     * @return スキル効果キー → 加算値（該当なしの場合は空マップ）
+     */
+    public Map<String, Double> getAggregatedSkillEffects(PlayerData data, String classId) {
+        return aggregateEffects(data, classId, false);
+    }
+
+    /**
+     * 指定スキルに対応する派生スキル ID を返す。
+     * <p>
+     * 解放済みの赤ノードのうち、{@code replaceSkill} が
+     * {@code <skillId>} または {@code <skillId>_} で始まるものを探す。
+     *
+     * @param data    対象プレイヤーデータ
+     * @param classId クラス ID
+     * @param skillId 元スキル ID
+     * @return 派生スキル ID（なければ {@code null}）
+     */
+    public String getReplacementForSkill(PlayerData data, String classId, String skillId) {
+        if (data == null) {
+            return null;
+        }
+        ClassTreeData tree = classTreeManager.find(classId).orElse(null);
+        if (tree == null) {
+            return null;
+        }
+
+        String normalizedSkill = DefinitionParser.normalizeId(skillId);
+        for (String nodeId : data.getAllocatedClassNodes(classId)) {
+            ClassTreeNode node = tree.node(nodeId);
+            if (node == null) {
+                continue;
+            }
+            String replacement = node.replaceSkill();
+            if (replacement == null) {
+                continue;
+            }
+            if (normalizedSkill.isEmpty()
+                    || replacement.equals(normalizedSkill)
+                    || replacement.startsWith(normalizedSkill + "_")) {
+                return replacement;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Double> aggregateEffects(PlayerData data,
+                                                 String classId,
+                                                 boolean statEffects) {
+        if (data == null) {
+            return Map.of();
+        }
+        ClassTreeData tree = classTreeManager.find(classId).orElse(null);
+        if (tree == null) {
+            return Map.of();
+        }
+
+        Map<String, Double> aggregated = new LinkedHashMap<>();
+        for (String nodeId : data.getAllocatedClassNodes(classId)) {
+            ClassTreeNode node = tree.node(nodeId);
+            if (node == null) {
+                continue;
+            }
+            Map<String, Double> effects = statEffects
+                    ? node.statEffects()
+                    : node.skillEffects();
+            for (Map.Entry<String, Double> entry : effects.entrySet()) {
+                aggregated.merge(entry.getKey(), entry.getValue(), Double::sum);
+            }
+        }
+        return aggregated.isEmpty() ? Map.of() : Map.copyOf(aggregated);
     }
 
     /**

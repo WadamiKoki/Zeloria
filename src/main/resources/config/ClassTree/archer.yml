@@ -1,8 +1,6 @@
 # ============================================================================
 # アーチャー用クラスツリー
-# ----------------------------------------------------------------------------
 # 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
-# ここでは表示名・説明・コスト・解放条件・効果だけを定義する。
 # ============================================================================
 
 id: "archer"
@@ -11,129 +9,154 @@ title: "<gradient:#7CFC00:#2E8B57><bold>アーチャー・ツリー</bold></grad
 nodes:
   root:
     displayName: "<green><bold>狩人の心得</bold></green>"
-    description:
-      - "<gray>アーチャーのクラスツリーの起点。</gray>"
-      - "<gray>ここから各系統へ進み、射撃能力を伸ばす。</gray>"
+    description: ["<gray>アーチャーのクラスツリーの起点。</gray>", "<gray>ここから射撃能力を伸ばす。</gray>"]
     cost: 0
-    effects:
-      - "<green>・クラスツリーを解放できるようになる</green>"
+    effectLore: ["<green>・クラスツリーを解放できるようになる</green>"]
 
-  offense_1:
-    displayName: "<red>弓術鍛錬 I</red>"
-    description:
-      - "<gray>基礎的な引き絞りを学び、矢の威力を高める。</gray>"
+  green_1:
+    displayName: "<green>弓術鍛錬 I</green>"
+    description: ["<gray>基礎的な引き絞りを学ぶ。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<red>・攻撃力 +2</red>"
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
 
-  offense_2:
-    displayName: "<red>弓術鍛錬 II</red>"
-    description:
-      - "<gray>強弓を扱うための筋力と技術を身につける。</gray>"
-    cost: 2
-    requires: ["offense_1"]
-    effects:
-      - "<red>・攻撃力 +3</red>"
-      - "<red>・クリティカルダメージ +5%</red>"
-
-  offense_3:
-    displayName: "<red>貫通射撃</red>"
-    description:
-      - "<gray>装甲の隙間を狙い、重い一撃を叩き込む。</gray>"
-    cost: 2
-    requires: ["offense_2"]
-    effects:
-      - "<red>・攻撃力 +4</red>"
-      - "<red>・物理防御無視 +5%</red>"
-
-  offense_4:
-    displayName: "<dark_red>必殺の一矢</dark_red>"
-    description:
-      - "<gray>急所を射抜く、アーチャー究極の攻撃技術。</gray>"
-    cost: 3
-    requires: ["offense_3"]
-    effects:
-      - "<red>・攻撃力 +8</red>"
-      - "<red>・クリティカル率 +5%</red>"
-
-  precision_1:
-    displayName: "<aqua>集中 I</aqua>"
-    description:
-      - "<gray>呼吸を整え、狙いを安定させる。</gray>"
+  green_2:
+    displayName: "<green>体力錬成 I</green>"
+    description: ["<gray>長時間の狩りに耐える体力を養う。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<aqua>・命中率 +3%</aqua>"
+    effectLore: ["<green>・最大体力 +4</green>"]
+    statEffects: { maxHealth: 4.0 }
 
-  precision_2:
-    displayName: "<aqua>集中 II</aqua>"
-    description:
-      - "<gray>動く標的にも正確に矢を当てる技術。</gray>"
-    cost: 2
-    requires: ["precision_1"]
-    effects:
-      - "<aqua>・命中率 +5%</aqua>"
-      - "<aqua>・クリティカル率 +3%</aqua>"
-
-  precision_3:
-    displayName: "<aqua>鷹の目</aqua>"
-    description:
-      - "<gray>遠くの敵の動きまで見通す鋭い視力。</gray>"
-    cost: 2
-    requires: ["precision_2"]
-    effects:
-      - "<aqua>・命中率 +5%</aqua>"
-      - "<aqua>・攻撃力 +2</aqua>"
-
-  utility_1:
-    displayName: "<yellow>軽身 I</yellow>"
-    description:
-      - "<gray>素早い身のこなしで敵の攻撃をかわす。</gray>"
+  green_3:
+    displayName: "<green>狙撃訓練 I</green>"
+    description: ["<gray>急所を狙う感覚を磨く。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<yellow>・移動速度 +3%</yellow>"
+    effectLore: ["<green>・クリティカル率 +1%</green>"]
+    statEffects: { criticalRate: 1.0 }
 
-  utility_2:
-    displayName: "<yellow>軽身 II</yellow>"
-    description:
-      - "<gray>弓を構えたままでも機敏に立ち回れる。</gray>"
+  green_4:
+    displayName: "<green>弓術鍛錬 II</green>"
+    description: ["<gray>強弓を扱うための技術を身につける。</gray>"]
+    cost: 1
+    requires: ["green_1"]
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
+
+  green_5:
+    displayName: "<green>軽身の術</green>"
+    description: ["<gray>身軽な動きで敵の攻撃をかわす。</gray>"]
+    cost: 1
+    requires: ["green_2"]
+    effectLore: ["<green>・回避 +1</green>"]
+    statEffects: { evasion: 1.0 }
+
+  green_6:
+    displayName: "<green>精神統一 I</green>"
+    description: ["<gray>集中力を高め、扱える魔力を増やす。</gray>"]
+    cost: 1
+    requires: ["green_3"]
+    effectLore: ["<green>・最大マナ +3</green>"]
+    statEffects: { maxMana: 3.0 }
+
+  green_7:
+    displayName: "<green>狩人の直感</green>"
+    description: ["<gray>獲物の弱点を的確に捉える。</gray>"]
+    cost: 1
+    requires: ["green_4"]
+    effectLore: ["<green>・攻撃力 +3%</green>"]
+    statEffects: { attackPowerPercent: 3.0 }
+
+  blue_1:
+    displayName: "<aqua><bold>マルチショット強化 I</bold></aqua>"
+    description: ["<gray>マルチショットの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_4", "green_5"]
+    effectLore: ["<aqua>・マルチショットのダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_archer_skill1: 0.1 }
+
+  blue_2:
+    displayName: "<aqua><bold>貫通射撃強化 I</bold></aqua>"
+    description: ["<gray>貫通射撃の威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_5", "green_6"]
+    effectLore: ["<aqua>・スキル2のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_archer_skill2: 0.1 }
+
+  blue_3:
+    displayName: "<aqua><bold>罠設置強化 I</bold></aqua>"
+    description: ["<gray>罠設置スキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_6", "green_7"]
+    effectLore: ["<aqua>・スキル3のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_archer_skill3: 0.1 }
+
+  blue_4:
+    displayName: "<aqua><bold>射手の極意</bold></aqua>"
+    description: ["<gray>射撃スキル全般の完成度を高める。</gray>"]
+    cost: 1
+    requires: ["blue_1"]
+    effectLore: ["<aqua>・スキル1のダメージ +5%</aqua>"]
+    skillEffects: { skillDamage_archer_skill1: 0.05 }
+
+  red_1:
+    displayName: "<red><bold>集中マルチショット</bold></red>"
+    description: ["<gray>全矢を一体化し、1体へ集中させる。</gray>"]
     cost: 2
-    requires: ["utility_1"]
-    effects:
-      - "<yellow>・移動速度 +3%</yellow>"
-      - "<yellow>・回避率 +3%</yellow>"
+    requires: ["blue_1"]
+    effectLore: ["<red>・マルチショットが集中型に変化</red>"]
+    replaceSkill: "archer_skill1_focused"
 
-  utility_3:
-    displayName: "<yellow>罠師の知恵</yellow>"
-    description:
-      - "<gray>地形を利用し、敵の進路を妨害する。</gray>"
+  red_2:
+    displayName: "<red><bold>零距離射撃</bold></red>"
+    description: ["<gray>至近距離で最大の威力を叩き込む。</gray>"]
     cost: 2
-    requires: ["utility_2"]
-    effects:
-      - "<yellow>・回避率 +5%</yellow>"
-      - "<yellow>・スキルクールダウン短縮 +3%</yellow>"
+    requires: ["blue_2"]
+    effectLore: ["<red>・スキル2が零距離射撃に変化</red>"]
+    replaceSkill: "archer_skill2_focused"
 
-  fusion:
-    displayName: "<light_purple>射手の極意</light_purple>"
-    description:
-      - "<gray>攻撃・精度・機動のうち 2 系統を修めた者だけが</gray>"
-      - "<gray>習得できる複合技術。</gray>"
-    cost: 3
-    requiresAny: ["offense_2", "precision_2", "utility_2"]
-    effects:
-      - "<light_purple>・攻撃力 +5</light_purple>"
-      - "<light_purple>・命中率 +3%</light_purple>"
+  red_3:
+    displayName: "<red><bold>爆裂罠</bold></red>"
+    description: ["<gray>罠が爆発し、周囲を巻き込む。</gray>"]
+    cost: 2
+    requires: ["blue_3"]
+    effectLore: ["<red>・スキル3が爆裂罠に変化</red>"]
+    replaceSkill: "archer_skill3_focused"
 
-  ultimate:
-    displayName: "<gold><bold>天空の射手</bold></gold>"
-    description:
-      - "<gray>アーチャーの最終奥義。あらゆる距離から敵を仕留める。</gray>"
-    cost: 5
-    requires: ["fusion"]
-    requiresAny: ["offense_3", "precision_3", "utility_3"]
-    effects:
-      - "<gold>・攻撃力 +10</gold>"
-      - "<gold>・クリティカル率 +5%</gold>"
-      - "<gold>・クリティカルダメージ +15%</gold>"
+  green_8:
+    displayName: "<green>弓術鍛錬 III</green>"
+    description: ["<gray>極限まで弓を引き絞る。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・攻撃力 +3</green>"]
+    statEffects: { attackPower: 3.0 }
+
+  green_9:
+    displayName: "<green>狙撃訓練 II</green>"
+    description: ["<gray>一撃の重みを追求する。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・クリティカルダメージ +5%</green>"]
+    statEffects: { criticalDamage: 5.0 }
+
+  green_10:
+    displayName: "<green>体力錬成 II</green>"
+    description: ["<gray>さらに体力を鍛え上げる。</gray>"]
+    cost: 1
+    requires: ["red_2"]
+    effectLore: ["<green>・最大体力 +5</green>"]
+    statEffects: { maxHealth: 5.0 }
+
+  green_11:
+    displayName: "<green><bold>狩人の極意</bold></green>"
+    description: ["<gray>アーチャーの攻撃力を極める。</gray>"]
+    cost: 2
+    requiresAny: ["green_8", "green_9", "green_10"]
+    effectLore: ["<green>・攻撃力 +5%</green>"]
+    statEffects: { attackPowerPercent: 5.0 }
+

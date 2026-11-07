@@ -1,0 +1,12 @@
+variantId: archer_skill3_focused
+baseSkill: archer_skill3
+displayName: "爆裂罠"
+description: "罠が爆発し、周囲を巻き込む"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: PARTICLE
+    particle: EXPLOSION
+    count: 1
+  - type: SOUND
+    sound: ENTITY_GENERIC_EXPLODE

@@ -1,139 +1,161 @@
 # ============================================================================
 # ローグ用クラスツリー
-# ----------------------------------------------------------------------------
 # 位置・アイコンは config/TreeData/tree.yml の共通形状を使用する。
-# ここでは表示名・説明・コスト・解放条件・効果だけを定義する。
 # ============================================================================
 
 id: "rogue"
-title: "<gradient:#00bcd4:#004d40><bold>ローグ・ツリー</bold></gradient>"
+title: "<gradient:#B39DDB:#5E35B1><bold>ローグ・ツリー</bold></gradient>"
 
 nodes:
   root:
-    displayName: "<dark_aqua><bold>影の心得</bold></dark_aqua>"
-    description:
-      - "<gray>ローグのクラスツリーの起点。</gray>"
-      - "<gray>影に潜み、急所を狙う技術の基礎を学ぶ。</gray>"
+    displayName: "<light_purple><bold>影の足音</bold></light_purple>"
+    description: ["<gray>ローグのクラスツリーの起点。</gray>", "<gray>機動力と急所狙いを伸ばす。</gray>"]
     cost: 0
-    effects:
-      - "<dark_aqua>・クラスツリーを解放できるようになる</dark_aqua>"
+    effectLore: ["<green>・クラスツリーを解放できるようになる</green>"]
 
-  offense_1:
-    displayName: "<red>短剣鍛錬 I</red>"
-    description:
-      - "<gray>短剣の扱いに慣れ、素早い斬撃を身につける。</gray>"
+  green_1:
+    displayName: "<green>短剣鍛錬 I</green>"
+    description: ["<gray>素早い刺突を反復する。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<red>・攻撃力 +2</red>"
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
 
-  offense_2:
-    displayName: "<red>短剣鍛錬 II</red>"
-    description:
-      - "<gray>連続攻撃の精度を高め、手数を増やす。</gray>"
-    cost: 2
-    requires: ["offense_1"]
-    effects:
-      - "<red>・攻撃力 +3</red>"
-      - "<red>・攻撃速度 +3%</red>"
-
-  offense_3:
-    displayName: "<red>暗殺術</red>"
-    description:
-      - "<gray>敵の隙を見極め、一撃で大ダメージを与える。</gray>"
-    cost: 2
-    requires: ["offense_2"]
-    effects:
-      - "<red>・攻撃力 +4</red>"
-      - "<red>・クリティカル率 +3%</red>"
-
-  offense_4:
-    displayName: "<dark_red>影斬</dark_red>"
-    description:
-      - "<gray>影と一体となり、回避不能の斬撃を放つ。</gray>"
-    cost: 3
-    requires: ["offense_3"]
-    effects:
-      - "<red>・攻撃力 +8</red>"
-      - "<red>・クリティカルダメージ +10%</red>"
-
-  precision_1:
-    displayName: "<aqua>致命 I</aqua>"
-    description:
-      - "<gray>急所の位置を学び、狙いを定める。</gray>"
+  green_2:
+    displayName: "<green>身かわし I</green>"
+    description: ["<gray>攻撃を見切る感覚を磨く。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<aqua>・命中率 +3%</aqua>"
+    effectLore: ["<green>・回避 +1</green>"]
+    statEffects: { evasion: 1.0 }
 
-  precision_2:
-    displayName: "<aqua>致命 II</aqua>"
-    description:
-      - "<gray>相手の動きを読み、確実に急所を捉える。</gray>"
-    cost: 2
-    requires: ["precision_1"]
-    effects:
-      - "<aqua>・命中率 +5%</aqua>"
-      - "<aqua>・クリティカル率 +3%</aqua>"
-
-  precision_3:
-    displayName: "<aqua>急所見極め</aqua>"
-    description:
-      - "<gray>わずかな隙も逃さない観察眼を磨く。</gray>"
-    cost: 2
-    requires: ["precision_2"]
-    effects:
-      - "<aqua>・命中率 +5%</aqua>"
-      - "<aqua>・クリティカル率 +5%</aqua>"
-
-  utility_1:
-    displayName: "<yellow>身軽 I</yellow>"
-    description:
-      - "<gray>無駄のない動きで素早く立ち回る。</gray>"
+  green_3:
+    displayName: "<green>急所狙い I</green>"
+    description: ["<gray>相手の隙を突く技術を学ぶ。</gray>"]
     cost: 1
     requires: ["root"]
-    effects:
-      - "<yellow>・移動速度 +3%</yellow>"
+    effectLore: ["<green>・クリティカル率 +1%</green>"]
+    statEffects: { criticalRate: 1.0 }
 
-  utility_2:
-    displayName: "<yellow>身軽 II</yellow>"
-    description:
-      - "<gray>狭い地形でも機敏に動ける身体能力を養う。</gray>"
+  green_4:
+    displayName: "<green>短剣鍛錬 II</green>"
+    description: ["<gray>連撃の精度を高める。</gray>"]
+    cost: 1
+    requires: ["green_1"]
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
+
+  green_5:
+    displayName: "<green>軽業 I</green>"
+    description: ["<gray>身のこなしをさらに軽くする。</gray>"]
+    cost: 1
+    requires: ["green_2"]
+    effectLore: ["<green>・移動速度 +1%</green>"]
+    statEffects: { moveSpeedPercent: 1.0 }
+
+  green_6:
+    displayName: "<green>影隠れ</green>"
+    description: ["<gray>気配を消し、回避の隙を減らす。</gray>"]
+    cost: 1
+    requires: ["green_3"]
+    effectLore: ["<green>・ドッジクールダウン短縮 +2%</green>"]
+    statEffects: { dodgeCooldownReduction: 0.02 }
+
+  green_7:
+    displayName: "<green>急所狙い II</green>"
+    description: ["<gray>急所への一撃を重くする。</gray>"]
+    cost: 1
+    requires: ["green_4"]
+    effectLore: ["<green>・クリティカルダメージ +5%</green>"]
+    statEffects: { criticalDamage: 5.0 }
+
+  blue_1:
+    displayName: "<aqua><bold>シャドウステップ強化 I</bold></aqua>"
+    description: ["<gray>影移動スキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_4", "green_5"]
+    effectLore: ["<aqua>・スキル1のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_rogue_skill1: 0.1 }
+
+  blue_2:
+    displayName: "<aqua><bold>ポイズンブレード強化 I</bold></aqua>"
+    description: ["<gray>毒刃スキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_5", "green_6"]
+    effectLore: ["<aqua>・スキル2のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_rogue_skill2: 0.1 }
+
+  blue_3:
+    displayName: "<aqua><bold>バックスタブ強化 I</bold></aqua>"
+    description: ["<gray>背後からの一撃を強化する。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_6", "green_7"]
+    effectLore: ["<aqua>・スキル3のダメージ +10%</aqua>"]
+    skillEffects: { skillDamage_rogue_skill3: 0.1 }
+
+  blue_4:
+    displayName: "<aqua><bold>影の極意</bold></aqua>"
+    description: ["<gray>影移動スキルの完成度を高める。</gray>"]
+    cost: 1
+    requires: ["blue_1"]
+    effectLore: ["<aqua>・スキル1のダメージ +5%</aqua>"]
+    skillEffects: { skillDamage_rogue_skill1: 0.05 }
+
+  red_1:
+    displayName: "<red><bold>瞬影連斬</bold></red>"
+    description: ["<gray>影から影へ渡り、連続で斬りつける。</gray>"]
     cost: 2
-    requires: ["utility_1"]
-    effects:
-      - "<yellow>・移動速度 +3%</yellow>"
-      - "<yellow>・回避率 +3%</yellow>"
+    requires: ["blue_1"]
+    effectLore: ["<red>・シャドウステップが瞬影連斬に変化</red>"]
+    replaceSkill: "rogue_skill1_shadow"
 
-  utility_3:
-    displayName: "<yellow>逃走術</yellow>"
-    description:
-      - "<gray>危機を察知し、戦線から素早く離脱する。</gray>"
+  red_2:
+    displayName: "<red><bold>致命毒刃</bold></red>"
+    description: ["<gray>毒を極限まで濃縮し、致命傷を与える。</gray>"]
     cost: 2
-    requires: ["utility_2"]
-    effects:
-      - "<yellow>・回避率 +5%</yellow>"
-      - "<yellow>・スキルクールダウン短縮 +3%</yellow>"
+    requires: ["blue_2"]
+    effectLore: ["<red>・ポイズンブレードが致命毒刃に変化</red>"]
+    replaceSkill: "rogue_skill2_shadow"
 
-  fusion:
-    displayName: "<light_purple>影分身の極意</light_purple>"
-    description:
-      - "<gray>攻撃・致命・機動のうち 2 系統を修めた者だけが</gray>"
-      - "<gray>習得できる複合技術。</gray>"
-    cost: 3
-    requiresAny: ["offense_2", "precision_2", "utility_2"]
-    effects:
-      - "<light_purple>・攻撃力 +5</light_purple>"
-      - "<light_purple>・回避率 +3%</light_purple>"
+  red_3:
+    displayName: "<red><bold>影縫い</bold></red>"
+    description: ["<gray>敵の影を縫い止め、動きを封じる。</gray>"]
+    cost: 2
+    requires: ["blue_3"]
+    effectLore: ["<red>・バックスタブが影縫いに変化</red>"]
+    replaceSkill: "rogue_skill3_shadow"
 
-  ultimate:
-    displayName: "<gold><bold>影帝</bold></gold>"
-    description:
-      - "<gray>ローグの最終奥義。影そのものとなり敵を葬る。</gray>"
-    cost: 5
-    requires: ["fusion"]
-    requiresAny: ["offense_3", "precision_3", "utility_3"]
-    effects:
-      - "<gold>・攻撃力 +10</gold>"
-      - "<gold>・クリティカル率 +5%</gold>"
-      - "<gold>・クリティカルダメージ +15%</gold>"
+  green_8:
+    displayName: "<green>短剣鍛錬 III</green>"
+    description: ["<gray>暗殺者の技を極める。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・攻撃力 +3</green>"]
+    statEffects: { attackPower: 3.0 }
+
+  green_9:
+    displayName: "<green>急所狙い III</green>"
+    description: ["<gray>必殺の一撃を磨く。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・クリティカル率 +2%</green>"]
+    statEffects: { criticalRate: 2.0 }
+
+  green_10:
+    displayName: "<green>身かわし II</green>"
+    description: ["<gray>あらゆる攻撃を紙一重でかわす。</gray>"]
+    cost: 1
+    requires: ["red_2"]
+    effectLore: ["<green>・回避 +2</green>"]
+    statEffects: { evasion: 2.0 }
+
+  green_11:
+    displayName: "<green><bold>影の極致</bold></green>"
+    description: ["<gray>ローグの攻撃力を極める。</gray>"]
+    cost: 2
+    requiresAny: ["green_8", "green_9", "green_10"]
+    effectLore: ["<green>・攻撃力 +5%</green>"]
+    statEffects: { attackPowerPercent: 5.0 }

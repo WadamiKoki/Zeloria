@@ -1,0 +1,16 @@
+variantId: archer_skill1_focused
+baseSkill: archer_skill1
+displayName: "集中マルチショット"
+description: "全矢が1体に集中する"
+actions:
+  - type: SHOOT_PROJECTILE
+    count: 1
+    spread: 0.0
+    projectile: ARROW
+  - type: DAMAGE
+    multiplier: 2.5
+  - type: PARTICLE
+    particle: CRIT
+    count: 10
+  - type: SOUND
+    sound: ENTITY_ARROW_HIT

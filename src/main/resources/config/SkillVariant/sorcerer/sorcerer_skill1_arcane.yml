@@ -1,0 +1,12 @@
+variantId: sorcerer_skill1_arcane
+baseSkill: sorcerer_skill1
+displayName: "獄炎球"
+description: "消えることのない獄炎を放つ"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: PARTICLE
+    particle: FLAME
+    count: 20
+  - type: SOUND
+    sound: ENTITY_BLAZE_SHOOT

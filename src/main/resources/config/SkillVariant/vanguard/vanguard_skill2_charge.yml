@@ -1,0 +1,12 @@
+variantId: vanguard_skill2_charge
+baseSkill: vanguard_skill2
+displayName: "大地断裂"
+description: "大地を引き裂く一撃を放つ"
+actions:
+  - type: DAMAGE
+    multiplier: 3.5
+  - type: PARTICLE
+    particle: EXPLOSION
+    count: 1
+  - type: SOUND
+    sound: ENTITY_GENERIC_EXPLODE

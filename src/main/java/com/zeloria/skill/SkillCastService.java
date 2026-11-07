@@ -3,17 +3,23 @@ package com.zeloria.skill;
 import com.zeloria.core.Zeloria;
 import com.zeloria.combat.CombatService;
 import com.zeloria.combat.DamageResult;
+import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatsService;
 import com.zeloria.skill.Skill;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -31,6 +37,7 @@ public final class SkillCastService {
     /** スキルが正面判定に使う最小の内積（約 70 度）。 */
     private static final double MIN_FACING_DOT = 0.35;
 
+    private final Zeloria plugin;
     private final CombatService combatService;
     private final PlayerStatsService playerStatsService;
     private final CooldownService cooldownService;
@@ -40,7 +47,7 @@ public final class SkillCastService {
             CombatService combatService,
             PlayerStatsService playerStatsService,
             CooldownService cooldownService) {
-        Objects.requireNonNull(plugin, "plugin");
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.combatService = Objects.requireNonNull(combatService, "combatService");
         this.playerStatsService = Objects.requireNonNull(playerStatsService, "playerStatsService");
         this.cooldownService = Objects.requireNonNull(cooldownService, "cooldownService");
@@ -54,10 +61,33 @@ public final class SkillCastService {
      * @return 発動結果
      */
     public SkillCastResult cast(Player player, Skill skill) {
+        if (skill == null) {
+            return new SkillCastResult.UnknownSkill("");
+        }
         PlayerStats stats = playerStatsService.getStats(player);
         if (stats == null) {
-            return new SkillCastResult.UnknownSkill(skill == null ? "" : skill.id());
+            return new SkillCastResult.UnknownSkill(skill.id());
         }
+
+        PlayerData data = PlayerData.getCached(player.getUniqueId());
+        String classId = data == null
+                ? null
+                : data.getClassData().currentClassIdOrNull();
+        ClassTreeService classTreeService = plugin.getClassTreeService();
+
+        double skillDamageBonus = 0.0;
+        if (classTreeService != null && data != null
+                && classId != null && !classId.isBlank()) {
+            Map<String, Double> skillEffects = classTreeService
+                    .getAggregatedSkillEffects(data, classId);
+            skillDamageBonus = skillEffects.getOrDefault(
+                    "skillDamage_" + skill.id(), 0.0);
+        }
+
+        SkillVariantData variant = resolveVariant(
+                data, classId, skill, classTreeService);
+        boolean variantNeedsTarget = variant != null && variant.actions().stream()
+                .anyMatch(action -> "DAMAGE".equals(action.type()));
 
         long cooldownMillis = effectiveCooldownMillis(skill, stats);
         long remaining = cooldownService.remainingMillis(player.getUniqueId(), skill.id());
@@ -78,7 +108,14 @@ public final class SkillCastService {
         }
 
         LivingEntity target = null;
-        if (skill.baseDamageMultiplier() > 0.0) {
+        if (variant != null) {
+            if (variantNeedsTarget) {
+                target = findTarget(player, skill.range());
+                if (target == null) {
+                    return new SkillCastResult.NoTarget(skill);
+                }
+            }
+        } else if (skill.baseDamageMultiplier() > 0.0) {
             target = findTarget(player, skill.range());
             if (target == null) {
                 return new SkillCastResult.NoTarget(skill);
@@ -98,22 +135,247 @@ public final class SkillCastService {
         }
         cooldownService.set(player.getUniqueId(), skill.id(), cooldownMillis);
 
-        playEffects(player, skill, target);
-
-        DamageResult damage = target == null
-                ? null
-                : combatService.playerAttack(
-                        player,
-                        target,
-                        skill.baseDamageMultiplier(),
-                        skill.armorPenetration(),
-                        skill.lifesteal());
+        DamageResult damage;
+        if (variant != null) {
+            // 派生スキルでは元スキルのパーティクル／サウンドではなく
+            // SkillVariant の actions だけを順番に実行する。
+            damage = executeVariant(player, skill, variant, target, skillDamageBonus);
+        } else {
+            playEffects(player, skill, target);
+            damage = target == null
+                    ? null
+                    : combatService.playerAttack(
+                            player,
+                            target,
+                            skill.baseDamageMultiplier() * (1.0 + skillDamageBonus),
+                            skill.armorPenetration(),
+                            skill.lifesteal());
+        }
 
         return new SkillCastResult.Success(
                 skill,
                 cooldownMillis,
                 damage,
                 target == null ? "" : target.getName());
+    }
+
+
+    /**
+     * 解放済み赤ノードから派生スキル定義を解決する。
+     */
+    private SkillVariantData resolveVariant(PlayerData data,
+                                            String classId,
+                                            Skill skill,
+                                            ClassTreeService classTreeService) {
+        if (data == null || classId == null || classId.isBlank()
+                || classTreeService == null) {
+            return null;
+        }
+        String replacement = classTreeService.getReplacementForSkill(
+                data, classId, skill.id());
+        if (replacement == null) {
+            return null;
+        }
+
+        SkillVariantManager manager = plugin.getSkillVariantManager();
+        if (manager == null) {
+            return null;
+        }
+        SkillVariantData variant = manager.find(replacement).orElse(null);
+        if (variant == null || !variant.baseSkill().equalsIgnoreCase(skill.id())) {
+            return null;
+        }
+        return variant;
+    }
+
+    /**
+     * 派生スキルのアクションを順番に実行する。
+     */
+    private DamageResult executeVariant(Player player,
+                                        Skill skill,
+                                        SkillVariantData variant,
+                                        LivingEntity target,
+                                        double skillDamageBonus) {
+        DamageResult lastDamage = null;
+        for (VariantAction action : variant.actions()) {
+            if (action == null) {
+                continue;
+            }
+            switch (action.type()) {
+                case "SHOOT_PROJECTILE" -> shootProjectile(player, target, action);
+                case "DAMAGE" -> {
+                    if (target == null || target.isDead()) {
+                        continue;
+                    }
+                    double multiplier = action.number(
+                            "multiplier", skill.baseDamageMultiplier())
+                            * (1.0 + skillDamageBonus);
+                    double armorPenetration = action.number(
+                            "armorPenetration", skill.armorPenetration());
+                    double lifesteal = action.number(
+                            "lifesteal", skill.lifesteal());
+                    DamageResult result = combatService.playerAttack(
+                            player,
+                            target,
+                            multiplier,
+                            armorPenetration,
+                            lifesteal);
+                    if (result != null) {
+                        lastDamage = result;
+                    }
+                }
+                case "PARTICLE" -> spawnVariantParticle(player, target, action);
+                case "SOUND" -> playVariantSound(player, action);
+                case "TELEPORT" -> teleportVariant(player, target, action);
+                case "HEAL" -> healVariant(player, action);
+                case "APPLY_EFFECT" -> applyVariantEffect(player, action);
+                default -> {
+                    // SkillVariantManager 側で未対応種別は警告済み。
+                }
+            }
+        }
+        return lastDamage;
+    }
+
+    private void shootProjectile(Player player, LivingEntity target, VariantAction action) {
+        int count = Math.max(1, action.integer("count", 1));
+        double spread = Math.max(0.0, action.number("spread", 0.0));
+        double speed = Math.max(0.1, action.number("speed", 2.0));
+
+        Location eye = player.getEyeLocation();
+        Vector baseDirection = target == null
+                ? eye.getDirection().clone()
+                : target.getEyeLocation().toVector().subtract(eye.toVector());
+        if (baseDirection.lengthSquared() <= 0.0) {
+            baseDirection = eye.getDirection().clone();
+        }
+        baseDirection.normalize();
+
+        for (int i = 0; i < count; i++) {
+            Vector direction = baseDirection.clone();
+            if (spread > 0.0) {
+                direction.add(new Vector(
+                        (Math.random() - 0.5) * spread * 2.0,
+                        (Math.random() - 0.5) * spread * 2.0,
+                        (Math.random() - 0.5) * spread * 2.0)).normalize();
+            }
+
+            Arrow arrow = player.getWorld().spawn(
+                    eye.clone().add(direction.clone().multiply(0.5)), Arrow.class);
+            arrow.setShooter(player);
+            arrow.setDamage(0.0);
+            arrow.setPickupStatus(Arrow.PickupStatus.DISALLOWED);
+            arrow.setVelocity(direction.multiply(speed));
+            plugin.getServer().getScheduler().runTaskLater(
+                    plugin,
+                    () -> {
+                        if (arrow.isValid()) {
+                            arrow.remove();
+                        }
+                    },
+                    40L);
+        }
+    }
+
+    private void spawnVariantParticle(Player player,
+                                      LivingEntity target,
+                                      VariantAction action) {
+        Particle particle = parseParticle(action.string("particle", ""));
+        if (particle == null) {
+            return;
+        }
+        int count = Math.max(0, action.integer("count", 10));
+        double spread = Math.max(0.0, action.number("spread", 0.5));
+        double speed = Math.max(0.0, action.number("speed", 0.0));
+        Location location = target == null
+                ? player.getLocation()
+                : target.getLocation();
+        player.getWorld().spawnParticle(
+                particle,
+                location.clone().add(0.0, 1.0, 0.0),
+                count,
+                spread,
+                spread,
+                spread,
+                speed);
+    }
+
+    private void playVariantSound(Player player, VariantAction action) {
+        String name = action.string("sound", "");
+        if (name.isBlank()) {
+            return;
+        }
+        float volume = (float) Math.max(0.0, action.number("volume", 1.0));
+        float pitch = (float) Math.max(0.1, action.number("pitch", 1.0));
+        try {
+            Sound sound = Sound.valueOf(name.trim().toUpperCase(Locale.ROOT));
+            player.getWorld().playSound(player.getLocation(), sound, volume, pitch);
+        } catch (IllegalArgumentException ignored) {
+            String fallback = name.trim().toLowerCase(Locale.ROOT).replace('_', '.');
+            player.getWorld().playSound(player.getLocation(), fallback, volume, pitch);
+        }
+    }
+
+    private void teleportVariant(Player player,
+                                 LivingEntity target,
+                                 VariantAction action) {
+        Location destination;
+        if (action.bool("toTarget", false) && target != null) {
+            Vector behind = target.getLocation().getDirection()
+                    .normalize().multiply(-1.5);
+            destination = target.getLocation().clone().add(behind);
+        } else if (action.params().containsKey("x")
+                || action.params().containsKey("y")
+                || action.params().containsKey("z")) {
+            Location current = player.getLocation();
+            destination = new Location(
+                    player.getWorld(),
+                    action.number("x", current.getX()),
+                    action.number("y", current.getY()),
+                    action.number("z", current.getZ()));
+        } else {
+            double distance = action.number("distance", 5.0);
+            Location current = player.getLocation();
+            destination = current.clone().add(
+                    current.getDirection().normalize().multiply(distance));
+        }
+        destination.setYaw(player.getLocation().getYaw());
+        destination.setPitch(player.getLocation().getPitch());
+        player.teleport(destination);
+    }
+
+    private void healVariant(Player player, VariantAction action) {
+        PlayerStats stats = playerStatsService.getStats(player);
+        if (stats == null) {
+            return;
+        }
+        double amount = action.number("amount", 0.0)
+                + stats.getMaxHealth() * action.number("percent", 0.0);
+        if (amount <= 0.0) {
+            return;
+        }
+        stats.setCurrentHealth(stats.getCurrentHealth() + amount);
+        combatService.syncPlayerHealth(player);
+    }
+
+    private void applyVariantEffect(Player player, VariantAction action) {
+        String name = action.string("effect", "");
+        if (name.isBlank()) {
+            return;
+        }
+        PotionEffectType type = PotionEffectType.getByName(
+                name.trim().toUpperCase(Locale.ROOT));
+        if (type == null) {
+            return;
+        }
+        double seconds = action.number(
+                "duration", action.number("durationSeconds", 5.0));
+        int ticks = (int) Math.max(1L, Math.round(seconds * 20.0));
+        int amplifier = Math.max(0, action.integer("amplifier", 0));
+        boolean ambient = action.bool("ambient", false);
+        boolean particles = action.bool("particles", true);
+        player.addPotionEffect(new PotionEffect(
+                type, ticks, amplifier, ambient, particles, true));
     }
 
     /**

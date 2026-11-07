@@ -4,86 +4,37 @@
 # 全クラスで共有する「ノードの位置」と「アイコン」を定義する。
 # クラスごとの表示名・説明・コスト・解放条件・効果は
 # config/ClassTree/<classId>.yml に定義する。
-#
-# レイアウト:
-#   * 固定ボタンは fixed_column 列に配置し、ノードはその列に置かない。
-#   * 画面外の行は下スクロールで表示する（visible_rows 行ずつ）。
 # ============================================================================
 
-title: "<gradient:#00c6ff:#0072ff><bold>クラスツリー</bold></gradient>"
-
-# GUI 全体の行数（1〜6）。
+title: "クラスツリー"
 rows: 6
-
-# スクロールせずに表示する行数。
-visible_rows: 5
-
-# 固定ボタン用に空ける列（0〜8）。
+visible_rows: 6
 fixed_column: 8
 
 fixed_slots:
-  reset: 8
-  up: 26
-  down: 35
-  close: 53
+  reset: 8      # row 0, col 8
+  down: 26      # row 2, col 8（下スクロール）
+  up: 35        # row 3, col 8（上スクロール）
+  close: 53     # row 5, col 8
 
-# ノードの位置とアイコン（未解放時の表示）。
-# ID は ClassTree/<classId>.yml の nodes キーと一致させる。
 nodes:
-  root:
-    row: 0
-    column: 4
-    icon: "NETHER_STAR"
+  root:      { row: 0, column: 4, icon: "END_PORTAL_FRAME" }
+  green_1:   { row: 1, column: 1, icon: "LIME_CONCRETE" }
+  green_2:   { row: 1, column: 3, icon: "LIME_CONCRETE" }
+  green_3:   { row: 1, column: 5, icon: "LIME_CONCRETE" }
+  green_4:   { row: 2, column: 0, icon: "LIME_CONCRETE" }
+  green_5:   { row: 2, column: 2, icon: "LIME_CONCRETE" }
+  green_6:   { row: 2, column: 4, icon: "LIME_CONCRETE" }
+  green_7:   { row: 2, column: 6, icon: "LIME_CONCRETE" }
+  blue_1:    { row: 3, column: 0, icon: "BLUE_NETHER_BRICKS" }
+  blue_2:    { row: 3, column: 2, icon: "BLUE_NETHER_BRICKS" }
+  blue_3:    { row: 3, column: 4, icon: "BLUE_NETHER_BRICKS" }
+  blue_4:    { row: 3, column: 6, icon: "BLUE_NETHER_BRICKS" }
+  red_1:     { row: 4, column: 1, icon: "RED_NETHER_BRICKS" }
+  red_2:     { row: 4, column: 3, icon: "RED_NETHER_BRICKS" }
+  red_3:     { row: 4, column: 5, icon: "RED_NETHER_BRICKS" }
+  green_8:   { row: 5, column: 0, icon: "LIME_CONCRETE" }
+  green_9:   { row: 5, column: 2, icon: "LIME_CONCRETE" }
+  green_10:  { row: 5, column: 4, icon: "LIME_CONCRETE" }
+  green_11:  { row: 5, column: 6, icon: "LIME_CONCRETE" }
 
-  offense_1:
-    row: 1
-    column: 2
-    icon: "IRON_SWORD"
-  offense_2:
-    row: 2
-    column: 2
-    icon: "IRON_SWORD"
-  offense_3:
-    row: 3
-    column: 2
-    icon: "DIAMOND_SWORD"
-  offense_4:
-    row: 5
-    column: 2
-    icon: "NETHERITE_SWORD"
-
-  precision_1:
-    row: 1
-    column: 4
-    icon: "SPECTRAL_ARROW"
-  precision_2:
-    row: 2
-    column: 4
-    icon: "SPECTRAL_ARROW"
-  precision_3:
-    row: 3
-    column: 4
-    icon: "TIPPED_ARROW"
-
-  utility_1:
-    row: 1
-    column: 6
-    icon: "FEATHER"
-  utility_2:
-    row: 2
-    column: 6
-    icon: "FEATHER"
-  utility_3:
-    row: 3
-    column: 6
-    icon: "RABBIT_FOOT"
-
-  fusion:
-    row: 4
-    column: 4
-    icon: "BLAZE_POWDER"
-
-  ultimate:
-    row: 5
-    column: 4
-    icon: "NETHERITE_INGOT"

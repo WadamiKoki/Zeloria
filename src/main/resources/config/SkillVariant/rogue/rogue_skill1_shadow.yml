@@ -1,0 +1,14 @@
+variantId: rogue_skill1_shadow
+baseSkill: rogue_skill1
+displayName: "瞬影連斬"
+description: "影から影へ渡り、連続で斬りつける"
+actions:
+  - type: TELEPORT
+    toTarget: true
+  - type: DAMAGE
+    multiplier: 2.5
+  - type: PARTICLE
+    particle: SMOKE
+    count: 20
+  - type: SOUND
+    sound: ENTITY_ENDERMAN_TELEPORT

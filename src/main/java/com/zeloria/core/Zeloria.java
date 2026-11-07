@@ -54,6 +54,7 @@ import com.zeloria.skill.CooldownService;
 import com.zeloria.skill.SkillCastNotifier;
 import com.zeloria.skill.SkillCastService;
 import com.zeloria.skill.SkillManager;
+import com.zeloria.skill.SkillVariantManager;
 import com.zeloria.combat.CombatActionBarTask;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.combat.CombatStateService;
@@ -184,6 +185,9 @@ public final class Zeloria extends JavaPlugin {
     /** クラスツリーポイントの解放・リセット処理。 */
     private ClassTreeService classTreeService;
 
+    /** 派生スキル定義マネージャ（{@code config/SkillVariant/} を読み込む）。 */
+    private SkillVariantManager skillVariantManager;
+
     /** スキル定義マネージャ（{@code config/SkillData/} を読み込む）。 */
     private SkillManager skillManager;
 
@@ -275,7 +279,9 @@ public final class Zeloria extends JavaPlugin {
         this.levelService = new LevelService(this, this.yamlLoader);
         this.classManager = new ClassManager(this, this.yamlLoader);
         this.treeDataService = new TreeDataService(this, this.yamlLoader);
-        this.classTreeManager = new ClassTreeManager(this, this.yamlLoader, this.treeDataService);
+        this.skillVariantManager = new SkillVariantManager(this, this.yamlLoader);
+        this.classTreeManager = new ClassTreeManager(
+                this, this.yamlLoader, this.treeDataService, this.skillVariantManager);
         this.classTreeService = new ClassTreeService(this.classTreeManager);
         this.skillManager = new SkillManager(this, this.yamlLoader);
         this.cooldownService = new CooldownService();
@@ -1103,6 +1109,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public ClassTreeService getClassTreeService() {
         return classTreeService;
+    }
+
+    /**
+     * 派生スキル定義マネージャを取得する。
+     *
+     * @return プラグインの SkillVariantManager（onEnable 前は null）
+     */
+    public SkillVariantManager getSkillVariantManager() {
+        return skillVariantManager;
     }
 
     /**

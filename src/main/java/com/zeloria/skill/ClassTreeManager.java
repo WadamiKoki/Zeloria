@@ -41,14 +41,19 @@ public final class ClassTreeManager {
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
     private final TreeDataService treeDataService;
+    private final SkillVariantManager skillVariantManager;
 
     /** クラス ID → ツリー定義（不変・差し替え式）。 */
     private volatile Map<String, ClassTreeData> trees = Map.of();
 
-    public ClassTreeManager(Zeloria plugin, YamlLoader yamlLoader, TreeDataService treeDataService) {
+    public ClassTreeManager(Zeloria plugin,
+                            YamlLoader yamlLoader,
+                            TreeDataService treeDataService,
+                            SkillVariantManager skillVariantManager) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.yamlLoader = Objects.requireNonNull(yamlLoader, "yamlLoader");
         this.treeDataService = Objects.requireNonNull(treeDataService, "treeDataService");
+        this.skillVariantManager = skillVariantManager;
         reload();
     }
 
@@ -159,11 +164,15 @@ public final class ClassTreeManager {
                     node.cost(),
                     requires,
                     requiresAny,
-                    node.effects()));
+                    node.effectLore(),
+                    node.statEffects(),
+                    node.skillEffects(),
+                    node.replaceSkill()));
         }
 
         ClassTreeData tree = new ClassTreeData(classId, title, sanitized);
         validate(tree, key);
+        validateReplaceSkills(tree, key);
         return tree;
     }
 
@@ -176,6 +185,12 @@ public final class ClassTreeManager {
             cost = 0;
         }
 
+        Object effectLore = section.get("effectLore");
+        if (effectLore == null) {
+            // 旧形式（effects）との後方互換。
+            effectLore = section.get("effects");
+        }
+
         return new ClassTreeNode(
                 nodeId,
                 DefinitionParser.component(
@@ -185,7 +200,79 @@ public final class ClassTreeManager {
                 cost,
                 toSet(section.getStringList("requires")),
                 toSet(section.getStringList("requiresAny")),
-                DefinitionParser.description(section.get("effects")));
+                DefinitionParser.description(effectLore),
+                readEffects(section, "statEffects"),
+                readEffects(section, "skillEffects"),
+                section.getString("replaceSkill"));
+    }
+
+    /**
+     * {@code statEffects} / {@code skillEffects} の数値マップを読み込む。
+     * 負の値（デバフ）もそのまま保持する。
+     */
+    private Map<String, Double> readEffects(ConfigurationSection section, String field) {
+        Map<String, Double> effects = new LinkedHashMap<>();
+
+        ConfigurationSection effectsSection = section.getConfigurationSection(field);
+        if (effectsSection != null) {
+            for (String rawKey : effectsSection.getKeys(false)) {
+                addEffect(effects, rawKey, effectsSection.get(rawKey));
+            }
+            return effects;
+        }
+
+        Object raw = section.get(field);
+        if (raw instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                addEffect(effects, entry.getKey(), entry.getValue());
+            }
+        }
+        return effects;
+    }
+
+    private static void addEffect(Map<String, Double> effects, Object rawKey, Object rawValue) {
+        if (rawKey == null) {
+            return;
+        }
+        String key = String.valueOf(rawKey).trim();
+        if (key.isEmpty()) {
+            return;
+        }
+        double value;
+        if (rawValue instanceof Number number) {
+            value = number.doubleValue();
+        } else if (rawValue != null) {
+            try {
+                value = Double.parseDouble(String.valueOf(rawValue).trim());
+            } catch (NumberFormatException ignored) {
+                return;
+            }
+        } else {
+            return;
+        }
+        if (Double.isFinite(value)) {
+            effects.put(key, value);
+        }
+    }
+
+    /**
+     * 赤ノードが参照する派生スキルが存在するか検証する。
+     */
+    private void validateReplaceSkills(ClassTreeData tree, String key) {
+        if (skillVariantManager == null) {
+            return;
+        }
+        for (ClassTreeNode node : tree.nodes().values()) {
+            String replaceSkill = node.replaceSkill();
+            if (replaceSkill == null) {
+                continue;
+            }
+            if (!skillVariantManager.has(replaceSkill)) {
+                plugin.getLogger().warning(
+                        "クラスツリーノード '" + node.id() + "' の replaceSkill が"
+                                + " 存在しません: '" + replaceSkill + "' (" + key + ")");
+            }
+        }
     }
 
     private Set<String> sanitizePrerequisites(ClassTreeNode node,

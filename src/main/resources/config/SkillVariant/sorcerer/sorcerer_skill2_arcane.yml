@@ -1,0 +1,16 @@
+variantId: sorcerer_skill2_arcane
+baseSkill: sorcerer_skill2
+displayName: "氷獄の槍"
+description: "凍てつく巨大な氷槍を召喚する"
+actions:
+  - type: DAMAGE
+    multiplier: 3.0
+  - type: APPLY_EFFECT
+    effect: SLOWNESS
+    duration: 3
+    amplifier: 1
+  - type: PARTICLE
+    particle: SNOWFLAKE
+    count: 20
+  - type: SOUND
+    sound: BLOCK_GLASS_BREAK
