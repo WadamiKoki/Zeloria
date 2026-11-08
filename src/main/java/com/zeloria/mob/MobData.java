@@ -19,6 +19,7 @@ import java.util.Objects;
  * id: "goblin"          # 省略時はファイル名（拡張子なし）
  * name: "ゴブリン"       # 表示名（MiniMessage 可）
  * entityType: "zombie"  # Bukkit のエンティティ種別（省略時は ZOMBIE）
+ * baseLevel: 5          # ステータス定義の基準レベル（省略時は 1）
  * maxHp: 50.0
  * defense: 2.0          # 第 2 段階（防具相当）の防御力
  * attackPower: 4.0      # 攻撃力
@@ -40,7 +41,8 @@ import java.util.Objects;
  * @param name        表示名（MiniMessage 形式）
  * @param sourceKey   YAML のキャッシュキー（例: {@code EntityData/mob/Goblin.yml}）
  * @param entityType  スポーンさせるエンティティ種別（解決できなかった場合は {@code null}）
- * @param maxHp          最大 HP（0 以下ならエンティティ既定値を使用）
+ * @param baseLevel      ステータス定義（{@code maxHp} など）の基準レベル
+ * @param maxHp          最大 HP（{@code baseLevel} 時点の値。0 以下ならエンティティ既定値を使用）
  * @param defense        第 2 段階の防御力（防具相当）
  * @param attackPower    攻撃力
  * @param criticalRate   クリティカル率（%）
@@ -56,6 +58,7 @@ public record MobData(
         String name,
         String sourceKey,
         EntityType entityType,
+        int baseLevel,
         double maxHp,
         double defense,
         double attackPower,
@@ -78,6 +81,7 @@ public record MobData(
         id = id == null ? "" : id;
         name = name == null || name.isBlank() ? id : name;
         sourceKey = sourceKey == null ? "" : sourceKey;
+        baseLevel = Math.max(1, baseLevel);
         maxHp = Math.max(maxHp, 0.0);
         defense = Math.max(defense, 0.0);
         attackPower = Math.max(attackPower, 0.0);
@@ -108,6 +112,7 @@ public record MobData(
                 name,
                 sourceKey == null ? "" : sourceKey,
                 resolveEntityType(config.getString("entityType")),
+                config.getInt("baseLevel", 1),
                 config.getDouble("maxHp", 0.0),
                 config.getDouble("defense", 0.0),
                 config.getDouble("attackPower", MobStats.DEFAULT_ATTACK_POWER),

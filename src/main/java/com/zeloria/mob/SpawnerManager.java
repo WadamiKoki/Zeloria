@@ -1,37 +1,33 @@
 package com.zeloria.mob;
 
 import com.zeloria.core.MessageService;
-import com.zeloria.core.YamlLoader;
 import com.zeloria.core.Zeloria;
 import com.zeloria.world.CollisionManager;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerData;
-import com.zeloria.world.SpawnerPlacement;
+import com.zeloria.world.SpawnerDefinition;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.BlockDisplay;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.Transformation;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +41,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * {@code SpawnerData} の定義と {@code LayerData} の座標からモブを定期的にスポーンさせる。
+ * {@code LayerData} の {@code spawners} セクションに定義されたスポーン設定から
+ * モブを定期的にスポーンさせる。
+ * <p>
+ * スポナー定義は {@code config/LayerData/*.yml} に直接記述し（{@link SpawnerDefinition}）、
+ * 旧 {@code config/SpawnerData/*.yml} は使用しない。表示エンティティ
+ * （ItemDisplay / BlockDisplay）は生成せず、位置確認は {@code /admin spawner mode}
+ * のパーティクル表示で行う。
  * <p>
  * {@code LayerManager} がレイヤーワールドをロードしたタイミングで
  * {@link #startFor(World, String, String)}、アンロード・削除するタイミングで
@@ -58,35 +60,40 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>
  * 生成されたモブは {@code /admin mob spawn} と同一の PDC（{@code zeloria:mob_id}）と
  * スコアボードタグ（{@code zeloria_mob:<mobId>}）を持ち、カスタムダメージ計算の対象となる。
+ * スポーン時に抽選したレベルは {@code zeloria:mob_level} として PDC に保存し、
+ * {@link MobStatsService} が {@link MobData#baseLevel()} との差でステータスを補正する。
  */
-public final class SpawnerManager {
+public final class SpawnerManager implements Listener {
 
     /** モブを識別する PDC キー（{@code AdminCommand} / {@link MobStatsService} と同一）。 */
     public static final String MOB_ID_KEY = MobStatsService.MOB_ID_KEY;
 
+    /** スポーン時に決定したモブレベルを保持する PDC キー。 */
+    public static final String MOB_LEVEL_KEY = MobStatsService.MOB_LEVEL_KEY;
+
     /** スポーン済みモブへ付与するスコアボードタグの接頭辞（{@code AdminCommand} と同一）。 */
     public static final String MOB_TAG_PREFIX = "zeloria_mob:";
-
-    /** スポナー表示エンティティを識別する PDC キー。 */
-    public static final String SPAWNER_ID_KEY = "spawner_id";
-
-    /** スポナー定義 YAML の格納ディレクトリ。 */
-    private static final String SPAWNER_DATA_DIRECTORY = "SpawnerData/";
 
     /** 判定タスクの実行間隔（tick）。 */
     private static final int TICK_INTERVAL = 20;
 
+    /** デバッグ用パーティクル表示の実行間隔（tick）。 */
+    private static final int DEBUG_INTERVAL_TICKS = 20;
+
+    /** デバッグ用パーティクルを表示する管理者からの距離（ブロック）。 */
+    private static final double DEBUG_PARTICLE_RADIUS = 64.0;
+
+    /** デバッグ用パーティクルの表示数。 */
+    private static final int DEBUG_PARTICLE_COUNT = 2;
+
+    /** デバッグ用パーティクルをスポナー座標から上へずらす量（ブロック）。 */
+    private static final double DEBUG_PARTICLE_Y_OFFSET = 1.0;
+
     /** 奈落と判定する Y 座標。これ以下へ落ちたモブは消滅させる。 */
     private static final double VOID_DESPAWN_Y = -65.0;
 
-    /** 安全なスポーン地点を探す最大試行回数。 */
+    /** 水平ズレ座標の再抽選回数。全滅した場合はその周期のスポーンを見送る。 */
     private static final int SPAWN_ATTEMPTS = 10;
-
-    /** 基準座標からずらして安全地点を探す最大距離（ブロック）。 */
-    private static final int SPAWN_SPREAD = 4;
-
-    /** 基準座標から上下にずらして安全地点を探す最大距離（ブロック）。 */
-    private static final int SPAWN_Y_RANGE = 4;
 
     /** 複数スポナーの初回判定をずらす最大 tick 数。 */
     private static final int MAX_STAGGER_TICKS = 200;
@@ -95,10 +102,7 @@ public final class SpawnerManager {
 
     private final Zeloria plugin;
     private final NamespacedKey mobIdKey;
-    private final NamespacedKey spawnerIdKey;
-
-    /** スポナー ID（小文字） → 定義。 */
-    private final Map<String, SpawnerData> definitions = new ConcurrentHashMap<>();
+    private final NamespacedKey mobLevelKey;
 
     /** インスタンス ID → 稼働中のスポナー群。 */
     private final Map<String, ActiveLayer> active = new ConcurrentHashMap<>();
@@ -106,50 +110,17 @@ public final class SpawnerManager {
     /** 警告済みのモブ ID（存在しない定義でログが溢れるのを防ぐ）。 */
     private final Set<String> warnedMobs = ConcurrentHashMap.newKeySet();
 
-    /** 警告済みのスポナー ID。 */
-    private final Set<String> warnedSpawners = ConcurrentHashMap.newKeySet();
+    /** デバッグ表示モードが ON の管理者 UUID → 有効フラグ。 */
+    private final Map<UUID, Boolean> debugPlayers = new ConcurrentHashMap<>();
 
     private BukkitTask task;
+    private BukkitTask debugTask;
     private long tickCounter;
 
     public SpawnerManager(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.mobIdKey = new NamespacedKey(plugin, MOB_ID_KEY);
-        this.spawnerIdKey = new NamespacedKey(plugin, SPAWNER_ID_KEY);
-        reloadDefinitions();
-    }
-
-    /**
-     * {@code SpawnerData/*.yml} を読み直して定義を再構築する。
-     */
-    public void reloadDefinitions() {
-        definitions.clear();
-        warnedSpawners.clear();
-
-        YamlLoader yamlLoader = plugin.getYamlLoader();
-        if (yamlLoader == null) {
-            return;
-        }
-
-        for (Map.Entry<String, FileConfiguration> entry : yamlLoader.getConfigs().entrySet()) {
-            String sourceKey = entry.getKey();
-            if (sourceKey == null || !sourceKey.startsWith(SPAWNER_DATA_DIRECTORY)) {
-                continue;
-            }
-            FileConfiguration config = entry.getValue();
-            if (config == null) {
-                continue;
-            }
-
-            SpawnerData data = SpawnerData.fromConfig(sourceKey, config);
-            if (!data.isValid()) {
-                plugin.getLogger().warning("スポナー定義が不正です（id または mobId が空）: " + sourceKey);
-                continue;
-            }
-            definitions.put(data.id().toLowerCase(Locale.ROOT), data);
-        }
-
-        plugin.getLogger().info("スポナー定義を読み込みました: count=" + definitions.size());
+        this.mobLevelKey = new NamespacedKey(plugin, MOB_LEVEL_KEY);
     }
 
     /**
@@ -161,6 +132,7 @@ public final class SpawnerManager {
      * @param world      対象ワールド（インスタンス）
      * @param instanceId インスタンス ID
      * @param templateId テンプレート ID（{@code LayerData} の解決に使用）
+     * @return 登録したスポナー数
      */
     public int startFor(World world, String instanceId, String templateId) {
         if (world == null || instanceId == null || instanceId.isBlank()) {
@@ -175,20 +147,18 @@ public final class SpawnerManager {
             return 0;
         }
 
-        Optional<LayerData> found = templateId == null || templateId.isBlank()
-                ? layerConfigService.findById(instanceId)
-                : layerConfigService.findByTemplate(templateId);
+        // ワールド名から LayerData を解決する。LayerManager の対応表が未登録でも、
+        // テンプレート ID が渡されていればそこから解決できる。
+        Optional<LayerData> found = layerConfigService.findByWorldName(world.getName());
+        if (found.isEmpty() && templateId != null && !templateId.isBlank()) {
+            found = layerConfigService.findByTemplate(templateId);
+        }
         if (found.isEmpty()) {
             debug("レイヤー定義が見つかりません: instance=" + instanceId + ", template=" + templateId);
             return 0;
         }
 
-        List<SpawnerPlacement> spawners = found.get().getSpawners();
-
-        // サーバー停止時に消し切れなかった表示が残っていても二重表示にならないよう、
-        // このワールドのスポナー表示を一度すべて除去してから登録し直す。
-        removeSpawnerDisplays(world);
-
+        List<SpawnerDefinition> spawners = found.get().getSpawners();
         if (spawners.isEmpty()) {
             return 0;
         }
@@ -197,8 +167,8 @@ public final class SpawnerManager {
                 + ", world=" + world.getName() + ", spawners=" + spawners.size());
 
         int started = 0;
-        for (SpawnerPlacement placement : spawners) {
-            if (startFor(world, instanceId, placement)) {
+        for (SpawnerDefinition definition : spawners) {
+            if (registerSpawner(world, instanceId, definition)) {
                 started++;
             }
         }
@@ -206,74 +176,47 @@ public final class SpawnerManager {
     }
 
     /**
-     * 1 スポナー分の稼働登録と表示エンティティの生成を行う。
+     * 1 スポナー分の稼働登録を行う。
+     * <p>
+     * 表示エンティティは生成しない（見えないスポナー方針）。
      *
      * @param world      対象ワールド
      * @param instanceId インスタンス ID
-     * @param placement  レイヤー側の配置定義（ID と座標）
+     * @param definition レイヤー側のスポーン定義
+     * @return 登録した場合 {@code true}
      */
-    public boolean startFor(World world, String instanceId, SpawnerPlacement placement) {
-        if (world == null || instanceId == null || instanceId.isBlank() || placement == null) {
-            return false;
-        }
-
-        SpawnerData data = findDefinition(placement.spawnerId());
-        if (data == null) {
-            warnSpawnerOnce(placement.spawnerId(), "スポナー定義が見つかりません: spawner="
-                    + placement.spawnerId() + ", instance=" + instanceId);
+    private boolean registerSpawner(World world, String instanceId, SpawnerDefinition definition) {
+        if (definition == null || !definition.isValid()) {
             return false;
         }
 
         String instanceKey = key(instanceId);
-        boolean hasPlayers = !world.getPlayers().isEmpty();
-        ActiveLayer layer = active.get(instanceKey);
-        if (layer == null || layer.world != world) {
-            layer = new ActiveLayer(world, hasPlayers);
-            active.put(instanceKey, layer);
-            if (!hasPlayers) {
-                setMobsAware(world, false);
-            }
-        }
+        ActiveLayer layer = active.computeIfAbsent(instanceKey,
+                ignored -> new ActiveLayer(world, !world.getPlayers().isEmpty()));
 
-        if (layer.contains(placement.spawnerId(), placement.x(), placement.y(), placement.z())) {
+        if (layer.contains(definition.mobId(), definition.x(), definition.y(), definition.z())) {
             debug("同一座標のスポナーは登録済みのためスキップします: instance=" + instanceId
-                    + ", spawner=" + data.id());
+                    + ", spawner=" + definition.displayId());
             return false;
         }
 
-        Location location = new Location(world, placement.x(), placement.y(), placement.z());
-        UUID displayId = null;
-        try {
-            displayId = spawnDisplay(world, location, data);
-        } catch (RuntimeException e) {
-            plugin.getLogger().warning("スポナー表示の生成に失敗しました: spawner=" + data.id()
-                    + ", world=" + world.getName() + " (" + e.getMessage() + ")");
-        }
-
+        Location location = new Location(world, definition.x(), definition.y(), definition.z());
         long offset = (long) (layer.spawners.size() * TICK_INTERVAL) % MAX_STAGGER_TICKS;
-        ActiveSpawner spawner = new ActiveSpawner(data, location, tickCounter + offset);
-        layer.spawners.add(spawner);
+        layer.spawners.add(new ActiveSpawner(definition, location, tickCounter + offset));
         ensureTask();
 
-        SpawnerData.Display display = data.display();
         debug("スポナーを登録しました: instance=" + instanceId
-                + ", spawner=" + data.id()
-                + ", mob=" + data.mobId()
-                + ", level=" + data.level()
-                + ", world=" + world.getName()
-                + ", x=" + format(placement.x())
-                + ", y=" + format(placement.y())
-                + ", z=" + format(placement.z())
-                + ", display=" + display.type()
-                + ", material=" + display.material()
-                + ", scale=" + display.scale()
-                + ", displayId=" + (displayId == null ? "-" : displayId));
+                + ", spawner=" + definition.displayId()
+                + ", level=" + definition.minLevel() + "-" + definition.maxLevel()
+                + ", rate=" + definition.spawnRateSeconds() + "s"
+                + ", maxAlive=" + definition.maxAlive()
+                + ", radius=" + definition.spawnRadius()
+                + ", range=" + definition.spawnRange());
         return true;
     }
 
-
     /**
-     * 指定インスタンスのスポーン判定を停止し、表示エンティティを除去する。
+     * 指定インスタンスのスポーン判定を停止する。
      *
      * @param instanceId インスタンス ID
      */
@@ -283,7 +226,6 @@ public final class SpawnerManager {
         }
         ActiveLayer layer = active.remove(key(instanceId));
         if (layer != null) {
-            removeSpawnerDisplays(layer.world);
             debug("スポナーを停止しました: instance=" + instanceId + ", world=" + layer.world.getName());
         }
         stopTaskIfIdle();
@@ -292,18 +234,14 @@ public final class SpawnerManager {
     /**
      * 設定再読み込み時に、稼働中インスタンスのスポナーを最新の定義で再登録する。
      * <p>
-     * {@code LayerManager} が保持する「インスタンス → テンプレート」の対応を使い、
-     * ロード済みワールドだけを対象とする。
+     * {@code LayerData} は {@code LayerConfigService} が保持しているため、
+     * ここでは稼働状態を組み直すだけでよい。
      */
     public void reload() {
         debug("スポナー設定を再読み込みします");
 
-        for (ActiveLayer layer : new ArrayList<>(active.values())) {
-            removeSpawnerDisplays(layer.world);
-        }
         active.clear();
         warnedMobs.clear();
-        reloadDefinitions();
 
         var layerManager = plugin.getLayerManager();
         if (layerManager == null) {
@@ -321,18 +259,19 @@ public final class SpawnerManager {
     }
 
     /**
-     * すべてのスポーン判定を停止し、表示とタスクを破棄する（プラグイン停止時用）。
+     * すべてのスポーン判定・デバッグ表示を停止する（プラグイン停止時用）。
      */
     public void shutdown() {
-        for (ActiveLayer layer : new ArrayList<>(active.values())) {
-            removeSpawnerDisplays(layer.world);
-        }
         active.clear();
         warnedMobs.clear();
-        warnedSpawners.clear();
+        debugPlayers.clear();
         if (task != null) {
             task.cancel();
             task = null;
+        }
+        if (debugTask != null) {
+            debugTask.cancel();
+            debugTask = null;
         }
     }
 
@@ -343,32 +282,151 @@ public final class SpawnerManager {
         return active.size();
     }
 
+    /**
+     * スポナー位置のデバッグ表示モードを切り替える。
+     * <p>
+     * ON の間は {@link #renderDebugParticles()} が毎秒、管理者から 64 ブロック以内の
+     * スポナーへパーティクルを送信する。
+     *
+     * @param player 対象の管理者
+     * @return 切り替え後の状態（{@code true} で ON）
+     */
+    public boolean toggleDebugMode(Player player) {
+        if (player == null) {
+            return false;
+        }
 
+        UUID playerId = player.getUniqueId();
+        if (isDebugMode(playerId)) {
+            debugPlayers.remove(playerId);
+            stopDebugTaskIfIdle();
+            return false;
+        }
+
+        debugPlayers.put(playerId, Boolean.TRUE);
+        ensureDebugTask();
+        return true;
+    }
+
+    /**
+     * 指定プレイヤーのデバッグ表示モードが ON か判定する。
+     */
+    public boolean isDebugMode(UUID playerId) {
+        return playerId != null && debugPlayers.containsKey(playerId);
+    }
+
+    /**
+     * デバッグ表示モードを解除する。
+     *
+     * @param playerId 対象プレイヤー
+     */
+    public void clearDebugMode(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        if (debugPlayers.remove(playerId) != null) {
+            stopDebugTaskIfIdle();
+        }
+    }
+
+    /**
+     * 退出したプレイヤーのデバッグ表示モードを破棄する。
+     * <p>
+     * ログアウト後にモード状態が残らないよう、{@link PlayerQuitEvent} で解除する。
+     *
+     * @param event 退出イベント
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        clearDebugMode(event.getPlayer().getUniqueId());
+    }
+
+    private void ensureDebugTask() {
+        if (debugTask != null && !debugTask.isCancelled()) {
+            return;
+        }
+        debugTask = Bukkit.getScheduler().runTaskTimer(
+                plugin, this::renderDebugParticles, DEBUG_INTERVAL_TICKS, DEBUG_INTERVAL_TICKS);
+    }
+
+    private void stopDebugTaskIfIdle() {
+        if (!debugPlayers.isEmpty()) {
+            return;
+        }
+        if (debugTask != null) {
+            debugTask.cancel();
+            debugTask = null;
+        }
+    }
+    /**
+     * デバッグ表示モードが ON の管理者へスポナー位置のパーティクルを送信する。
+     * <p>
+     * 現在のワールドの {@code LayerData} から {@code spawners} を取得し、
+     * 管理者から {@value #DEBUG_PARTICLE_RADIUS} ブロック以内（二乗距離で判定）の
+     * スポナー座標（Y + 1）へ {@link Particle#HAPPY_VILLAGER} を表示する。
+     * {@link Player#spawnParticle(Particle, Location, int, double, double, double, double)}
+     * はそのプレイヤーのクライアントにのみパケットを送るため、他のプレイヤーには見えない。
+     */
+    private void renderDebugParticles() {
+        if (debugPlayers.isEmpty()) {
+            stopDebugTaskIfIdle();
+            return;
+        }
+
+        LayerConfigService layerConfigService = plugin.getLayerConfigService();
+        if (layerConfigService == null) {
+            return;
+        }
+
+        double maxDistanceSquared = DEBUG_PARTICLE_RADIUS * DEBUG_PARTICLE_RADIUS;
+
+        for (UUID playerId : new ArrayList<>(debugPlayers.keySet())) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                debugPlayers.remove(playerId);
+                continue;
+            }
+
+            // ワールドを移動した場合は、移動先のレイヤーデータを対象にする。
+            Optional<LayerData> layer = layerConfigService.findByWorldName(player.getWorld().getName());
+            if (layer.isEmpty() || layer.get().getSpawners().isEmpty()) {
+                continue;
+            }
+
+            Location playerLocation = player.getLocation();
+            for (SpawnerDefinition definition : layer.get().getSpawners()) {
+                Location location = new Location(player.getWorld(),
+                        definition.x(), definition.y() + DEBUG_PARTICLE_Y_OFFSET, definition.z());
+                // sqrt を避けるため二乗距離で 64 ブロック以内か判定する。
+                if (playerLocation.distanceSquared(location) > maxDistanceSquared) {
+                    continue;
+                }
+                player.spawnParticle(Particle.HAPPY_VILLAGER, location,
+                        DEBUG_PARTICLE_COUNT, 0.3, 0.3, 0.3, 0.0);
+            }
+        }
+
+        stopDebugTaskIfIdle();
+    }
     /**
      * 1 スポナー分の判定を行い、条件を満たせばモブをスポーンさせる。
      * <p>
-     * デバッグログはスポーン成功時と安全地点が見つからなかった時のみ出力する。
+     * デバッグログはスポーン成功時とスポーン地点を確保できなかった時のみ出力する。
      */
     private void runSpawner(World world, ActiveSpawner spawner) {
-        SpawnerData data = spawner.data;
-        Location center = spawner.location.clone();
+        SpawnerDefinition definition = spawner.definition;
+        Location center = spawner.location;
 
-        if (world.getPlayers().isEmpty()) {
-            return;
-        }
-        if (!world.isChunkLoaded(center.getBlockX() >> 4, center.getBlockZ() >> 4)) {
-            return;
-        }
-        if (!hasNearbyPlayer(world, center, data.spawnRadius())) {
+        if (!hasNearbyPlayer(world, center, definition.spawnRadius())) {
             return;
         }
 
         MobConfigService mobConfigService = plugin.getMobConfigService();
         Optional<MobData> found = mobConfigService == null
                 ? Optional.empty()
-                : mobConfigService.find(data.mobId());
+                : mobConfigService.find(definition.mobId());
         if (found.isEmpty()) {
-            warnOnce(data.mobId(), "スポナーが参照する MobData が見つかりません: mob=" + data.mobId());
+            warnOnce(definition.mobId(), "スポナーが参照する MobData が見つかりません: mob=" + definition.mobId());
             return;
         }
 
@@ -378,96 +436,206 @@ public final class SpawnerManager {
         // カスタムモブが弾かれることがある。LivingEntity として生成できるかだけを確認する。
         Class<? extends Entity> entityClass = entityType.getEntityClass();
         if (entityClass == null || !LivingEntity.class.isAssignableFrom(entityClass)) {
-            warnOnce(data.mobId(), "スポーンできないエンティティ種別です: mob=" + mob.id()
+            warnOnce(definition.mobId(), "スポーンできないエンティティ種別です: mob=" + mob.id()
                     + ", entity=" + entityType.getKey());
             return;
         }
 
-        int alive = countAlive(world, center, mob, data.spawnRadius());
-        if (alive >= data.maxAlive()) {
+        int alive = countAlive(world, center, mob, definition.spawnRadius());
+        if (alive >= definition.maxAlive()) {
             return;
         }
 
-        int allowed = Math.min(data.spawnLimit(), data.maxAlive() - alive);
+        int allowed = Math.min(definition.spawnLimit(), definition.maxAlive() - alive);
         for (int i = 0; i < allowed; i++) {
-            Location location = findSpawnLocation(world, center);
-            spawn(world, location, mob, data.level(), entityType);
-            plugin.getLogger().info("[Spawner] " + data.id()
-                    + " スポーン成功 loc=" + location + " level=" + data.level());
+            Location location = rollSpawnLocation(world, definition);
+            if (location == null) {
+                debug("スポーン地点を確保できませんでした: spawner=" + definition.displayId());
+                return;
+            }
+            int level = definition.randomLevel();
+            spawn(world, location, mob, level, entityType);
+            plugin.getLogger().info("[Spawner] " + definition.displayId()
+                    + " スポーン成功 loc=" + formatLocation(location) + " level=" + level);
         }
     }
-
-
     /**
-     * スポナーの見た目（ItemDisplay / BlockDisplay）を生成する。
+     * スポーン座標を決定する。
+     * <p>
+     * Y はスポナーの {@code y} に固定し、X / Z のみを {@code spawnRange} の範囲で
+     * ランダムにずらす（足場が無くても空中にスポーンさせる方針のため、
+     * ブロックの有無は判定しない）。ズレ幅は計算後に必ず
+     * {@code spawner ± spawnRange} へクランプし、未ロードチャンク・ワールド外は
+     * 再抽選する。全候補が使用不可の場合は {@code null} を返し、その周期は見送る。
      *
-     * @return 生成したエンティティの UUID（生成できなかった場合は {@code null}）
+     * @param world      対象ワールド
+     * @param definition スポーン定義
+     * @return スポーン座標。確保できなかった場合は {@code null}
      */
-    private UUID spawnDisplay(World world, Location location, SpawnerData data) {
-        SpawnerData.Display display = data.display();
-        Location centered = location.clone().add(0.5, 0.5, 0.5);
+    private Location rollSpawnLocation(World world, SpawnerDefinition definition) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        double baseX = definition.x();
+        double baseZ = definition.z();
+        double range = definition.spawnRange();
 
-        if (display.type() == SpawnerData.DisplayType.BLOCK_DISPLAY) {
-            BlockDisplay blockDisplay = world.spawn(centered, BlockDisplay.class);
-            blockDisplay.setBlock(display.material().createBlockData());
-            blockDisplay.setTransformation(transformation(display.scale()));
-            blockDisplay.setInvulnerable(true);
-            blockDisplay.getPersistentDataContainer().set(
-                    spawnerIdKey, PersistentDataType.STRING, data.id());
-            debug("BlockDisplay を生成しました: spawner=" + data.id()
-                    + ", material=" + display.material() + ", scale=" + display.scale());
-            return blockDisplay.getUniqueId();
+        for (int attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
+            double offsetX = range <= 0.0 ? 0.0 : random.nextDouble(-range, range);
+            double offsetZ = range <= 0.0 ? 0.0 : random.nextDouble(-range, range);
+            double x = clamp(baseX + offsetX, baseX - range, baseX + range);
+            double z = clamp(baseZ + offsetZ, baseZ - range, baseZ + range);
+
+            Location candidate = new Location(world, x, definition.y(), z,
+                    random.nextFloat() * 360.0f, 0.0f);
+            if (!isSpawnable(candidate)) {
+                continue;
+            }
+            // 未ロードチャンクへのスポーンは行わない（同期ロードによるラグを避ける）。
+            if (!world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)) {
+                continue;
+            }
+            return candidate;
         }
 
-        ItemDisplay itemDisplay = world.spawn(centered, ItemDisplay.class);
-        ItemStack stack = new ItemStack(display.material());
-        itemDisplay.setItemStack(stack);
-        // どの方向からでも見えるよう、プレイヤーの方を向かせる。
-        itemDisplay.setBillboard(Display.Billboard.CENTER);
-        itemDisplay.setTransformation(transformation(display.scale()));
-        itemDisplay.setInvulnerable(true);
-        itemDisplay.getPersistentDataContainer().set(
-                spawnerIdKey, PersistentDataType.STRING, data.id());
-        debug("ItemDisplay を生成しました: spawner=" + data.id()
-                + ", material=" + display.material()
-                + ", scale=" + display.scale());
-        return itemDisplay.getUniqueId();
+        return null;
     }
 
     /**
-     * 表示用の拡大縮小変換を生成する。
+     * 座標がスポーン可能な範囲か判定する（ワールド境界・ワールドボーダー）。
      */
-    private static Transformation transformation(float scale) {
-        return new Transformation(
-                new Vector3f(),
-                new Quaternionf(),
-                new Vector3f(scale, scale, scale),
-                new Quaternionf());
-    }
-
-    /**
-     * ワールド内のスポナー表示エンティティをすべて除去する。
-     */
-    private void removeSpawnerDisplays(World world) {
+    private boolean isSpawnable(Location location) {
+        World world = location.getWorld();
         if (world == null) {
+            return false;
+        }
+
+        int blockY = location.getBlockY();
+        if (blockY <= world.getMinHeight() || blockY >= world.getMaxHeight() - 1) {
+            return false;
+        }
+
+        // ワールド外（ワールドボーダー外）へはスポーンさせない。
+        return world.getWorldBorder().isInside(location);
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+    /**
+     * モブをスポーンさせ、定義とレベルを反映する。
+     */
+    private void spawn(World world, Location location, MobData data, int level, EntityType entityType) {
+        // spawnEntity の直後に設定すると Paper 側の再適用に上書きされることがあるため、
+        // 生成コールバック内で PDC・表示名・最大 HP を設定する。
+        world.spawnEntity(location, entityType, CreatureSpawnEvent.SpawnReason.SPAWNER,
+                created -> applyMobData(created, data, level));
+    }
+
+    /**
+     * スポーンしたエンティティへ {@link MobData} とスポーンレベルを反映する。
+     * <p>
+     * 表示名（MiniMessage）・最大 HP・スコアボードタグ・PDC のモブ ID とレベルを設定する。
+     * 最大 HP は {@link MobStats#levelMultiplier(int, int)} で補正した値を使用する。
+     */
+    private void applyMobData(Entity entity, MobData data, int level) {
+        int normalizedLevel = Math.max(1, level);
+        entity.customName(displayName(data.name(), normalizedLevel));
+        entity.setCustomNameVisible(data.alwaysShowName());
+        entity.addScoreboardTag(MOB_TAG_PREFIX + data.id());
+        entity.getPersistentDataContainer().set(mobIdKey, PersistentDataType.STRING, data.id());
+        entity.getPersistentDataContainer().set(mobLevelKey, PersistentDataType.INTEGER, normalizedLevel);
+
+        if (!(entity instanceof LivingEntity living)) {
             return;
         }
-        int removed = 0;
-        for (Entity entity : new ArrayList<>(world.getEntities())) {
-            if (!(entity instanceof Display)) {
-                continue;
-            }
-            if (entity.getPersistentDataContainer().get(spawnerIdKey, PersistentDataType.STRING) == null) {
-                continue;
-            }
-            entity.remove();
-            removed++;
+
+        MobStatsService mobStatsService = plugin.getMobStatsService();
+        if (mobStatsService != null) {
+            mobStatsService.attach(living, data, normalizedLevel);
         }
-        if (removed > 0) {
-            debug("スポナー表示を除去しました: world=" + world.getName() + ", count=" + removed);
+
+        if (data.maxHp() <= 0.0) {
+            return;
+        }
+
+        AttributeInstance maxHealth = living.getAttribute(Attribute.MAX_HEALTH);
+        if (maxHealth == null) {
+            return;
+        }
+        double scaled = Math.max(1.0,
+                data.maxHp() * MobStats.levelMultiplier(data.baseLevel(), normalizedLevel));
+        maxHealth.setBaseValue(scaled);
+        living.setHealth(Math.min(scaled, maxHealth.getValue()));
+    }
+
+    /**
+     * モブの表示名を MiniMessage として解決する。レベル 2 以上は {@code Lv.X} を前置する。
+     */
+    private Component displayName(String name, int level) {
+        String text = level > 1 ? "<gray>Lv." + level + "</gray> " + name : name;
+
+        MessageService messageService = plugin.getMessageService();
+        if (messageService == null) {
+            return Component.text(text);
+        }
+        return messageService.deserialize(text, Map.of());
+    }
+    /**
+     * 同じモブ ID の警告は 1 回だけ出力する。
+     */
+    private void warnOnce(String mobId, String message) {
+        if (warnedMobs.add(mobId == null ? "" : mobId.toLowerCase(Locale.ROOT))) {
+            plugin.getLogger().warning(message);
         }
     }
 
+    private static String key(String instanceId) {
+        return instanceId.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * 検知半径内にスポーン対象のプレイヤーがいるか判定する。
+     * <p>
+     * {@link GameMode#SPECTATOR} と {@link GameMode#CREATIVE} は除外し、
+     * サバイバル・アドベンチャーのプレイヤーだけを対象にする。
+     */
+    private boolean hasNearbyPlayer(World world, Location center, double radius) {
+        double squared = radius * radius;
+        for (Player player : world.getPlayers()) {
+            GameMode mode = player.getGameMode();
+            if (mode == GameMode.SPECTATOR || mode == GameMode.CREATIVE) {
+                continue;
+            }
+            if (player.getLocation().distanceSquared(center) <= squared) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 検知半径内に生存している同種モブの数を数える。
+     * <p>
+     * ワールド全体のエンティティを走査せず、検知半径の範囲内だけを取得する。
+     * {@link World#getNearbyEntities(Location, double, double, double)} は
+     * 直方体で判定するため、球状判定に合わせて距離でも絞り込む。
+     */
+    private int countAlive(World world, Location center, MobData data, double radius) {
+        String tag = MOB_TAG_PREFIX + data.id();
+        double squared = radius * radius;
+        int count = 0;
+        for (Entity entity : world.getNearbyEntities(center, radius, radius, radius)) {
+            if (!(entity instanceof LivingEntity living)) {
+                continue;
+            }
+            if (living.isDead() || !living.getScoreboardTags().contains(tag)) {
+                continue;
+            }
+            if (living.getLocation().distanceSquared(center) <= squared) {
+                count++;
+            }
+        }
+        return count;
+    }
     /**
      * レイヤーのモブの AI を一括で有効／無効にする。
      */
@@ -538,188 +706,6 @@ public final class SpawnerManager {
         living.remove();
     }
 
-    /**
-     * モブを 1 体スポーンし、定義値とレベルを反映する。
-     */
-    private void spawn(World world, Location location, MobData data, int level, EntityType entityType) {
-        world.spawnEntity(location, entityType, CreatureSpawnEvent.SpawnReason.SPAWNER,
-                created -> applyMobData(created, data, level));
-    }
-
-
-    /**
-     * スポーンしたエンティティへ {@link MobData} とレベルを反映する。
-     * <p>
-     * {@code AdminCommand#applyMobData} と同じ付与内容（表示名・タグ・PDC・最大 HP）に加え、
-     * レベル倍率を掛けた最大 HP と実行時ステータスを設定する。
-     */
-    private void applyMobData(Entity entity, MobData data, int level) {
-        entity.customName(displayName(data.name(), level));
-        entity.setCustomNameVisible(data.alwaysShowName());
-        entity.addScoreboardTag(MOB_TAG_PREFIX + data.id());
-        entity.getPersistentDataContainer().set(mobIdKey, PersistentDataType.STRING, data.id());
-
-        if (!(entity instanceof LivingEntity living)) {
-            return;
-        }
-
-        MobStatsService mobStatsService = plugin.getMobStatsService();
-        if (mobStatsService != null) {
-            mobStatsService.attach(living, data, level);
-        }
-
-        if (data.maxHp() <= 0.0) {
-            return;
-        }
-
-        AttributeInstance maxHealth = living.getAttribute(Attribute.MAX_HEALTH);
-        if (maxHealth == null) {
-            return;
-        }
-
-        double scaled = Math.max(1.0, data.maxHp() * MobStats.levelFactor(level));
-        maxHealth.setBaseValue(scaled);
-        living.setHealth(Math.min(scaled, maxHealth.getValue()));
-    }
-
-    /**
-     * モブの表示名を解決する。レベル 2 以上は {@code Lv.X} を前置する。
-     */
-    private Component displayName(String name, int level) {
-        String text = level > 1 ? "<gray>Lv." + level + "</gray> " + name : name;
-
-        MessageService messageService = plugin.getMessageService();
-        if (messageService == null) {
-            return Component.text(text);
-        }
-        return messageService.deserialize(text, Map.of());
-    }
-
-    /**
-     * 同じモブ ID の警告は 1 回だけ出力する。
-     */
-    private void warnOnce(String mobId, String message) {
-        if (warnedMobs.add(mobId == null ? "" : mobId.toLowerCase(Locale.ROOT))) {
-            plugin.getLogger().warning(message);
-        }
-    }
-
-    /**
-     * 同じスポナー ID の警告は 1 回だけ出力する。
-     */
-    private void warnSpawnerOnce(String spawnerId, String message) {
-        if (warnedSpawners.add(spawnerId == null ? "" : spawnerId.toLowerCase(Locale.ROOT))) {
-            plugin.getLogger().warning(message);
-        }
-    }
-
-    private SpawnerData findDefinition(String spawnerId) {
-        if (spawnerId == null || spawnerId.isBlank()) {
-            return null;
-        }
-        return definitions.get(spawnerId.trim().toLowerCase(Locale.ROOT));
-    }
-
-    private static String key(String instanceId) {
-        return instanceId.trim().toLowerCase(Locale.ROOT);
-    }
-
-    /**
-     * 検知半径内にスポーン対象のプレイヤーがいるか判定する。
-     */
-    private boolean hasNearbyPlayer(World world, Location center, double radius) {
-        double squared = radius * radius;
-        for (Player player : world.getPlayers()) {
-            if (player.getGameMode() == GameMode.SPECTATOR) {
-                continue;
-            }
-            if (player.getLocation().distanceSquared(center) <= squared) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 検知半径内に生存している同種モブの数を数える。
-     * <p>
-     * ワールド全体のエンティティを走査せず、検知半径の範囲内だけを取得する。
-     * {@link World#getNearbyEntities(Location, double, double, double)} は
-     * 直方体で判定するため、元の球状判定に合わせて距離でも絞り込む。
-     */
-    private int countAlive(World world, Location center, MobData data, double radius) {
-        String tag = MOB_TAG_PREFIX + data.id();
-        double squared = radius * radius;
-        int count = 0;
-        for (Entity entity : world.getNearbyEntities(center, radius, radius, radius)) {
-            if (!(entity instanceof LivingEntity living)) {
-                continue;
-            }
-            if (living.isDead() || !living.getScoreboardTags().contains(tag)) {
-                continue;
-            }
-            if (living.getLocation().distanceSquared(center) <= squared) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    /**
-     * 基準座標の周辺からスポーン地点を探す。
-     * <p>
-     * スポナーからの湧きを復活させるため、足元・頭上の空間や直下の固体ブロックは
-     * 要求しない（空中や壁の中でもスポーンする）。基準座標が有効な Y 範囲内なら
-     * そのまま使用し、範囲外の場合のみ周辺を探索する。探索しても見つからない場合は
-     * 湧きを止めないよう基準座標をそのまま返す。
-     *
-     * @param world  対象ワールド
-     * @param center 基準座標
-     * @return スポーン地点（非 {@code null}）
-     */
-    private Location findSpawnLocation(World world, Location center) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-
-        if (isSpawnable(center)) {
-            return center.clone();
-        }
-
-        for (int attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
-            int offsetX = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1);
-            int offsetZ = random.nextInt(-SPAWN_SPREAD, SPAWN_SPREAD + 1);
-            for (int offsetY = -SPAWN_Y_RANGE; offsetY <= SPAWN_Y_RANGE; offsetY++) {
-                Location candidate = new Location(world,
-                        center.getBlockX() + offsetX + 0.5,
-                        center.getBlockY() + offsetY,
-                        center.getBlockZ() + offsetZ + 0.5,
-                        random.nextFloat() * 360.0f, 0.0f);
-                if (!world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)) {
-                    continue;
-                }
-                if (isSpawnable(candidate)) {
-                    return candidate;
-                }
-            }
-        }
-
-        return center.clone();
-    }
-
-    /**
-     * その地点にモブを出現させられるか判定する。
-     * <p>
-     * 空間の有無や直下のブロック種別は要求せず、ワールドの有効 Y 範囲内かどうかだけを確認する。
-     */
-    private boolean isSpawnable(Location location) {
-        World world = location.getWorld();
-        if (world == null) {
-            return false;
-        }
-        int y = location.getBlockY();
-        return y > world.getMinHeight() && y < world.getMaxHeight() - 1;
-    }
-
-
     private void ensureTask() {
         if (task != null && !task.isCancelled()) {
             return;
@@ -778,14 +764,13 @@ public final class SpawnerManager {
                 if (tickCounter < spawner.nextRun) {
                     continue;
                 }
-                spawner.nextRun = tickCounter + spawner.data.spawnRateTicks();
+                spawner.nextRun = tickCounter + spawner.definition.spawnRateTicks();
 
                 try {
                     runSpawner(world, spawner);
                 } catch (RuntimeException e) {
                     plugin.getLogger().warning("スポナー処理に失敗しました: instance="
-                            + entry.getKey() + ", spawner=" + spawner.data.id()
-                            + ", mob=" + spawner.data.mobId()
+                            + entry.getKey() + ", spawner=" + spawner.definition.displayId()
                             + " (" + e.getMessage() + ")");
                 }
             }
@@ -798,10 +783,10 @@ public final class SpawnerManager {
         plugin.getLogger().fine(DEBUG_PREFIX + message);
     }
 
-    private static String format(double value) {
-        return String.format(Locale.ROOT, "%.2f", value);
+    private static String formatLocation(Location location) {
+        return String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                location.getX(), location.getY(), location.getZ());
     }
-
     /**
      * 1 インスタンス分の稼働状態。スポナーごとの次回実行 tick を保持する。
      */
@@ -816,9 +801,9 @@ public final class SpawnerManager {
             this.mobsAware = mobsAware;
         }
 
-        private boolean contains(String spawnerId, double x, double y, double z) {
+        private boolean contains(String mobId, double x, double y, double z) {
             for (ActiveSpawner spawner : spawners) {
-                if (!spawner.data.id().equalsIgnoreCase(spawnerId)) {
+                if (!spawner.definition.mobId().equalsIgnoreCase(mobId)) {
                     continue;
                 }
                 Location location = spawner.location;
@@ -833,19 +818,18 @@ public final class SpawnerManager {
     }
 
     /**
-     * 稼働中の 1 スポナー。
+     * 稼働中の 1 スポナー。レイヤー側の定義と次回実行 tick を保持する。
      */
     private static final class ActiveSpawner {
 
-        private final SpawnerData data;
+        private final SpawnerDefinition definition;
         private final Location location;
         private long nextRun;
 
-        private ActiveSpawner(SpawnerData data, Location location, long nextRun) {
-            this.data = data;
+        private ActiveSpawner(SpawnerDefinition definition, Location location, long nextRun) {
+            this.definition = definition;
             this.location = location;
             this.nextRun = nextRun;
         }
     }
 }
-

@@ -104,7 +104,6 @@ public final class Zeloria extends JavaPlugin {
             "SkillData",
             "ItemData",
             "EntityData",
-            "SpawnerData",
             "LayerData",
             "SystemData",
             "MessageData",
@@ -718,6 +717,10 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new CombatModeListener(this));
         this.mobRewardListener = new MobRewardListener(this);
         this.listenerRegistrar.register(this.mobRewardListener);
+        // /admin spawner mode のデバッグ表示状態を PlayerQuitEvent で破棄する。
+        if (this.spawnerManager != null) {
+            this.listenerRegistrar.register(this.spawnerManager);
+        }
         this.playerStatusDisplayTask = new PlayerStatusDisplayTask(this);
         this.listenerRegistrar.register(this.playerStatusDisplayTask);
         if (this.classSelectGUI != null) {

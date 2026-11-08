@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|spawner|npc|give|info|stats|xp|gui|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -18,6 +18,14 @@ mob:
     not_found: "<red>モブ設定が見つかりません: <white>{mob_id}</white></red>"
     invalid_type: "<red>スポーンできないエンティティ種別です: <white>{entity_type}</white></red>"
     failed: "<red>モブのスポーンに失敗しました: <white>{mob_id}</white> <gray>({error})</gray></red>"
+
+spawner:
+  usage: "<gray>使い方:</gray> <white>/admin spawner mode</white>"
+  mode:
+    enabled: "<green>スポナーのデバッグ表示を ON にしました。</green> <gray>(半径 64 ブロック以内のスポナーにパーティクルを表示します)</gray>"
+    disabled: "<green>スポナーのデバッグ表示を OFF にしました。</green>"
+    player_only: "<red>スポナーのデバッグ表示はプレイヤーとして実行してください。</red>"
+    unavailable: "<yellow>スポナー管理が初期化されていません。</yellow>"
 
 give:
   usage: "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon|tool> \\<id> [amount]</white>"

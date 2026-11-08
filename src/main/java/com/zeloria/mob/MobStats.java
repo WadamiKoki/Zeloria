@@ -48,12 +48,15 @@ public record MobStats(
     public static final double DEFAULT_EVASION = 0.0;
 
     /**
-     * レベル 1 を基準とした 1 レベルあたりのステータス増加倍率。
+     * 基準レベル（{@link MobData#baseLevel()}）との差 1 レベルあたりのステータス補正率。
      * <p>
-     * 倍率は {@code 1 + 0.15 × (レベル - 1)} の単利計算で、
-     * レベル 2 で 1.15 倍、レベル 3 で 1.30 倍となる。
+     * 倍率は {@code 1 + 0.03 × (スポーンレベル - 基準レベル)} の単利計算で、
+     * 基準レベル +3 で 1.09 倍、基準レベル -4 で 0.88 倍となる。
      */
-    public static final double LEVEL_SCALING_PER_LEVEL = 0.15;
+    public static final double LEVEL_SCALING_PER_LEVEL = 0.03;
+
+    /** レベル補正の下限倍率（極端に低いレベル指定でも 0 以下にしない）。 */
+    public static final double MIN_LEVEL_MULTIPLIER = 0.1;
 
     public MobStats {
         id = id == null ? "" : id;
@@ -68,26 +71,24 @@ public record MobStats(
     }
 
     /**
-     * {@link MobData} の定義値からレベル 1 の実行時ステータスを生成する。
-     * <p>
-     * モブのレベルはスポナー定義（{@link SpawnerData#level()}）など、
-     * スポーンさせる側が明示的に指定する。
+     * {@link MobData} の定義値から基準レベル（{@link MobData#baseLevel()}）時の実行時ステータスを生成する。
      *
      * @param data モブ定義
      * @return 実行時ステータス
      */
     public static MobStats from(MobData data) {
-        return from(data, 1);
+        return from(data, data == null ? 1 : data.baseLevel());
     }
 
     /**
-     * {@link MobData} の定義値とレベルから実行時ステータスを生成する。
+     * {@link MobData} の定義値とスポーンレベルから実行時ステータスを生成する。
      * <p>
-     * 最大 HP・防御力・攻撃力は {@link #levelFactor(int)} 倍され、
-     * 確率系ステータス（クリティカル率・命中率・回避率）は定義値のまま使用する。
+     * レベル補正（{@link #levelMultiplier(int, int)}）は最大 HP・防御力・攻撃力・
+     * クリティカルダメージにのみ適用し、確率系ステータス（クリティカル率・命中率・
+     * 回避率）は定義値のまま使用する。
      *
      * @param data  モブ定義
-     * @param level モブレベル（1 未満は 1 として扱う）
+     * @param level スポーンレベル（{@code baseLevel} との差で補正する）
      * @return 実行時ステータス
      */
     public static MobStats from(MobData data, int level) {
@@ -97,7 +98,7 @@ public record MobStats(
                     DEFAULT_ACCURACY, DEFAULT_EVASION);
         }
 
-        double factor = levelFactor(level);
+        double factor = levelMultiplier(data.baseLevel(), level);
         return new MobStats(
                 data.id(),
                 (data.maxHp() > 0.0 ? data.maxHp() : 1.0) * factor,
@@ -105,19 +106,23 @@ public record MobStats(
                 data.defense() * factor,
                 data.attackPower() * factor,
                 data.criticalRate(),
-                data.criticalDamage(),
+                data.criticalDamage() * factor,
                 data.accuracy(),
                 data.evasion());
     }
 
     /**
-     * レベルに応じたステータス倍率を返す（{@code 1 + 0.15 × (レベル - 1)}）。
+     * スポーンレベルと基準レベルの差に応じたステータス倍率を返す。
+     * <p>
+     * {@code 1.0 + 0.03 × (スポーンレベル - 基準レベル)}。
+     * 下限は {@link #MIN_LEVEL_MULTIPLIER} でクランプする。
      *
-     * @param level モブレベル（1 未満は 1 として扱う）
+     * @param baseLevel    ステータス定義の基準レベル（1 未満は 1 として扱う）
+     * @param spawnedLevel スポーン時のレベル（1 未満は 1 として扱う）
      */
-    public static double levelFactor(int level) {
-        int normalized = Math.max(1, level);
-        return 1.0 + LEVEL_SCALING_PER_LEVEL * (normalized - 1);
+    public static double levelMultiplier(int baseLevel, int spawnedLevel) {
+        int diff = Math.max(1, spawnedLevel) - Math.max(1, baseLevel);
+        return Math.max(MIN_LEVEL_MULTIPLIER, 1.0 + LEVEL_SCALING_PER_LEVEL * diff);
     }
 
     private static double clampPercent(double value) {

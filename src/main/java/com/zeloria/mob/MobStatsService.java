@@ -32,8 +32,17 @@ public final class MobStatsService {
     /** モブを識別する PDC キー（{@code AdminCommand} / {@code MobRewardListener} と同一）。 */
     public static final String MOB_ID_KEY = "mob_id";
 
+    /**
+     * スポーン時に決定したモブレベルを保持する PDC キー。
+     * <p>
+     * チャンク再読み込みでメモリ上のキャッシュが消えても、この値から
+     * 同じレベル補正を再現できる。
+     */
+    public static final String MOB_LEVEL_KEY = "mob_level";
+
     private final Zeloria plugin;
     private final NamespacedKey mobIdKey;
+    private final NamespacedKey mobLevelKey;
 
     /** エンティティ UUID → 実行時ステータス。 */
     private final Map<UUID, MobStats> stats = new ConcurrentHashMap<>();
@@ -41,36 +50,41 @@ public final class MobStatsService {
     public MobStatsService(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.mobIdKey = new NamespacedKey(plugin, MOB_ID_KEY);
+        this.mobLevelKey = new NamespacedKey(plugin, MOB_LEVEL_KEY);
     }
 
     /**
-     * スポーン時にモブ定義を登録する（レベル 1）。
+     * スポーン時にモブ定義を登録する（レベルは {@link MobData#baseLevel()}）。
      *
      * @param entity 対象エンティティ
      * @param data   モブ定義
      */
     public void attach(LivingEntity entity, MobData data) {
-        attach(entity, data, 1);
+        attach(entity, data, data == null ? 1 : data.baseLevel());
     }
 
     /**
      * スポーン時にモブ定義とレベルを登録する。
      * <p>
      * スポナーが個別のレベルを指定した場合は、このメソッドで明示したレベルが
-     * 使用される。
+     * 使用される。レベルは {@value #MOB_LEVEL_KEY} として PDC にも保存し、
+     * キャッシュ消失時の再生成に備える。
      *
      * @param entity 対象エンティティ
      * @param data   モブ定義
-     * @param level  モブレベル（1 未満は 1 として扱う）
+     * @param level  スポーンレベル（1 未満は 1 として扱う）
      */
     public void attach(LivingEntity entity, MobData data, int level) {
         if (entity == null || data == null) {
             return;
         }
+        int normalizedLevel = Math.max(1, level);
         // プラグインがスポーンするモブは、子供・装備持ち・アイテム拾得などの
         // 偶発的な例外状態を持たせない。
         sanitize(entity);
-        stats.put(entity.getUniqueId(), MobStats.from(data, level));
+        entity.getPersistentDataContainer().set(
+                mobLevelKey, PersistentDataType.INTEGER, normalizedLevel);
+        stats.put(entity.getUniqueId(), MobStats.from(data, normalizedLevel));
     }
 
     /**
@@ -136,9 +150,24 @@ public final class MobStatsService {
             return null;
         }
 
-        MobStats created = MobStats.from(found.get());
+        MobStats created = MobStats.from(found.get(), levelOf(living, found.get()));
         stats.put(living.getUniqueId(), created);
         return created;
+    }
+
+    /**
+     * エンティティの PDC からスポーンレベルを取得する。
+     * <p>
+     * レベルが保存されていない（旧バージョンでスポーンした等）場合は
+     * {@link MobData#baseLevel()} を返す。
+     *
+     * @param entity 対象エンティティ
+     * @param data   モブ定義
+     */
+    private int levelOf(LivingEntity entity, MobData data) {
+        Integer level = entity.getPersistentDataContainer()
+                .get(mobLevelKey, PersistentDataType.INTEGER);
+        return level == null ? data.baseLevel() : Math.max(1, level);
     }
 
     /**

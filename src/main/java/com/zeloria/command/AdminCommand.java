@@ -22,6 +22,7 @@ import com.zeloria.core.MessageService;
 import com.zeloria.mob.MobConfigService;
 import com.zeloria.mob.MobData;
 import com.zeloria.mob.MobStatsService;
+import com.zeloria.mob.SpawnerManager;
 import com.zeloria.npc.NpcData;
 import com.zeloria.npc.NpcManager;
 import com.zeloria.player.AdminBonusesJson;
@@ -92,6 +93,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - {@code EntityData/mob} の定義を指定して
  *         モブをスポーンする</li>
+ *     <li>{@code /admin spawner mode} - {@code LayerData} のスポナー位置をパーティクルで表示する
+ *         デバッグモードを ON / OFF する（自分のクライアントにのみ表示）</li>
  *     <li>{@code /admin info <player>} - プレイヤー情報・RPG ステータスを表示する</li>
  *     <li>{@code /admin stats <player> <type> <value>} - 管理者補正としてステータスを加算（負の値で減算）して保存する</li>
  *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
@@ -116,6 +119,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String DB = "db";
     private static final String MOB = "mob";
     private static final String SPAWN = "spawn";
+    private static final String SPAWNER = "spawner";
     private static final String GIVE = "give";
     private static final String INFO = "info";
     private static final String STATS = "stats";
@@ -184,6 +188,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> MOB_TARGETS = List.of(SPAWN);
 
+    private static final List<String> SPAWNER_TARGETS = List.of(MODE);
+
     private static final List<String> NPC_TARGETS = List.of(LIST, SPAWN, REMOVE);
 
     private static final List<String> LAYER_TARGETS = List.of(ALL, ONLINE);
@@ -212,7 +218,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|spawner|npc|give|info|stats|xp|gui|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -282,6 +288,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case RELOAD -> reload(sender);
             case TEST -> handleTest(sender, args);
             case MOB -> handleMob(sender, args);
+            case SPAWNER -> handleSpawner(sender, args);
             case NPC -> handleNpc(sender, args);
             case GIVE -> handleGive(sender, args);
             case INFO -> handleInfo(sender, args);
@@ -314,6 +321,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(RELOAD);
                 candidates.add(TEST);
                 candidates.add(MOB);
+                candidates.add(SPAWNER);
                 candidates.add(NPC);
                 candidates.add(GIVE);
                 candidates.add(INFO);
@@ -334,6 +342,16 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         if (MOB.equalsIgnoreCase(args[0])) {
             return completeMob(sender, args);
+        }
+
+        if (SPAWNER.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return partial(args[1], SPAWNER_TARGETS);
+            }
+            return List.of();
         }
 
         if (LAYER.equalsIgnoreCase(args[0])) {
@@ -678,6 +696,49 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         spawnMob(sender, args[2], count);
+    }
+
+    /**
+     * {@code /admin spawner ...} のディスパッチ。
+     * <p>
+     * 現時点では {@code mode} のみをサポートする。{@code mode} は実行者本人の
+     * デバッグ表示状態を切り替えるため、プレイヤーとして実行する必要がある。
+     */
+    private void handleSpawner(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            send(sender, spawnerUsage());
+            return;
+        }
+
+        if (!MODE.equalsIgnoreCase(args[1])) {
+            send(sender, message("command.unknown_subcommand", Map.of("input", args[1]),
+                    "<red>不明なサブコマンドです: <white>{input}</white></red>"));
+            send(sender, spawnerUsage());
+            return;
+        }
+
+        if (!(sender instanceof Player player)) {
+            send(sender, message("spawner.mode.player_only", Map.of(),
+                    "<red>スポナーのデバッグ表示はプレイヤーとして実行してください。</red>"));
+            return;
+        }
+
+        SpawnerManager spawnerManager = plugin.getSpawnerManager();
+        if (spawnerManager == null) {
+            send(sender, message("spawner.mode.unavailable", Map.of(),
+                    "<yellow>スポナー管理が初期化されていません。</yellow>"));
+            return;
+        }
+
+        // トグル結果をそのまま通知する（ON の間は 1 秒ごとにパーティクルを送信する）。
+        if (spawnerManager.toggleDebugMode(player)) {
+            send(sender, message("spawner.mode.enabled", Map.of(),
+                    "<green>スポナーのデバッグ表示を ON にしました。</green> "
+                            + "<gray>(半径 64 ブロック以内のスポナーにパーティクルを表示します)</gray>"));
+            return;
+        }
+        send(sender, message("spawner.mode.disabled", Map.of(),
+                "<green>スポナーのデバッグ表示を OFF にしました。</green>"));
     }
 
     /**
@@ -3791,6 +3852,14 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private String mobUsage() {
         return message("mob.spawn.usage", Map.of(),
                 "<gray>使い方:</gray> <white>/admin mob spawn \\<mobId> [count]</white>");
+    }
+
+    /**
+     * {@code /admin spawner} の使用方法メッセージを返す。
+     */
+    private String spawnerUsage() {
+        return message("spawner.usage", Map.of(),
+                "<gray>使い方:</gray> <white>/admin spawner mode</white>");
     }
 
     /**

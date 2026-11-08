@@ -30,12 +30,12 @@ public class LayerData {
     private final LayerDisplay display;
     private final Map<String, PortalDefinition> portals;
     private final List<NpcPlacement> npcs;
-    private final List<SpawnerPlacement> spawners;
+    private final List<SpawnerDefinition> spawners;
 
     private LayerData(String sourceKey, String id, String name, String templateId,
                       int maxInstances, boolean shared, LayerDisplay display,
                       Map<String, PortalDefinition> portals, List<NpcPlacement> npcs,
-                      List<SpawnerPlacement> spawners) {
+                      List<SpawnerDefinition> spawners) {
         this.sourceKey = sourceKey;
         this.id = id;
         this.name = name;
@@ -99,17 +99,17 @@ public class LayerData {
     /**
      * {@code spawners} セクションを解析する。
      * <p>
-     * 不正なエントリ（{@code spawnerId} が空）は読み飛ばす。
+     * 不正なエントリ（{@code mobId} が空）は読み飛ばす。
      */
-    private static List<SpawnerPlacement> parseSpawners(FileConfiguration config) {
-        List<SpawnerPlacement> placements = new ArrayList<>();
+    private static List<SpawnerDefinition> parseSpawners(FileConfiguration config) {
+        List<SpawnerDefinition> spawners = new ArrayList<>();
         for (Map<?, ?> raw : config.getMapList("spawners")) {
-            SpawnerPlacement placement = SpawnerPlacement.fromMap(raw);
-            if (placement.isValid()) {
-                placements.add(placement);
+            SpawnerDefinition definition = SpawnerDefinition.fromMap(raw);
+            if (definition.isValid()) {
+                spawners.add(definition);
             }
         }
-        return placements;
+        return spawners;
     }
 
     /**
@@ -162,9 +162,10 @@ public class LayerData {
     /**
      * レイヤー内に設置するモブスポナーの定義（不変リスト）。
      * <p>
+     * 湧き数・間隔・検知半径・スポーン座標を {@code SpawnerDefinition} として直接保持し、
      * レイヤーワールドのロード時に {@code SpawnerManager} が参照する。
      */
-    public List<SpawnerPlacement> getSpawners() {
+    public List<SpawnerDefinition> getSpawners() {
         return spawners;
     }
 

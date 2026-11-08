@@ -2,6 +2,8 @@ id: "goblin"
 name: "ゴブリン"
 # 省略時はZOMBIE。
 entityType: "zombie"
+# ステータス定義（maxHp など）の基準レベル。スポーンレベルとの差で補正されます。
+baseLevel: 5
 maxHp: 50.0
 defense: 2.0
 attackPower: 4.0
