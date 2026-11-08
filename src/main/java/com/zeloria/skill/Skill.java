@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * {@code config/SkillData/*.yml} から読み込んだスキル定義。
+ * {@code config/SkillData/<classId>/base/*.yml} から読み込んだスキル定義。
  * <p>
  * 属性・ダメージ計算は本基盤の対象外だが、将来の計算で利用する
  * コスト・倍率・射程は設定値のまま保持する。クールダウンは秒単位で定義し、
@@ -18,7 +18,7 @@ import java.util.Objects;
  * 選択される想定。{@code icon} はスキルスロット表示用の見た目だけに使用し、
  * ダメージ計算には使用しない。
  *
- * @param id                   スキル ID（小文字・空白なし）
+ * @param id                   複合スキル ID（{@code <classId>:<skillId>}、小文字・空白なし）
  * @param displayName          表示名（MiniMessage 解決済み）
  * @param description          説明文（MiniMessage 解決済み、複数行）
  * @param icon                 スキルスロットに表示するアイコン

@@ -82,9 +82,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <ul>
  *     <li>{@code /admin reload} - YAML 設定を再読み込みする</li>
  *     <li>{@code /admin test yaml [<folder>] [<id>]} - ロード済み YAML を要約／照会する
- *         （{@code WeaponData/archer/test} のような階層パス指定にも対応）</li>
+ *         （{@code ItemData/weapon/axe/test} や {@code ClassData/tree/knight}、
+ *         {@code EntityData/mob/Goblin} のような階層パス指定にも対応）</li>
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
- *     <li>{@code /admin mob spawn <mobId> [count]} - MobData を指定してモブをスポーンする</li>
+ *     <li>{@code /admin mob spawn <mobId> [count]} - {@code EntityData/mob} の定義を指定して
+ *         モブをスポーンする</li>
  *     <li>{@code /admin info <player>} / {@code /admin stats <player>} - プレイヤー情報・RPG ステータスを表示する</li>
  *     <li>{@code /admin stats <player> <type> <value>} - 基礎ステータスを加算（負の値で減算）して保存する</li>
  *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
@@ -511,7 +513,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         int count = yamlLoader.loadAllConfigs();
 
-        // LayerData / MessageData / MobData / GUI のキャッシュも最新化する。
+        // LayerData / MessageData / EntityData/mob / GUI のキャッシュも最新化する。
         if (plugin.getLayerConfigService() != null) {
             plugin.getLayerConfigService().reload();
         }
@@ -652,13 +654,13 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
         if (npcManager.size() == 0) {
             send(sender, message("npc.list.empty", Map.of(),
-                    "<gray>NpcData が 1 件も読み込まれていません。</gray>"));
+                    "<gray>EntityData/npc が 1 件も読み込まれていません。</gray>"));
             return;
         }
 
         send(sender, message("npc.list.header",
                 Map.of("count", String.valueOf(npcManager.size())),
-                "<gray>NpcData: <white>{count}</white> 件</gray>"));
+                "<gray>EntityData/npc: <white>{count}</white> 件</gray>"));
         for (NpcData data : npcManager.getAll()) {
             send(sender, message("npc.list.entry",
                     Map.of("npc_id", data.id(),
@@ -2468,7 +2470,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             }
         }
 
-        // 第 2 引数がサブフォルダ（WeaponData archer など）の場合も、
+        // 第 2 引数がサブフォルダ（ItemData weapon など）の場合も、
         // 配下の YAML 件数サマリーを表示する。
         if (rest.length >= 2) {
             String folderKey = normalizeFolder(rest[0]);
@@ -2536,7 +2538,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             List<String> ids = entry.getValue();
             ids.sort(String.CASE_INSENSITIVE_ORDER);
 
-            String color = folderColor(folderOf(folder).isEmpty() ? folder : folderOf(folder));
+            String color = folderColor(folder);
             send(sender, "  <" + color + "><bold>▶ " + esc(folder) + "</bold></" + color + ">"
                     + " <gray>(" + ids.size() + ")</gray>"
                     + " <dark_gray>" + esc(folder) + "/</dark_gray>");
@@ -2557,25 +2559,75 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 + "<white>/admin test yaml \\<folder> \\<id></white> / "
                 + "<white>/admin test yaml \\<folder>/\\<subfolder>/\\<id></white> "
                 + "で詳細を参照できます。</gray>");
+        send(sender, "  <gray>例: <white>/admin test yaml SkillData/knight/base skill1</white></gray>");
     }
 
     /**
      * フォルダ名に対応する見出し色を返す。
      */
     private static String folderColor(String folder) {
-        return switch (folder) {
-            case "WeaponData" -> "gold";
-            case "ArmorData" -> "blue";
-            case "SkillData" -> "aqua";
-            case "MobData" -> "red";
-            case "MaterialData" -> "green";
-            case "ClassData" -> "light_purple";
-            case "LevelData" -> "yellow";
-            case "LayerData" -> "dark_green";
-            case "MessageData" -> "gray";
+        String normalized = normalizeFolder(folder).toLowerCase(Locale.ROOT);
+        if (hasFolderPrefix(normalized, "itemdata/weapon")) {
+            return "gold";
+        }
+        if (hasFolderPrefix(normalized, "itemdata/armor")) {
+            return "blue";
+        }
+        if (hasFolderPrefix(normalized, "itemdata/material")) {
+            return "green";
+        }
+        if (hasFolderPrefix(normalized, "classdata/classes")) {
+            return "light_purple";
+        }
+        if (hasFolderPrefix(normalized, "classdata/tree")) {
+            return "aqua";
+        }
+        if (hasFolderPrefix(normalized, "entitydata/mob")) {
+            return "red";
+        }
+        if (hasFolderPrefix(normalized, "entitydata/npc")) {
+            return "yellow";
+        }
+        if (hasSkillSection(normalized, "base")) {
+            return "aqua";
+        }
+        if (hasSkillSection(normalized, "variant")) {
+            return "light_purple";
+        }
+        if (hasFolderPrefix(normalized, "skilldata")) {
+            return "aqua";
+        }
+        return switch (normalized) {
+            case "leveldata" -> "yellow";
+            case "layerdata" -> "dark_green";
+            case "messagedata" -> "gray";
             case "gui" -> "light_purple";
             default -> "white";
         };
+    }
+
+    /**
+     * {@code SkillData/<classId>/<section>/...} 配下のフォルダか判定する。
+     */
+    private static boolean hasSkillSection(String normalizedFolder, String section) {
+        String prefix = "skilldata/";
+        if (!normalizedFolder.startsWith(prefix)) {
+            return false;
+        }
+        String relative = normalizedFolder.substring(prefix.length());
+        int slash = relative.indexOf('/');
+        if (slash <= 0) {
+            return false;
+        }
+        String sectionPath = relative.substring(slash + 1);
+        return sectionPath.equals(section) || sectionPath.startsWith(section + "/");
+    }
+
+    /**
+     * フォルダパスが指定フォルダ自身、またはその配下か判定する（小文字化済みの入力を想定）。
+     */
+    private static boolean hasFolderPrefix(String normalizedFolder, String prefix) {
+        return normalizedFolder.equals(prefix) || normalizedFolder.startsWith(prefix + "/");
     }
 
     /**
@@ -2645,12 +2697,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * 指定された YAML の内容をフォルダ種別に応じて整形して出力する。
-     * <p>
-     * 数値は {@code 10.0} ではなく {@code 10} のように末尾の不要なゼロを除去し、
-     * {@code stats} などのネストしたセクションは階層を保ったまま展開する。
-     */
-    /**
      * 武器定義の武器タイプ表示を組み立てる。
      * <p>
      * 新キー {@code weaponTypes}（リスト）を優先し、無い場合は旧キー
@@ -2664,19 +2710,68 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         return text(config.getString("weaponType"), "-");
     }
 
+    /**
+     * 表示対象 YAML のフォルダパスから、内容整形に使用する種別を解決する。
+     * <p>
+     * {@code ItemData/weapon/axe} のような階層化フォルダでも、
+     * 親階層（{@code ItemData/weapon}）を種別として扱う。
+     */
+    private static String folderTypeOf(String folder) {
+        String normalized = normalizeFolder(folder).toLowerCase(Locale.ROOT);
+        if (hasFolderPrefix(normalized, "itemdata/weapon")) {
+            return "ItemData/weapon";
+        }
+        if (hasFolderPrefix(normalized, "itemdata/armor")) {
+            return "ItemData/armor";
+        }
+        if (hasFolderPrefix(normalized, "itemdata/material")) {
+            return "ItemData/material";
+        }
+        if (hasFolderPrefix(normalized, "classdata/classes")) {
+            return "ClassData/classes";
+        }
+        if (hasFolderPrefix(normalized, "classdata/tree")) {
+            return "ClassData/tree";
+        }
+        if (hasSkillSection(normalized, "base")) {
+            return "SkillData/base";
+        }
+        if (hasSkillSection(normalized, "variant")) {
+            return "SkillData/variant";
+        }
+        if (hasFolderPrefix(normalized, "skilldata")) {
+            return "SkillData";
+        }
+        if (hasFolderPrefix(normalized, "entitydata/npc")) {
+            return "EntityData/npc";
+        }
+        if (hasFolderPrefix(normalized, "entitydata/mob")) {
+            return "EntityData/mob";
+        }
+        if (hasFolderPrefix(normalized, "layerdata")) {
+            return "LayerData";
+        }
+        return folder;
+    }
+
+    /**
+     * 指定された YAML の内容をフォルダ種別に応じて整形して出力する。
+     * <p>
+     * 数値は {@code 10.0} ではなく {@code 10} のように末尾の不要なゼロを除去し、
+     * {@code stats} などのネストしたセクションは階層を保ったまま展開する。
+     */
     private void sendYamlEntry(CommandSender sender, YamlEntry entry) {
         FileConfiguration config = entry.config();
         String id = text(config.getString("id"), entry.fileName());
-        String name = text(config.getString("name"), id);
+        String folderType = folderTypeOf(entry.folder());
+        // 派生スキルは name ではなく displayName を表示名として使う。
+        String name = "SkillData/variant".equals(folderType)
+                ? text(config.getString("displayName"), id)
+                : text(config.getString("name"), id);
         String label = "<aqua>[" + esc(entry.label(id)) + "]</aqua>";
 
-        String folderType = folderOf(entry.folder());
-        if (folderType.isEmpty()) {
-            folderType = entry.folder();
-        }
-
         switch (folderType) {
-            case "WeaponData" -> {
+            case "ItemData/weapon" -> {
                 sendYamlHeader(sender, label, name);
                 send(sender, treeBranch(config.isConfigurationSection("stats"))
                         + " <white>Type</white>: <yellow>"
@@ -2691,7 +2786,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + number(config, "requiredLevel") + "</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
             }
-            case "ArmorData" -> {
+            case "ItemData/armor" -> {
                 sendYamlHeader(sender, label, name);
                 send(sender, treeBranch(config.isConfigurationSection("stats"))
                         + " <white>Slot</white>: <yellow>"
@@ -2701,6 +2796,44 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + " <dark_gray>|</dark_gray> <white>ReqLv</white>: <yellow>"
                         + number(config, "requiredLevel") + "</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
+            }
+            case "ClassData/classes" -> {
+                sendYamlHeader(sender, label, name);
+                send(sender, treeBranch(config.isConfigurationSection("baseStats"))
+                        + " <white>Icon</white>: <yellow>"
+                        + esc(text(config.getString("icon"), "-")) + "</yellow>"
+                        + " <dark_gray>|</dark_gray> <white>Default</white>: "
+                        + (config.getBoolean("unlockedByDefault", false)
+                                ? "<green>true</green>" : "<red>false</red>")
+                        + " <dark_gray>|</dark_gray> <white>Skills</white>: <yellow>"
+                        + config.getStringList("skills").size() + "</yellow>");
+                sendStatsSection(sender, config, "baseStats", "  <gray>└</gray>");
+            }
+            case "ClassData/tree" -> {
+                sendYamlHeader(sender, label, name);
+                ConfigurationSection nodes = config.getConfigurationSection("nodes");
+                send(sender, "  <gray>└</gray> <white>Nodes</white>: <yellow>"
+                        + (nodes == null ? 0 : nodes.getKeys(false).size()) + "</yellow>");
+            }
+            case "SkillData/base" -> {
+                sendYamlHeader(sender, label, name);
+                send(sender, treeBranch(config.isConfigurationSection("stats"))
+                        + " <white>Multiplier</white>: <yellow>"
+                        + number(config, "baseDamageMultiplier") + "x</yellow>"
+                        + " <dark_gray>|</dark_gray> <white>Range</white>: <yellow>"
+                        + number(config, "range") + "m</yellow>"
+                        + " <dark_gray>|</dark_gray> <white>Mana</white>: <yellow>"
+                        + number(config, "manaCost") + "</yellow>"
+                        + " <dark_gray>|</dark_gray> <white>Cooldown</white>: <yellow>"
+                        + number(config, "cooldown") + "s</yellow>");
+                sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
+            }
+            case "SkillData/variant" -> {
+                sendYamlHeader(sender, label, name);
+                send(sender, "  <gray>└</gray> <white>BaseSkill</white>: <yellow>"
+                        + esc(text(config.getString("base-skill-id"), "-")) + "</yellow>"
+                        + " <dark_gray>|</dark_gray> <white>Actions</white>: <yellow>"
+                        + config.getMapList("actions").size() + "</yellow>");
             }
             case "SkillData" -> {
                 sendYamlHeader(sender, label, name);
@@ -2715,7 +2848,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + number(config, "cooldown") + "s</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
             }
-            case "MobData" -> {
+            case "EntityData/mob" -> {
                 sendYamlHeader(sender, label, name);
                 send(sender, treeBranch(config.isConfigurationSection("stats"))
                         + " <white>MaxHP</white>: <yellow>" + number(config, "maxHp")
@@ -3054,7 +3187,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         // フォルダ + ファイル名、または config/ からの相対パスの完全一致を優先する。
-        // これにより WeaponData/archer test と WeaponData archer/test の両方を受け付ける。
+        // これにより ItemData/weapon/axe test と ItemData/weapon axe/test の両方を受け付ける。
         String target = (folder.isEmpty() ? id : folder + "/" + id).toLowerCase(Locale.ROOT);
         for (String key : yamlLoader.getKeys()) {
             if (isExcludedFolder(folderOf(key))) {
@@ -3463,7 +3596,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private record YamlEntry(String path, String folder, String fileName, FileConfiguration config) {
 
         /**
-         * 表示用ラベル（例: {@code WeaponData/archer/test}）。
+         * 表示用ラベル（例: {@code ItemData/weapon/axe/test}）。
          */
         String label(String id) {
             return folder.isEmpty() ? id : folder + "/" + id;

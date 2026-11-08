@@ -140,7 +140,7 @@ public final class SkillCastService {
         DamageResult damage;
         if (variant != null) {
             // 派生スキルでは元スキルのパーティクル／サウンドではなく
-            // SkillVariant の actions だけを順番に実行する。
+            // SkillVariantData の actions だけを順番に実行する。
             damage = executeVariant(player, skill, variant, target, skillDamageBonus);
         } else {
             playEffects(player, skill, target);
@@ -184,7 +184,7 @@ public final class SkillCastService {
             return null;
         }
         SkillVariantData variant = manager.find(replacement).orElse(null);
-        if (variant == null || !variant.baseSkill().equalsIgnoreCase(skill.id())) {
+        if (variant == null || !variant.baseSkillId().equalsIgnoreCase(skill.id())) {
             return null;
         }
         return variant;

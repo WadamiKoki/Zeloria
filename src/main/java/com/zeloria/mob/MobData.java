@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code config/MobData/*.yml} から読み込んだモブ定義。
+ * {@code config/EntityData/mob/*.yml} から読み込んだモブ定義。
  * <p>
  * 1 ファイルが 1 種類のモブに対応する。
  * <pre>
@@ -38,7 +38,7 @@ import java.util.Objects;
  *
  * @param id          モブ ID（コマンド引数・識別子）
  * @param name        表示名（MiniMessage 形式）
- * @param sourceKey   YAML のキャッシュキー（例: {@code MobData/Goblin.yml}）
+ * @param sourceKey   YAML のキャッシュキー（例: {@code EntityData/mob/Goblin.yml}）
  * @param entityType  スポーンさせるエンティティ種別（解決できなかった場合は {@code null}）
  * @param maxHp          最大 HP（0 以下ならエンティティ既定値を使用）
  * @param defense        第 2 段階の防御力（防具相当）
@@ -92,7 +92,7 @@ public record MobData(
     /**
      * YAML 設定からモブ定義を生成する。
      *
-     * @param sourceKey YAML のキャッシュキー（例: {@code MobData/Goblin.yml}）
+     * @param sourceKey YAML のキャッシュキー（例: {@code EntityData/mob/Goblin.yml}）
      * @param config    読み込み済み設定
      * @return モブ定義
      */
@@ -200,7 +200,7 @@ public record MobData(
     }
 
     /**
-     * {@code MobData/<ファイル名>.yml} から拡張子なしファイル名を取り出す。
+     * {@code EntityData/mob/<ファイル名>.yml} から拡張子なしファイル名を取り出す。
      */
     private static String fallbackId(String sourceKey) {
         if (sourceKey == null || sourceKey.isBlank()) {

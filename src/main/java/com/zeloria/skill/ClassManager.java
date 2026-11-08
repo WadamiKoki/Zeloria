@@ -20,7 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * {@code config/ClassData/*.yml} を読み込み、クラス定義を管理する。
+ * {@code config/ClassData/classes/*.yml} を読み込み、クラス定義を管理する。
  * <p>
  * YAML の {@code displayName} / {@code description} は MiniMessage として解決し、
  * {@link Component} の状態で保持する。定義は不変マップとして差し替えるため、
@@ -29,7 +29,7 @@ import java.util.Optional;
 public final class ClassManager {
 
     /** クラス定義を配置するディレクトリ（{@code config/} からの相対パス）。 */
-    private static final String DIRECTORY = "ClassData/";
+    private static final String DIRECTORY = "ClassData/classes/";
 
     /** アイコン未指定時のフォールバック。 */
     private static final Material FALLBACK_ICON = Material.PAPER;
@@ -47,7 +47,7 @@ public final class ClassManager {
     }
 
     /**
-     * {@code config/ClassData/} 配下の YAML をすべて読み直す。
+     * {@code config/ClassData/classes/} 配下の YAML をすべて読み直す。
      * <p>
      * 読み込みに失敗したファイルは警告を出してスキップし、他のクラス定義の
      * 読み込みは継続する。
@@ -144,6 +144,7 @@ public final class ClassManager {
     }
 
     private ZeloriaClass parse(String key, FileConfiguration config) {
+        // クラス定義は YAML 内の id で解決する（未指定時のみファイル名へフォールバック）。
         String id = DefinitionParser.normalizeId(
                 DefinitionParser.text(config.getString("id"), DefinitionParser.fileName(key)));
         String displayNameRaw = DefinitionParser.text(config.getString("displayName"), id);

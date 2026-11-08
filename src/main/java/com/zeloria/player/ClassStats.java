@@ -5,7 +5,7 @@ import org.bukkit.configuration.ConfigurationSection;
 /**
  * クラス定義の基礎ステータス／レベルアップ成長率を保持する不変モデル。
  * <p>
- * {@code ClassData/<class>.yml} の {@code baseStats} と {@code levelUpPercent} を
+ * {@code ClassData/classes/<class>.yml} の {@code baseStats} と {@code levelUpPercent} を
  * そのまま読み込み、{@link #atLevel(ClassStats, ClassStats, int)} で
  * 「基礎値 × (1 + 成長率[%] / 100 × (レベル - 1))」を算出する（単利成長）。
  * <p>

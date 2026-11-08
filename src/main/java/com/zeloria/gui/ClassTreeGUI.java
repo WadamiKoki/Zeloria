@@ -47,9 +47,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * クラスツリー GUI の描画・クリック処理を担う。
  * <p>
- * ノードの位置とアイコンは {@code config/TreeData/tree.yml}（{@link TreeData}）、
+ * ノードの位置とアイコンは {@code config/ClassData/tree/tree.yml}（{@link TreeData}）、
  * 表示名・説明・コスト・解放条件・効果は
- * {@code config/ClassTree/<classId>.yml}（{@link ClassTreeData}）から取得する。
+ * {@code config/ClassData/tree/<classId>.yml}（{@link ClassTreeData}）から取得する。
  * 進行状況は {@link PlayerData} のクラス別データへ即時反映し、DB への保存は
  * 退出時の {@link PlayerService} に任せる。
  * <p>

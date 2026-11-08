@@ -103,8 +103,8 @@ npc:
   usage: "<gray>使い方:</gray> <white>/admin npc list</white> <dark_gray>|</dark_gray> <white>/admin npc spawn npcId</white> <dark_gray>|</dark_gray> <white>/admin npc remove</white>"
   unavailable: "<red>NPC 管理が初期化されていません。</red>"
   list:
-    empty: "<gray>NpcData が 1 件も読み込まれていません。</gray>"
-    header: "<gray>NpcData: <white>{count}</white> 件</gray>"
+    empty: "<gray>EntityData/npc が 1 件も読み込まれていません。</gray>"
+    header: "<gray>EntityData/npc: <white>{count}</white> 件</gray>"
     entry: "<gray>- <white>{npc_id}</white> <dark_gray>({entity_type}, GUI: {gui})</dark_gray></gray>"
   spawn:
     success: "<green>NPC</green> <white>{npc_id}</white> <gray>をスポーンしました。</gray>"

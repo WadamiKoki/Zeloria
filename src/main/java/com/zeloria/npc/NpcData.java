@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * {@code config/NpcData/*.yml} から読み込んだ NPC 定義。
+ * {@code config/EntityData/npc/*.yml} から読み込んだ NPC 定義。
  * <p>
  * 1 ファイルが 1 種類の NPC に対応する。
  * <pre>
@@ -57,7 +57,7 @@ public record NpcData(
     /**
      * YAML 設定から NPC 定義を生成する。
      *
-     * @param sourceKey YAML のキャッシュキー（例: {@code NpcData/guide.yml}）
+     * @param sourceKey YAML のキャッシュキー（例: {@code EntityData/npc/guide.yml}）
      * @param config    読み込み済み設定
      * @return NPC 定義
      */
@@ -104,7 +104,7 @@ public record NpcData(
     }
 
     /**
-     * {@code NpcData/<ファイル名>.yml} から拡張子なしファイル名を取り出す。
+     * {@code EntityData/npc/<ファイル名>.yml} から拡張子なしファイル名を取り出す。
      */
     private static String fallbackId(String sourceKey) {
         if (sourceKey == null || sourceKey.isBlank()) {

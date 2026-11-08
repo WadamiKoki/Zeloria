@@ -6,7 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.List;
 
 /**
- * {@code config/WeaponData/*.yml} から読み込んだ武器アイテム定義。
+ * {@code config/ItemData/weapon/*.yml} から読み込んだ武器アイテム定義。
  * <p>
  * 基本フォーマット（{@link ItemData}）に加えて、武器種別と武器種共通の通常攻撃
  * パラメータ（攻撃速度・攻撃範囲・攻撃角度・パーティクル・サウンド）を保持する。
@@ -57,7 +57,7 @@ public final class WeaponData extends ItemData {
     /**
      * YAML 設定から武器定義を生成する。
      *
-     * @param sourceKey YAML のキャッシュキー（例: {@code WeaponData/BasicSword.yml}）
+     * @param sourceKey YAML のキャッシュキー（例: {@code ItemData/weapon/sword/test.yml}）
      * @param config    読み込み済み設定
      * @return 武器定義
      * @throws IllegalArgumentException {@code material} が未指定・不正な場合

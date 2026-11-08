@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * {@code config/TreeData/tree.yml} を読み込み、クラスツリー共通形状を管理する。
+ * {@code config/ClassData/tree/tree.yml} を読み込み、クラスツリー共通形状を管理する。
  * <p>
  * 形状は全クラスで共有する。読み込み結果は不変マップとして差し替えるため、
  * 参照側はロックなしで安全に読み取れる。再読み込みは {@code /admin reload} から行う。
@@ -21,7 +21,7 @@ import java.util.Set;
 public final class TreeDataService {
 
     /** 共通形状の設定ファイルキー。 */
-    public static final String CONFIG_PATH = "TreeData/tree.yml";
+    public static final String CONFIG_PATH = "ClassData/tree/tree.yml";
 
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;

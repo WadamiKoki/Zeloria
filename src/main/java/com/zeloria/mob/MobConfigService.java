@@ -13,15 +13,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * {@code config/MobData/*.yml} を解析して {@link MobData} の一覧を提供するサービス。
+ * {@code config/EntityData/mob/*.yml} を解析して {@link MobData} の一覧を提供するサービス。
  * <p>
- * {@link YamlLoader} が読み込んだ YAML から {@code MobData/} 配下のものを抽出し、
+ * {@link YamlLoader} が読み込んだ YAML から {@code EntityData/mob/} 配下のものを抽出し、
  * モブ ID・ファイル名のどちらでも参照できるようキャッシュする。
  * {@code /admin reload} 時は {@link #reload()} を呼ぶことで最新の設定を反映できる。
  */
 public class MobConfigService {
 
-    private static final String KEY_PREFIX = "MobData/";
+    private static final String KEY_PREFIX = "EntityData/mob/";
     private static final String YAML_EXTENSION = ".yml";
     private static final String YAML_ALT_EXTENSION = ".yaml";
 
@@ -38,7 +38,7 @@ public class MobConfigService {
     }
 
     /**
-     * {@code MobData/} 配下の YAML を再解析し、キャッシュを置き換える。
+     * {@code EntityData/mob/} 配下の YAML を再解析し、キャッシュを置き換える。
      */
     public synchronized void reload() {
         mobs.clear();
@@ -59,7 +59,7 @@ public class MobConfigService {
                 data = MobData.fromConfig(key, config);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
-                        "MobData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+                        "EntityData/mob の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
                 continue;
             }
 
@@ -68,7 +68,7 @@ public class MobConfigService {
             register(fileNameOf(key), data, key);
         }
 
-        plugin.getLogger().info("MobData を " + mobs.size() + " 件読み込みました。");
+        plugin.getLogger().info("EntityData/mob を " + mobs.size() + " 件読み込みました。");
     }
 
     /**
@@ -113,7 +113,7 @@ public class MobConfigService {
         if (previous != null && previous != data) {
             // 重複は先勝ち。運用者が気づけるよう警告のみ行う。
             plugin.getLogger().warning(
-                    "MobData のキーが重複しています: '" + key + "' (" + sourceKey + ")");
+                    "EntityData/mob のキーが重複しています: '" + key + "' (" + sourceKey + ")");
         }
     }
 

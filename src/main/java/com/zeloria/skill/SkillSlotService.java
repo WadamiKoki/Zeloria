@@ -270,8 +270,9 @@ public final class SkillSlotService {
             return skills;
         }
 
-        // 既存インストールでクラス定義の skills が空の場合のフォールバック。
-        String prefix = definition.id() + "_";
+        // クラス定義の skills が空の場合のフォールバック。
+        // スキル ID は <classId>:<skillId> の複合キーなので、クラス ID の接頭辞で絞り込む。
+        String prefix = definition.id() + ":";
         return skillManager.all().stream()
                 .filter(skill -> skill.id().startsWith(prefix))
                 .sorted(Comparator.comparing(Skill::id))

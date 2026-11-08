@@ -543,10 +543,14 @@ public class MenuService {
         ItemData definition = itemService == null
                 ? null
                 : itemService.findItem(equipped).orElse(null);
-        if (virtualInventory == null || definition == null
-                || virtualInventory.addItem(player, definition.id(), 1L) <= 0L) {
+        if (virtualInventory == null || definition == null) {
             playSound(player, SOUND_ERROR);
-            notify(player, "<red>仮想装備ストレージに空きがありません。</red>");
+            notify(player, "<red>この装備は装備保管庫へ戻せません。運営に報告してください。</red>");
+            return;
+        }
+        if (virtualInventory.addItem(player, definition.id(), 1L) <= 0L) {
+            playSound(player, SOUND_ERROR);
+            notify(player, "<red>装備保管庫がいっぱいです。不要な装備を捨てるか、保管庫へ移動してから外してください。</red>");
             return;
         }
 

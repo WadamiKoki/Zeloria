@@ -1,0 +1,162 @@
+# ============================================================================
+# ヴァンガード用クラスツリー
+# 位置・アイコンは config/ClassData/tree/tree.yml の共通形状を使用する。
+# ============================================================================
+
+# クラス ID はファイル名から決定します（vanguard.yml → vanguard）。
+# ClassData/classes/*.yml の id と重複するため、このファイルには id を定義しません。
+title: "<gradient:#FFB74D:#E65100><bold>ヴァンガード・ツリー</bold></gradient>"
+
+nodes:
+  root:
+    displayName: "<gold><bold>先鋒の心得</bold></gold>"
+    description: ["<gray>ヴァンガードのクラスツリーの起点。</gray>", "<gray>前線で戦い抜く力を伸ばす。</gray>"]
+    cost: 0
+    effectLore: ["<green>・クラスツリーを解放できるようになる</green>"]
+
+  green_1:
+    displayName: "<green>武術鍛錬 I</green>"
+    description: ["<gray>基本の型を反復し、攻撃力を高める。</gray>"]
+    cost: 1
+    requires: ["root"]
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
+
+  green_2:
+    displayName: "<green>前線の耐久 I</green>"
+    description: ["<gray>前線で耐え抜く体力を養う。</gray>"]
+    cost: 1
+    requires: ["root"]
+    effectLore: ["<green>・最大体力 +5</green>"]
+    statEffects: { maxHealth: 5.0 }
+
+  green_3:
+    displayName: "<green>重装の構え I</green>"
+    description: ["<gray>重装備を扱うための体幹を鍛える。</gray>"]
+    cost: 1
+    requires: ["root"]
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
+
+  green_4:
+    displayName: "<green>武術鍛錬 II</green>"
+    description: ["<gray>重い武器を自在に扱う。</gray>"]
+    cost: 1
+    requires: ["green_1"]
+    effectLore: ["<green>・攻撃力 +2</green>"]
+    statEffects: { attackPower: 2.0 }
+
+  green_5:
+    displayName: "<green>前線の耐久 II</green>"
+    description: ["<gray>さらに体力を鍛え上げる。</gray>"]
+    cost: 1
+    requires: ["green_2"]
+    effectLore: ["<green>・最大体力 +4</green>"]
+    statEffects: { maxHealth: 4.0 }
+
+  green_6:
+    displayName: "<green>重装の構え II</green>"
+    description: ["<gray>重装備の扱いに慣れる。</gray>"]
+    cost: 1
+    requires: ["green_3"]
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
+
+  green_7:
+    displayName: "<green>先鋒の気迫</green>"
+    description: ["<gray>前線を押し上げる攻撃力を得る。</gray>"]
+    cost: 1
+    requires: ["green_4"]
+    effectLore: ["<green>・攻撃力 +3%</green>"]
+    statEffects: { attackPowerPercent: 3.0 }
+
+  blue_1:
+    displayName: "<aqua><bold>チャージ強化 I</bold></aqua>"
+    description: ["<gray>突進スキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_4", "green_5"]
+    effectLore: ["<aqua>・スキル1のダメージ +10%</aqua>"]
+    skillEffects: { "skillDamage_vanguard:vanguard_skill1": 0.1 }
+
+  blue_2:
+    displayName: "<aqua><bold>グランドスラム強化 I</bold></aqua>"
+    description: ["<gray>大地割りスキルの威力を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_5", "green_6"]
+    effectLore: ["<aqua>・スキル2のダメージ +10%</aqua>"]
+    skillEffects: { "skillDamage_vanguard:vanguard_skill2": 0.1 }
+
+  blue_3:
+    displayName: "<aqua><bold>ウォークライ強化 I</bold></aqua>"
+    description: ["<gray>雄叫びスキルの効果を高める。</gray>"]
+    cost: 1
+    requires: []
+    requiresAny: ["green_6", "green_7"]
+    effectLore: ["<aqua>・スキル3のダメージ +10%</aqua>"]
+    skillEffects: { "skillDamage_vanguard:vanguard_skill3": 0.1 }
+
+  blue_4:
+    displayName: "<aqua><bold>先鋒の極意</bold></aqua>"
+    description: ["<gray>突進スキルの完成度を高める。</gray>"]
+    cost: 1
+    requires: ["blue_1"]
+    effectLore: ["<aqua>・スキル1のダメージ +5%</aqua>"]
+    skillEffects: { "skillDamage_vanguard:vanguard_skill1": 0.05 }
+
+  red_1:
+    displayName: "<red><bold>破軍突進</bold></red>"
+    description: ["<gray>陣形ごと敵を薙ぎ払う突進。</gray>"]
+    cost: 2
+    requires: ["blue_1"]
+    effectLore: ["<red>・チャージが破軍突進に変化</red>"]
+    replaceSkill: "vanguard:vanguard_skill1_charge"
+
+  red_2:
+    displayName: "<red><bold>大地断裂</bold></red>"
+    description: ["<gray>大地を引き裂く一撃を放つ。</gray>"]
+    cost: 2
+    requires: ["blue_2"]
+    effectLore: ["<red>・グランドスラムが大地断裂に変化</red>"]
+    replaceSkill: "vanguard:vanguard_skill2_charge"
+
+  red_3:
+    displayName: "<red><bold>覇者の雄叫び</bold></red>"
+    description: ["<gray>戦場を震わせる雄叫びを上げる。</gray>"]
+    cost: 2
+    requires: ["blue_3"]
+    effectLore: ["<red>・ウォークライが覇者の雄叫びに変化</red>"]
+    replaceSkill: "vanguard:vanguard_skill3_charge"
+
+  green_8:
+    displayName: "<green>武術鍛錬 III</green>"
+    description: ["<gray>先鋒としての武術を極める。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・攻撃力 +3</green>"]
+    statEffects: { attackPower: 3.0 }
+
+  green_9:
+    displayName: "<green>前線の耐久 III</green>"
+    description: ["<gray>不退転の体力を手に入れる。</gray>"]
+    cost: 1
+    requires: ["red_1"]
+    effectLore: ["<green>・最大体力 +5</green>"]
+    statEffects: { maxHealth: 5.0 }
+
+  green_10:
+    displayName: "<green>重装の構え III</green>"
+    description: ["<gray>いかなる攻撃にも屈しない。</gray>"]
+    cost: 1
+    requires: ["red_2"]
+    effectLore: ["<green>・防御力 +1</green>"]
+    statEffects: { defense1: 1.0 }
+
+  green_11:
+    displayName: "<green><bold>先鋒の極致</bold></green>"
+    description: ["<gray>ヴァンガードの攻撃力を極める。</gray>"]
+    cost: 2
+    requiresAny: ["green_8", "green_9", "green_10"]
+    effectLore: ["<green>・攻撃力 +5%</green>"]
+    statEffects: { attackPowerPercent: 5.0 }

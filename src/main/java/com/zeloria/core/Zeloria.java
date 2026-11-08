@@ -100,15 +100,12 @@ public final class Zeloria extends JavaPlugin {
     private static final List<String> REQUIRED_CONFIG_DIRECTORIES = List.of(
             "ClassData",
             "SkillData",
-            "ArmorData",
-            "WeaponData",
-            "NpcData",
+            "ItemData",
+            "EntityData",
             "SpawnerData",
             "LayerData",
             "LevelData",
             "MessageData",
-            "MaterialData",
-            "MobData",
             "gui"
     );
 
@@ -189,19 +186,19 @@ public final class Zeloria extends JavaPlugin {
     /** クラス定義マネージャ（{@code config/ClassData/} を読み込む）。 */
     private ClassManager classManager;
 
-    /** クラスツリー共通形状（{@code config/TreeData/tree.yml}）。 */
+    /** クラスツリー共通形状（{@code config/ClassData/tree/tree.yml}）。 */
     private TreeDataService treeDataService;
 
-    /** クラスごとのツリー定義（{@code config/ClassTree/*.yml}）。 */
+    /** クラスごとのツリー定義（{@code config/ClassData/tree/<classId>.yml}）。 */
     private ClassTreeManager classTreeManager;
 
     /** クラスツリーポイントの解放・リセット処理。 */
     private ClassTreeService classTreeService;
 
-    /** 派生スキル定義マネージャ（{@code config/SkillVariant/} を読み込む）。 */
+    /** 派生スキル定義マネージャ（{@code config/SkillData/<classId>/variant/} を読み込む）。 */
     private SkillVariantManager skillVariantManager;
 
-    /** スキル定義マネージャ（{@code config/SkillData/} を読み込む）。 */
+    /** スキル定義マネージャ（{@code config/SkillData/<classId>/base/} を読み込む）。 */
     private SkillManager skillManager;
 
     /** プレイヤーごとのスキルクールダウン管理。 */

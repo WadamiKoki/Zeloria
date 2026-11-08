@@ -6,18 +6,18 @@ import java.util.Locale;
  * アイテム種別。
  * <p>
  * 管理コマンドの引数（{@code armor} / {@code material} / {@code weapon}）と、
- * 各設定フォルダ（{@code ArmorData/} / {@code MaterialData/} / {@code WeaponData/}）を対応付ける。
+ * 設定フォルダ（{@code ItemData/armor/} / {@code ItemData/material/} / {@code ItemData/weapon/}）を対応付ける。
  */
 public enum ItemCategory {
 
-    /** 防具。{@code config/ArmorData/*.yml} */
-    ARMOR("armor", "ArmorData"),
+    /** 防具。{@code config/ItemData/armor/*.yml} */
+    ARMOR("armor", "ItemData/armor"),
 
-    /** 素材。{@code config/MaterialData/*.yml} */
-    MATERIAL("material", "MaterialData"),
+    /** 素材。{@code config/ItemData/material/*.yml} */
+    MATERIAL("material", "ItemData/material"),
 
-    /** 武器。{@code config/WeaponData/*.yml} */
-    WEAPON("weapon", "WeaponData");
+    /** 武器。{@code config/ItemData/weapon/*.yml} */
+    WEAPON("weapon", "ItemData/weapon");
 
     private final String key;
     private final String folder;
@@ -35,14 +35,14 @@ public enum ItemCategory {
     }
 
     /**
-     * 設定フォルダ名（例: {@code MaterialData}）を取得する。
+     * 設定フォルダ名（例: {@code ItemData/material}）を取得する。
      */
     public String folder() {
         return folder;
     }
 
     /**
-     * {@code config/} からの相対キー接頭辞（例: {@code MaterialData/}）を取得する。
+     * {@code config/} からの相対キー接頭辞（例: {@code ItemData/material/}）を取得する。
      */
     public String keyPrefix() {
         return folder + "/";

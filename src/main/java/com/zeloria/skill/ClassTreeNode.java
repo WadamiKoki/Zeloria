@@ -12,7 +12,7 @@ import java.util.Set;
 /**
  * クラスごとのツリーノード定義。
  * <p>
- * 位置とアイコンは {@link TreeShapeNode}（{@code TreeData/tree.yml}）が持ち、
+ * 位置とアイコンは {@link TreeShapeNode}（{@code ClassData/tree/tree.yml}）が持ち、
  * このレコードは表示名・説明・必要ポイント・解放条件・効果を保持する。
  *
  * @param id           ノード ID（共通形状と一致させる）
@@ -23,8 +23,8 @@ import java.util.Set;
  * @param requiresAny  1 つ以上満たす必要がある前提ノード ID
  * @param effectLore   効果説明（MiniMessage 解決済み）
  * @param statEffects  ステータス効果（キーは PlayerStats の項目名）
- * @param skillEffects スキル強化効果（{@code skillDamage_<skillId>} など）
- * @param replaceSkill 派生スキル ID（未設定時は {@code null}）
+ * @param skillEffects スキル強化効果（{@code skillDamage_<classId>:<skillId>} など）
+ * @param replaceSkill 派生スキルの複合 ID（未設定時は {@code null}）
  */
 public record ClassTreeNode(
         String id,

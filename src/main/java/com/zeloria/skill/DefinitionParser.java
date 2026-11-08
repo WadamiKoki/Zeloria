@@ -92,6 +92,52 @@ final class DefinitionParser {
     }
 
     /**
+     * クラス ID とスキル ID から複合キー {@code <classId>:<skillId>} を生成する。
+     * <p>
+     * スキル ID が既に同じクラス ID の接頭辞を持っている場合は二重付与しない。
+     *
+     * @param classId クラス ID
+     * @param skillId スキル ID（ローカル ID または複合キー）
+     * @return 正規化済みの複合キー。どちらかが空の場合は空文字
+     */
+    static String qualifyId(String classId, String skillId) {
+        String normalizedClass = normalizeId(classId);
+        String normalizedSkill = normalizeId(skillId);
+        if (normalizedClass.isEmpty() || normalizedSkill.isEmpty()) {
+            return "";
+        }
+        String prefix = normalizedClass + ":";
+        return normalizedSkill.startsWith(prefix)
+                ? normalizedSkill
+                : prefix + normalizedSkill;
+    }
+
+    /**
+     * {@code <directory><classId>/<section>/...} 形式のキーからクラス ID を取り出す。
+     *
+     * @param key        YamlLoader の相対キー（{@code /} 区切り）
+     * @param directory  先頭ディレクトリ（例: {@code SkillData/}）
+     * @param section    クラス直下の種別ディレクトリ（例: {@code base} / {@code variant}）
+     * @return クラス ID。形式が一致しない場合は空文字
+     */
+    static String classIdOf(String key, String directory, String section) {
+        if (key == null || directory == null || section == null
+                || !key.startsWith(directory)) {
+            return "";
+        }
+        String relative = key.substring(directory.length());
+        int firstSlash = relative.indexOf('/');
+        int secondSlash = firstSlash < 0 ? -1 : relative.indexOf('/', firstSlash + 1);
+        if (firstSlash <= 0 || secondSlash < 0) {
+            return "";
+        }
+        if (!section.equalsIgnoreCase(relative.substring(firstSlash + 1, secondSlash))) {
+            return "";
+        }
+        return normalizeId(relative.substring(0, firstSlash));
+    }
+
+    /**
      * 相対パスから拡張子なしのファイル名を取得する（ID のフォールバック用）。
      */
     static String fileName(String key) {

@@ -6,7 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.List;
 
 /**
- * {@code config/MaterialData/*.yml} から読み込んだ素材アイテム定義。
+ * {@code config/ItemData/material/*.yml} から読み込んだ素材アイテム定義。
  * <p>
  * 素材は {@link ItemData} の共通フォーマットのみを持ち、スタック上限は
  * Minecraft の {@link Material} 既定値に従う。

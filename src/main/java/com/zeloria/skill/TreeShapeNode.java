@@ -5,7 +5,7 @@ import org.bukkit.Material;
 /**
  * クラスツリー共通形状の 1 ノード。
  * <p>
- * クラスごとの効果や解放条件は {@code config/ClassTree/<classId>.yml} が持ち、
+ * クラスごとの効果や解放条件は {@code config/ClassData/tree/<classId>.yml} が持ち、
  * このレコードは全クラスで共有する「位置」と「アイコン」だけを表す。
  *
  * @param id     ノード ID

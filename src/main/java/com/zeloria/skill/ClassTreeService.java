@@ -175,12 +175,13 @@ public final class ClassTreeService {
      * 指定スキルに対応する派生スキル ID を返す。
      * <p>
      * 解放済みの赤ノードのうち、{@code replaceSkill} が
-     * {@code <skillId>} または {@code <skillId>_} で始まるものを探す。
+     * {@code <classId>:<skillId>} と一致する、または
+     * {@code <classId>:<skillId>_} で始まるものを探す。
      *
      * @param data    対象プレイヤーデータ
      * @param classId クラス ID
-     * @param skillId 元スキル ID
-     * @return 派生スキル ID（なければ {@code null}）
+     * @param skillId 元スキルの複合 ID（{@code <classId>:<skillId>}）
+     * @return 派生スキルの複合 ID（なければ {@code null}）
      */
     public String getReplacementForSkill(PlayerData data, String classId, String skillId) {
         if (data == null) {

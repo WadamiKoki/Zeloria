@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * アイテム設定（{@code MaterialData/} / {@code ArmorData/} / {@code WeaponData/}）を読み込み、
+ * アイテム設定（{@code ItemData/material/} / {@code ItemData/armor/} / {@code ItemData/weapon/}）を読み込み、
  * 表示名・説明文（MiniMessage）と PersistentDataContainer（PDC）を適用した
  * {@link ItemStack} を生成するサービス。
  * <p>
@@ -151,7 +151,7 @@ public class ItemService {
             register(materialById, data.id(), data, key);
             register(materialById, fileNameOf(key), data, key);
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("MaterialData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+            plugin.getLogger().warning("ItemData/material の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
         }
     }
 
@@ -164,9 +164,13 @@ public class ItemService {
             ArmorData data = ArmorData.fromConfig(key, config);
             armors.add(data);
             register(armorById, data.id(), data, key);
-            register(armorById, fileNameOf(key), data, key);
+            // ItemData/armor/<slot>/*.yml のような階層化ファイルでは、
+            // 同名の test.yml が部位ごとに存在し得るためファイル名は登録しない。
+            if (!isNested(key)) {
+                register(armorById, fileNameOf(key), data, key);
+            }
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("ArmorData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+            plugin.getLogger().warning("ItemData/armor の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
         }
     }
 
@@ -179,13 +183,13 @@ public class ItemService {
             WeaponData data = WeaponData.fromConfig(key, config);
             weapons.add(data);
             register(weaponById, data.id(), data, key);
-            // WeaponData/<class>/*.yml のような階層化ファイルでは、
+            // ItemData/weapon/<class>/*.yml のような階層化ファイルでは、
             // 同名の test.yml がクラスごとに存在し得るためファイル名は登録しない。
             if (!isNested(key)) {
                 register(weaponById, fileNameOf(key), data, key);
             }
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("WeaponData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+            plugin.getLogger().warning("ItemData/weapon の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
         }
     }
 
@@ -537,7 +541,8 @@ public class ItemService {
     }
 
     /**
-     * {@code WeaponData/<class>/<name>.yml} のように 2 階層以上か判定する。
+     * {@code ItemData/weapon/<class>/<name>.yml} や
+     * {@code ItemData/armor/<slot>/<name>.yml} のように 2 階層以上か判定する。
      */
     private static boolean isNested(String key) {
         int first = key.indexOf('/');

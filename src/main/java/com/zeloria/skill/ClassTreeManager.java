@@ -20,9 +20,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code config/ClassTree/*.yml} を読み込み、クラスごとのツリー定義を管理する。
+ * {@code config/ClassData/tree/*.yml} を読み込み、クラスごとのツリー定義を管理する。
  * <p>
- * ノードの形状は {@link TreeDataService} が読み込む {@code TreeData/tree.yml} と
+ * ノードの形状は {@link TreeDataService} が読み込む
+ * {@code ClassData/tree/tree.yml} と
  * 共有し、クラス YAML では表示名・説明・コスト・解放条件・効果だけを定義する。
  * 読み込み時に以下を検証し、問題は警告ログへ出力する。
  * <ul>
@@ -36,7 +37,10 @@ import java.util.Set;
 public final class ClassTreeManager {
 
     /** クラスツリー定義を配置するディレクトリ（{@code config/} からの相対パス）。 */
-    private static final String DIRECTORY = "ClassTree/";
+    private static final String DIRECTORY = "ClassData/tree/";
+
+    /** 全クラス共通のツリー形状ファイル（クラスツリーとしては読み込まない）。 */
+    private static final String SHARED_SHAPE_KEY = "ClassData/tree/tree.yml";
 
     /** {@code <classId>_tree.yml} 形式のファイル名からクラス ID を取り出すための接尾辞。 */
     private static final String TREE_FILE_SUFFIX = "_tree";
@@ -61,14 +65,17 @@ public final class ClassTreeManager {
     }
 
     /**
-     * {@code config/ClassTree/} 配下の YAML をすべて読み直す。
+     * {@code config/ClassData/tree/} 配下の YAML をすべて読み直す。
+     * <p>
+     * 共通形状の {@code tree.yml} は {@link TreeDataService} が扱うため、
+     * クラスツリー定義としては読み込まない。
      */
     public synchronized void reload() {
         TreeData shape = treeDataService.tree();
         Map<String, ClassTreeData> loaded = new LinkedHashMap<>();
 
         for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(DIRECTORY) || !isYaml(key)) {
+            if (!key.startsWith(DIRECTORY) || !isYaml(key) || isSharedShape(key)) {
                 continue;
             }
 
@@ -116,8 +123,8 @@ public final class ClassTreeManager {
     }
 
     private ClassTreeData parse(String key, FileConfiguration config, TreeData shape) {
-        // クラス ID はファイル名から決定する（例: ClassTree/knight.yml → knight）。
-        // ClassData/*.yml の id と重複しないよう、ClassTree/*.yml 側では id を定義しない。
+        // クラス ID はファイル名から決定する（例: ClassData/tree/knight.yml → knight）。
+        // ClassData/classes/*.yml の id と重複しないよう、ツリー側では id を定義しない。
         // 互換性のため `<classId>_tree.yml` 形式のファイル名にも対応する。
         String classId = DefinitionParser.normalizeId(DefinitionParser.fileName(key));
         if (classId.endsWith(TREE_FILE_SUFFIX)) {
@@ -418,6 +425,11 @@ public final class ClassTreeManager {
             }
         }
         return result;
+    }
+
+    /** 共通形状の {@code tree.yml} か判定する。 */
+    private static boolean isSharedShape(String key) {
+        return SHARED_SHAPE_KEY.equalsIgnoreCase(key.replace('\\', '/'));
     }
 
     private static boolean isYaml(String key) {

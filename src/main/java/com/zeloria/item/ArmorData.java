@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code config/ArmorData/*.yml} から読み込んだ防具アイテム定義。
+ * {@code config/ItemData/armor/<slot>/*.yml} から読み込んだ防具アイテム定義。
  * <p>
  * 基本フォーマット（{@link ItemData}）に加えて、装着部位 {@code equipment_slot}
  * （HELMET / CHESTPLATE / LEGGINGS / BOOTS）と各種ステータスを保持する。
@@ -44,7 +44,7 @@ public final class ArmorData extends ItemData {
     /**
      * YAML 設定から防具定義を生成する。
      *
-     * @param sourceKey YAML のキャッシュキー（例: {@code ArmorData/helmet.yml}）
+     * @param sourceKey YAML のキャッシュキー（例: {@code ItemData/armor/helmet/test.yml}）
      * @param config    読み込み済み設定
      * @return 防具定義
      * @throws IllegalArgumentException {@code material} が未指定・不正な場合

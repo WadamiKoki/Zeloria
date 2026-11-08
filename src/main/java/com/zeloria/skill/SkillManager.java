@@ -22,9 +22,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * {@code config/SkillData/*.yml} を読み込んでスキル定義を管理する。
+ * {@code config/SkillData/<classId>/base/*.yml} を読み込んでスキル定義を管理する。
  * <p>
- * スキルはクラス定義（{@code ClassData/*.yml} の {@code skills}）とスキルスロットで
+ * クラス ID はディレクトリ名から決定し、スキル ID は YAML の {@code id}
+ * （未指定時はファイル名）から決定する。管理上のキーは
+ * {@code <classId>:<skillId>} の複合キーであり、YAML 内にクラス ID は記述しない。
+ * 派生スキル（{@code SkillData/<classId>/variant/*.yml}）は
+ * {@link SkillVariantManager} が別途読み込む。
+ * <p>
+ * スキルはクラス定義（{@code ClassData/classes/*.yml} の {@code skills}）とスキルスロットで
  * 選択される想定であり、武器（Material）との紐付けは行わない。スキル定義 YAML の
  * {@code icon} はスキルスロット表示用の見た目としてのみ読み込む。
  * <p>
@@ -37,6 +43,9 @@ public final class SkillManager {
     /** スキル定義を配置するディレクトリ（{@code config/} からの相対パス）。 */
     private static final String DIRECTORY = "SkillData/";
 
+    /** 基本スキルを配置するクラス直下のディレクトリ名。 */
+    private static final String BASE_SEGMENT = "base";
+
     /** アイコン未指定時のフォールバック素材。 */
     private static final Material FALLBACK_ICON = Material.PAPER;
 
@@ -47,7 +56,7 @@ public final class SkillManager {
     private final YamlLoader yamlLoader;
     private final NamespacedKey skillIdKey;
 
-    /** スキル ID → スキル定義（不変・差し替え式）。 */
+    /** 複合スキル ID（{@code <classId>:<skillId>}）→ スキル定義（不変・差し替え式）。 */
     private volatile Map<String, Skill> skills = Map.of();
 
     public SkillManager(Zeloria plugin, YamlLoader yamlLoader) {
@@ -58,7 +67,7 @@ public final class SkillManager {
     }
 
     /**
-     * {@code config/SkillData/} 配下の YAML をすべて読み直す。
+     * {@code config/SkillData/<classId>/base/} 配下の YAML をすべて読み直す。
      */
     public synchronized void reload() {
         Map<String, Skill> loaded = new LinkedHashMap<>();
@@ -68,13 +77,18 @@ public final class SkillManager {
                 continue;
             }
 
+            String classId = DefinitionParser.classIdOf(key, DIRECTORY, BASE_SEGMENT);
+            if (classId.isEmpty()) {
+                continue;
+            }
+
             FileConfiguration config = yamlLoader.getConfig(key);
             if (config == null) {
                 continue;
             }
 
             try {
-                Skill skill = parse(key, config);
+                Skill skill = parse(key, config, classId);
                 Skill previous = loaded.putIfAbsent(skill.id(), skill);
                 if (previous != null) {
                     plugin.getLogger().warning("スキル ID が重複しています: '"
@@ -91,7 +105,7 @@ public final class SkillManager {
     }
 
     /**
-     * スキル ID から定義を取得する。
+     * 複合スキル ID（{@code <classId>:<skillId>}）から定義を取得する。
      */
     public Optional<Skill> find(String skillId) {
         String normalized = DefinitionParser.normalizeId(skillId);
@@ -106,7 +120,7 @@ public final class SkillManager {
     }
 
     /**
-     * 読み込み済みのスキル ID 一覧を取得する。
+     * 読み込み済みの複合スキル ID（{@code <classId>:<skillId>}）一覧を取得する。
      */
     public List<String> ids() {
         return List.copyOf(skills.keySet());
@@ -114,6 +128,8 @@ public final class SkillManager {
 
     /**
      * 指定クラスが使用できるスキル定義を、YAML の {@code skills} 順で取得する。
+     * <p>
+     * クラス YAML の {@code skills} は複合キー {@code <classId>:<skillId>} で指定する。
      */
     public List<Skill> skillsFor(ZeloriaClass definition) {
         if (definition == null) {
@@ -155,9 +171,10 @@ public final class SkillManager {
         return skillIdKey;
     }
 
-    private Skill parse(String key, FileConfiguration config) {
-        String id = DefinitionParser.normalizeId(
+    private Skill parse(String key, FileConfiguration config, String classId) {
+        String localId = DefinitionParser.normalizeId(
                 DefinitionParser.text(config.getString("id"), DefinitionParser.fileName(key)));
+        String id = DefinitionParser.qualifyId(classId, localId);
         String displayNameRaw = DefinitionParser.text(config.getString("displayName"), id);
         Component displayName = DefinitionParser.component(displayNameRaw, id);
 

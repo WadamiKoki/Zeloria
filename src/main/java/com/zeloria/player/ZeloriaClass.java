@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * {@code config/ClassData/*.yml} から読み込んだクラス定義。
+ * {@code config/ClassData/classes/*.yml} から読み込んだクラス定義。
  * <p>
  * YAML の {@code displayName} / {@code description} は {@link com.zeloria.skill.ClassManager}
  * が MiniMessage で {@link Component} へ変換した状態で保持する。Java 側にクラス名や

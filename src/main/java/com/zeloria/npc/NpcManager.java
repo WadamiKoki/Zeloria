@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * {@code config/NpcData/*.yml} を解析し、NPC の生成・削除・識別を担うマネージャ。
+ * {@code config/EntityData/npc/*.yml} を解析し、NPC の生成・削除・識別を担うマネージャ。
  * <p>
  * スポーンした NPC は UUID を保持し、{@link NpcDamageListener} による
  * 無敵判定に使用する。また、エンティティの PDC に {@code npc_id} を格納するため、
@@ -41,7 +41,7 @@ public final class NpcManager {
     /** NPC を識別する PersistentDataContainer キー。 */
     public static final String NPC_ID_KEY = "npc_id";
 
-    private static final String KEY_PREFIX = "NpcData/";
+    private static final String KEY_PREFIX = "EntityData/npc/";
     private static final String YAML_EXTENSION = ".yml";
     private static final String YAML_ALT_EXTENSION = ".yaml";
 
@@ -68,7 +68,7 @@ public final class NpcManager {
     }
 
     /**
-     * {@code NpcData/} 配下の YAML を再解析し、定義キャッシュを置き換える。
+     * {@code EntityData/npc/} 配下の YAML を再解析し、定義キャッシュを置き換える。
      * <p>
      * スポーン済み NPC の UUID キャッシュには触れない。
      */
@@ -91,7 +91,7 @@ public final class NpcManager {
                 data = NpcData.fromConfig(key, config);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
-                        "NpcData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+                        "EntityData/npc の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
                 continue;
             }
 
@@ -100,7 +100,7 @@ public final class NpcManager {
             register(fileNameOf(key), data, key);
         }
 
-        plugin.getLogger().info("NpcData を " + npcs.size() + " 件読み込みました。");
+        plugin.getLogger().info("EntityData/npc を " + npcs.size() + " 件読み込みました。");
     }
 
     /**
@@ -326,7 +326,7 @@ public final class NpcManager {
         if (previous != null && previous != data) {
             // 重複は先勝ち。運用者が気づけるよう警告のみ行う。
             plugin.getLogger().warning(
-                    "NpcData のキーが重複しています: '" + key + "' (" + sourceKey + ")");
+                    "EntityData/npc のキーが重複しています: '" + key + "' (" + sourceKey + ")");
         }
     }
 

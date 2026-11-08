@@ -6,7 +6,7 @@ import java.util.Locale;
 /**
  * 武器種ごとの通常攻撃パラメータ。
  * <p>
- * {@code WeaponData/<type>/test.yml} で個別に指定された値を優先し、未指定の場合は
+ * {@code ItemData/weapon/<type>/test.yml} で個別に指定された値を優先し、未指定の場合は
  * 本 enum の既定値を使用する。これにより、武器ごとの YAML に攻撃範囲・攻撃速度などを
  * 重複して記述しなくても、武器種共通の挙動で動作する。
  * <p>

@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * 1 クラス分のツリー定義。
  * <p>
- * {@code config/ClassTree/<classId>.yml} を読み込んで生成する。共通形状
+ * {@code config/ClassData/tree/<classId>.yml} を読み込んで生成する。共通形状
  * （{@link TreeData}）に存在するノードだけを保持する。
  *
  * @param classId クラス ID

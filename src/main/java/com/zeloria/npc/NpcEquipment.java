@@ -8,7 +8,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.Locale;
 
 /**
- * {@code config/NpcData/*.yml} の {@code equipment} セクションを表すモデル。
+ * {@code config/EntityData/npc/*.yml} の {@code equipment} セクションを表すモデル。
  * <p>
  * NPC の装備は見た目専用のため、ドロップ率は 0 に固定する。
  * 未指定・解決できない Material 名は {@link Material#AIR} として扱う。

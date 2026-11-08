@@ -50,10 +50,11 @@ public class YamlLoader {
     private static final String MESSAGE_DIR_NAME = "MessageData";
 
     /**
-     * クラスツリー定義を配置するディレクトリ名（{@code config/} 直下）。
+     * クラスツリー定義を配置するディレクトリ名（{@code ClassData/tree/}）。
      * ここでは {@code id} をインデックス化しない（クラス ID はファイル名から決定する）。
+     * 共通形状の {@code tree.yml} も ID 解決の対象外とする。
      */
-    private static final String CLASS_TREE_DIR_NAME = "ClassTree/";
+    private static final String CLASS_TREE_DIR_NAME = "ClassData/tree/";
 
     /** 読み込み対象とする拡張子（第一候補）。 */
     private static final String YAML_EXTENSION = ".yml";
@@ -469,8 +470,8 @@ public class YamlLoader {
             configs.put(key, config);
 
             String id = config.getString(ID_KEY);
-            // ClassTree/*.yml のクラス ID はファイル名から決定するため、
-            // ClassData/*.yml と同名の id が書かれていても重複警告の対象にしない。
+            // ClassData/tree/*.yml のクラス ID はファイル名から決定するため、
+            // ClassData/classes/*.yml と同名の id が書かれていても重複警告の対象にしない。
             if (id != null && !id.isBlank() && !key.startsWith(CLASS_TREE_DIR_NAME)) {
                 FileConfiguration previous = configsById.putIfAbsent(id, config);
                 if (previous != null) {

@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * 全クラスで共有するクラスツリーの形状設定。
  * <p>
- * {@code config/TreeData/tree.yml} を読み込んで生成する。ノードの位置・アイコン・
+ * {@code config/ClassData/tree/tree.yml} を読み込んで生成する。ノードの位置・アイコン・
  * 固定ボタンのスロットなど、クラスに依存しない情報だけを保持する。クラスごとの
  * 表示名・説明・コスト・解放条件・効果は {@link ClassTreeData} が持つ。
  *
