@@ -9,4 +9,4 @@ actions:
     particle: ELECTRIC_SPARK
     count: 30
   - type: SOUND
-    sound: ENTITY_LIGHTNING_BOLT_THUNDER
+    sound: "entity.lightning_bolt.thunder"

@@ -16,7 +16,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -72,11 +71,7 @@ public final class SkillManager {
     public synchronized void reload() {
         Map<String, Skill> loaded = new LinkedHashMap<>();
 
-        for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(DIRECTORY) || !isYaml(key)) {
-                continue;
-            }
-
+        for (String key : yamlLoader.getKeysUnder(DIRECTORY)) {
             String classId = DefinitionParser.classIdOf(key, DIRECTORY, BASE_SEGMENT);
             if (classId.isEmpty()) {
                 continue;
@@ -206,8 +201,4 @@ public final class SkillManager {
                 upgrades);
     }
 
-    private static boolean isYaml(String key) {
-        String lower = key.toLowerCase(Locale.ROOT);
-        return lower.endsWith(".yml") || lower.endsWith(".yaml");
-    }
 }

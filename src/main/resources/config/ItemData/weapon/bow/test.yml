@@ -11,7 +11,7 @@ attackSpeedTicks: 32
 attackRange: 12.0
 attackAngle: 0.0
 attackParticle: CRIT
-attackSound: ENTITY_ARROW_SHOOT
+attackSound: "entity.arrow.shoot"
 requiredLevel: 1
 stats:
   maxHealth: 0

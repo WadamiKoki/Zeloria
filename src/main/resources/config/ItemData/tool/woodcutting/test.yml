@@ -1,0 +1,8 @@
+id: "woodcutting_test_axe"
+name: "<white>テスト用斧"
+material: WOODEN_AXE
+lore:
+  - "<gray>伐採用ツールのテスト定義。"
+gatheringType: WOODCUTTING
+requiredLevel: 1
+sell_price: 10

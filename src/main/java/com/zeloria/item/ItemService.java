@@ -22,7 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * アイテム設定（{@code ItemData/material/} / {@code ItemData/armor/} / {@code ItemData/weapon/}）を読み込み、
+ * アイテム設定（{@code ItemData/material/} / {@code ItemData/armor/} / {@code ItemData/weapon/} /
+ * {@code ItemData/tool/}）を読み込み、
  * 表示名・説明文（MiniMessage）と PersistentDataContainer（PDC）を適用した
  * {@link ItemStack} を生成するサービス。
  * <p>
@@ -51,6 +52,8 @@ public class ItemService {
     public static final String KEY_EQUIPMENT_SLOT = "equipment_slot";
     /** PDC キー: 装着に必要な最低レベル。 */
     public static final String KEY_REQUIRED_LEVEL = "required_level";
+    /** PDC キー: 採取ツールのギャザリング種別。 */
+    public static final String KEY_GATHERING_TYPE = "gathering_type";
 
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
@@ -58,16 +61,19 @@ public class ItemService {
     private final List<MaterialData> materials = new CopyOnWriteArrayList<>();
     private final List<ArmorData> armors = new CopyOnWriteArrayList<>();
     private final List<WeaponData> weapons = new CopyOnWriteArrayList<>();
+    private final List<ToolData> tools = new CopyOnWriteArrayList<>();
 
     private final Map<String, MaterialData> materialById = new ConcurrentHashMap<>();
     private final Map<String, ArmorData> armorById = new ConcurrentHashMap<>();
     private final Map<String, WeaponData> weaponById = new ConcurrentHashMap<>();
+    private final Map<String, ToolData> toolById = new ConcurrentHashMap<>();
 
     private final NamespacedKey itemIdKey;
     private final NamespacedKey itemCategoryKey;
     private final NamespacedKey sellPriceKey;
     private final NamespacedKey equipmentSlotKey;
     private final NamespacedKey requiredLevelKey;
+    private final NamespacedKey gatheringTypeKey;
     private final NamespacedKey atkKey;
     private final NamespacedKey defKey;
     private final NamespacedKey hpRegenKey;
@@ -93,6 +99,7 @@ public class ItemService {
         this.sellPriceKey = new NamespacedKey(MODEL_NAMESPACE, KEY_SELL_PRICE);
         this.equipmentSlotKey = new NamespacedKey(MODEL_NAMESPACE, KEY_EQUIPMENT_SLOT);
         this.requiredLevelKey = new NamespacedKey(plugin, KEY_REQUIRED_LEVEL);
+        this.gatheringTypeKey = new NamespacedKey(plugin, KEY_GATHERING_TYPE);
         this.atkKey = new NamespacedKey(plugin, "atk");
         this.defKey = new NamespacedKey(plugin, "def");
         this.hpRegenKey = new NamespacedKey(plugin, "hp_regen");
@@ -122,9 +129,11 @@ public class ItemService {
         materials.clear();
         armors.clear();
         weapons.clear();
+        tools.clear();
         materialById.clear();
         armorById.clear();
         weaponById.clear();
+        toolById.clear();
 
         for (String key : yamlLoader.getKeys()) {
             if (key.startsWith(ItemCategory.MATERIAL.keyPrefix())) {
@@ -133,11 +142,14 @@ public class ItemService {
                 loadArmor(key);
             } else if (key.startsWith(ItemCategory.WEAPON.keyPrefix())) {
                 loadWeapon(key);
+            } else if (key.startsWith(ItemCategory.TOOL.keyPrefix())) {
+                loadTool(key);
             }
         }
 
         plugin.getLogger().info("アイテム設定を読み込みました (Material: " + materials.size()
-                + ", Armor: " + armors.size() + ", Weapon: " + weapons.size() + ").");
+                + ", Armor: " + armors.size() + ", Weapon: " + weapons.size()
+                + ", Tool: " + tools.size() + ").");
     }
 
     private void loadMaterial(String key) {
@@ -193,6 +205,22 @@ public class ItemService {
         }
     }
 
+    private void loadTool(String key) {
+        FileConfiguration config = yamlLoader.getConfig(key);
+        if (config == null) {
+            return;
+        }
+        try {
+            ToolData data = ToolData.fromConfig(key, config);
+            tools.add(data);
+            register(toolById, data.id(), data, key);
+            // ItemData/tool/<種別>/*.yml では同名の test.yml が種別ごとに存在し得るため、
+            // ファイル名は登録しない。
+        } catch (RuntimeException e) {
+            plugin.getLogger().warning("ItemData/tool の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
+        }
+    }
+
     private static <T extends ItemData> void register(
             Map<String, T> target, String key, T data, String sourceKey) {
         if (key == null || key.isBlank()) {
@@ -227,6 +255,7 @@ public class ItemService {
             case MATERIAL -> Optional.ofNullable(materialById.get(key));
             case ARMOR -> Optional.ofNullable(armorById.get(key));
             case WEAPON -> Optional.ofNullable(weaponById.get(key));
+            case TOOL -> Optional.ofNullable(toolById.get(key));
         };
     }
 
@@ -252,10 +281,17 @@ public class ItemService {
     }
 
     /**
+     * 採取ツール定義を取得する。
+     */
+    public Optional<ToolData> findTool(String id) {
+        return find(ItemCategory.TOOL, id).map(ToolData.class::cast);
+    }
+
+    /**
      * 生成済み {@link ItemStack} から元のアイテム定義を解決する。
      * <p>
      * PDC の {@code item_category} と {@code item_id} を参照する。
-     * どちらかが欠落している場合（旧バージョンで生成されたアイテムなど）は空を返す。
+     * どちらかが欠落している場合は空を返す。
      *
      * @param stack 判定対象
      * @return アイテム定義。プラグイン製アイテムでない場合は空
@@ -305,8 +341,8 @@ public class ItemService {
     /**
      * 生成済みアイテムに格納された必要レベルを取得する。
      * <p>
-     * PDC の {@code required_level} を優先し、旧バージョンで生成されたアイテムなど
-     * 未格納の場合はアイテム定義の {@code requiredLevel} を参照する。
+     * PDC の {@code required_level} を優先し、未格納の場合は
+     * アイテム定義の {@code requiredLevel} を参照する。
      *
      * @param stack 判定対象
      * @return 必要レベル（0 は制限なし）
@@ -330,6 +366,9 @@ public class ItemService {
         if (data instanceof WeaponData weapon) {
             return weapon.requiredLevel();
         }
+        if (data instanceof ToolData tool) {
+            return tool.requiredLevel();
+        }
         return 0;
     }
 
@@ -345,6 +384,7 @@ public class ItemService {
             case MATERIAL -> materials.stream().map(MaterialData::id).distinct().sorted().toList();
             case ARMOR -> armors.stream().map(ArmorData::id).distinct().sorted().toList();
             case WEAPON -> weapons.stream().map(WeaponData::id).distinct().sorted().toList();
+            case TOOL -> tools.stream().map(ToolData::id).distinct().sorted().toList();
         };
     }
 
@@ -360,6 +400,10 @@ public class ItemService {
         return List.copyOf(weapons);
     }
 
+    public List<ToolData> getTools() {
+        return List.copyOf(tools);
+    }
+
     /* ------------------------------------------------------------------
      * ItemStack 生成
      * ------------------------------------------------------------------ */
@@ -372,7 +416,7 @@ public class ItemService {
      * <ul>
      *     <li>{@code zeloria:item_id}</li>
      *     <li>{@code item_category} / {@code sell_price}</li>
-     *     <li>防具・武器の各種ステータス</li>
+     *     <li>防具・武器・採取ツールの各種ステータス</li>
      * </ul>
      * リソースパック用のモデルは付与しない。
      *
@@ -436,6 +480,9 @@ public class ItemService {
             pdc.set(attackParticleKey, PersistentDataType.STRING, weapon.attackParticle());
             pdc.set(attackSoundKey, PersistentDataType.STRING, weapon.attackSound());
             pdc.set(requiredLevelKey, PersistentDataType.INTEGER, weapon.requiredLevel());
+        } else if (data instanceof ToolData tool) {
+            pdc.set(gatheringTypeKey, PersistentDataType.STRING, tool.gatheringType().key());
+            pdc.set(requiredLevelKey, PersistentDataType.INTEGER, tool.requiredLevel());
         }
     }
 
@@ -479,6 +526,10 @@ public class ItemService {
             lines.add("<gray>攻撃速度: <white>" + seconds(weapon.attackSpeedTicks()) + "秒</white></gray>");
             addStat(lines, "攻撃範囲", weapon.attackRange());
             addStat(lines, "攻撃角度", weapon.attackAngle());
+        } else if (data instanceof ToolData tool) {
+            lore.add(Component.empty());
+            lore.add(component("<red>必要採取レベル: <white>" + tool.requiredLevel() + "</white></red>"));
+            return;
         } else {
             return;
         }

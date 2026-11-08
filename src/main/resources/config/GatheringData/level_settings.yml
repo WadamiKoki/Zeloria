@@ -1,0 +1,22 @@
+# ギャザリング（採取）のレベル設定。
+# クラスレベルとは別に、プレイヤー UUID 単位のアカウント共通レベルとして扱います。
+#
+# 必要経験値は Wynncraft 方式の二次関数で算出します。
+#   次レベルまで : base_exp * (2 * level - 1)
+#   累計経験値   : base_exp * (level - 1)^2
+# 例: base_exp=100 の場合
+#   Lv.1 -> 2 : 100
+#   Lv.2 -> 3 : 300
+#   Lv.99 -> 100 : 19700
+
+mining:
+  base_exp: 100
+  max_level: 100
+
+woodcutting:
+  base_exp: 100
+  max_level: 100
+
+farming:
+  base_exp: 100
+  max_level: 100

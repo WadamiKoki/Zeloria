@@ -1,5 +1,6 @@
 package com.zeloria.player;
 
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -13,8 +14,6 @@ import java.util.UUID;
  *
  * @param uuid                    プレイヤー UUID
  * @param playerName              プレイヤー名
- * @param level                   レベル
- * @param exp                     経験値
  * @param money                   所持金
  * @param currentClassId         現在のクラス ID（未選択時は空文字）
  * @param unlockedClasses        解放済みクラス ID のカンマ区切り文字列
@@ -22,10 +21,11 @@ import java.util.UUID;
  * @param classExpsJson          クラス ID → クラス別経験値（JSON）
  * @param classTreePointsJson    クラス ID → 未使用ツリーポイント（JSON）
  * @param allocatedClassNodesJson クラス ID → 解放済みツリーノード ID（JSON）
+ * @param gatheringLevelsJson     ギャザリング種別 → レベル（JSON）
+ * @param gatheringExpsJson       ギャザリング種別 → 経験値（JSON）
  * @param virtualEquipmentBase64  装備中アイテムの Base64 データ
  * @param virtualInventoryJson    保管庫タブ（JSON）
  * @param virtualEquipmentJson    装備保管庫タブ（JSON）
- * @param virtualMaterialJson     旧素材タブ（JSON。読み込み時に保管庫へ統合）
  * @param maxHealth               最大 HP
  * @param currentHealth           現在 HP
  * @param maxMana                 最大 MP
@@ -51,8 +51,6 @@ import java.util.UUID;
 public record PlayerSnapshot(
         UUID uuid,
         String playerName,
-        int level,
-        long exp,
         long money,
         String currentClassId,
         String unlockedClasses,
@@ -60,10 +58,11 @@ public record PlayerSnapshot(
         String classExpsJson,
         String classTreePointsJson,
         String allocatedClassNodesJson,
+        String gatheringLevelsJson,
+        String gatheringExpsJson,
         String virtualEquipmentBase64,
         String virtualInventoryJson,
         String virtualEquipmentJson,
-        String virtualMaterialJson,
         double maxHealth,
         double currentHealth,
         double maxMana,
@@ -86,9 +85,6 @@ public record PlayerSnapshot(
         double lifesteal,
         String cooldownEndAt
 ) {
-
-    /** 既定のレベル。 */
-    public static final int DEFAULT_LEVEL = 1;
 
     /** 既定の HP。 */
     public static final double DEFAULT_HP = 20.0;
@@ -115,10 +111,11 @@ public record PlayerSnapshot(
         classTreePointsJson = classTreePointsJson == null || classTreePointsJson.isBlank() ? "{}" : classTreePointsJson;
         allocatedClassNodesJson = allocatedClassNodesJson == null || allocatedClassNodesJson.isBlank()
                 ? "{}" : allocatedClassNodesJson;
+        gatheringLevelsJson = blankToEmptyObject(gatheringLevelsJson);
+        gatheringExpsJson = blankToEmptyObject(gatheringExpsJson);
         virtualEquipmentBase64 = virtualEquipmentBase64 == null ? InventorySerializer.EMPTY : virtualEquipmentBase64;
         virtualInventoryJson = blankToEmptyObject(virtualInventoryJson);
         virtualEquipmentJson = blankToEmptyObject(virtualEquipmentJson);
-        virtualMaterialJson = blankToEmptyObject(virtualMaterialJson);
         cooldownEndAt = cooldownEndAt == null ? "" : cooldownEndAt;
     }
 
@@ -133,17 +130,16 @@ public record PlayerSnapshot(
         return new PlayerSnapshot(
                 uuid,
                 name,
-                DEFAULT_LEVEL,
-                0L,
                 0L,
                 "",
                 "",
+                "{}",
+                "{}",
                 "{}",
                 "{}",
                 "{}",
                 "{}",
                 InventorySerializer.EMPTY,
-                "{}",
                 "{}",
                 "{}",
                 PlayerStats.DEFAULT_MAX_HEALTH,
@@ -177,17 +173,54 @@ public record PlayerSnapshot(
      * @return 名前を差し替えたコピー
      */
     public PlayerSnapshot withName(String name) {
-        return new PlayerSnapshot(uuid, name, level, exp, money,
+        return new PlayerSnapshot(uuid, name, money,
                 currentClassId, unlockedClasses,
                 classLevelsJson, classExpsJson, classTreePointsJson, allocatedClassNodesJson,
+                gatheringLevelsJson, gatheringExpsJson,
                 virtualEquipmentBase64,
-                virtualInventoryJson, virtualEquipmentJson, virtualMaterialJson,
+                virtualInventoryJson, virtualEquipmentJson,
                 maxHealth, currentHealth, maxMana, currentMana,
                 attackPower, defense1, defense2, criticalRate, criticalDamage,
                 accuracy, evasion, dodgeCooldownReduction, cooldownReduction,
                 walkSpeed, healthRegenFlat, healthRegenPercent,
                 manaRegenFlat, manaRegenPercent, armorPenetration, lifesteal,
                 cooldownEndAt);
+    }
+
+    /**
+     * 現在選択中のクラスのレベルを取得する。
+     * <p>
+     * 未選択の場合は 0、進行データが未保存のクラスは既定値の 1 を返す。
+     *
+     * @return 現在クラスのレベル
+     */
+    public int currentClassLevel() {
+        String classId = normalizedCurrentClassId();
+        if (classId.isEmpty()) {
+            return 0;
+        }
+        Integer stored = ClassProgressJson.decodeIntMap(classLevelsJson).get(classId);
+        return stored == null
+                ? PlayerData.DEFAULT_CLASS_LEVEL
+                : Math.max(PlayerData.DEFAULT_CLASS_LEVEL, stored);
+    }
+
+    /**
+     * 現在選択中のクラスの経験値を取得する。
+     *
+     * @return 現在クラスの経験値。未選択の場合は 0
+     */
+    public long currentClassExp() {
+        String classId = normalizedCurrentClassId();
+        if (classId.isEmpty()) {
+            return 0L;
+        }
+        Long stored = ClassProgressJson.decodeLongMap(classExpsJson).get(classId);
+        return stored == null ? 0L : Math.max(0L, stored);
+    }
+
+    private String normalizedCurrentClassId() {
+        return currentClassId == null ? "" : currentClassId.trim().toLowerCase(Locale.ROOT);
     }
 
     private static String blankToEmptyObject(String value) {

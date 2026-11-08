@@ -70,7 +70,7 @@ public record ZeloriaClass(
      * 指定レベルでの実効基礎ステータスを算出する（単利成長）。
      * <p>
      * {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。
-     * レベル 0 と 1 は {@link #baseStats()} をそのまま返す。
+     * レベル 1（1 未満も含む）は {@link #baseStats()} をそのまま返す。
      *
      * @param level レベル
      * @return 実効基礎ステータス

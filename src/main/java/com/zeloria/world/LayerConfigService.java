@@ -181,7 +181,7 @@ public class LayerConfigService {
     /**
      * ポータルが対象ワールドに属するか判定する。
      * <p>
-     * {@code world} が空の場合はそのレイヤーの全インスタンスで有効。
+     * {@code from.world} が空の場合はそのレイヤーの全インスタンスで有効。
      * テンプレート ID が指定された場合は {@code <template>_instance...} も対象とする。
      */
     private static boolean portalAppliesTo(PortalDefinition portal, LayerData layer, String worldName) {
@@ -217,7 +217,7 @@ public class LayerConfigService {
      * 稼働中ワールドに紐づくポータルの一覧を取得する。
      * <p>
      * パーティクル描画タスクが「どのワールドの、どの座標に円を描くか」を解決するために使用する。
-     * {@code portals.world} が空のポータルは、所有レイヤーの全インスタンスへ展開される。
+     * {@code portals.from.world} が空のポータルは、所有レイヤーの全インスタンスへ展開される。
      *
      * @return ワールドとポータル定義の組（不変ビュー）
      */

@@ -137,7 +137,7 @@ public final class ArmorData extends ItemData {
     }
 
     public double def() {
-        return statBonus.defense();
+        return statBonus.defense2();
     }
 
     public double hpRegen() {

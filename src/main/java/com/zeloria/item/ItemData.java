@@ -21,7 +21,7 @@ import java.util.Objects;
  *   - "&lt;gray&gt;テスト用。"
  * sell_price: 75
  * </pre>
- * 種別ごとの追加項目は {@link MaterialData} / {@link ArmorData} / {@link WeaponData} が保持する。
+ * 種別ごとの追加項目は {@link MaterialData} / {@link ArmorData} / {@link WeaponData} / {@link ToolData} が保持する。
  * <p>
  * 見た目は {@code material} のバニラテクスチャをそのまま使用する。
  * リソースパック用のカスタムモデルは使用しない。

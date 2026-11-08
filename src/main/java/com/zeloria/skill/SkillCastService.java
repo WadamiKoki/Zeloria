@@ -8,10 +8,7 @@ import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatsService;
 import com.zeloria.skill.Skill;
 import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
-import org.bukkit.Registry;
-import org.bukkit.Sound;
 import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -133,7 +130,7 @@ public final class SkillCastService {
         }
         if (plugin.getPlayerStatsService() != null) {
             // 満腹度ゲージ（MP バー）とレベル／経験値表示を即時更新する。
-            plugin.getPlayerStatsService().syncVanillaStats(player, stats);
+            plugin.getPlayerStatsService().syncVanillaStats(player, data);
         }
         cooldownService.set(player.getUniqueId(), skill.id(), cooldownMillis);
 
@@ -303,86 +300,13 @@ public final class SkillCastService {
     }
 
     private void playVariantSound(Player player, VariantAction action) {
-        String name = action.string("sound", "");
-        if (name.isBlank()) {
+        String sound = action.string("sound", "").trim();
+        if (sound.isEmpty()) {
             return;
         }
         float volume = (float) Math.max(0.0, action.number("volume", 1.0));
         float pitch = (float) Math.max(0.1, action.number("pitch", 1.0));
-
-        Sound sound = parseSound(name);
-        if (sound != null) {
-            player.getWorld().playSound(player.getLocation(), sound, volume, pitch);
-            return;
-        }
-
-        // レジストリで解決できない場合のみ、サウンドキー文字列として再生する。
-        String fallback = name.trim().toLowerCase(Locale.ROOT).replace('_', '.');
-        try {
-            player.getWorld().playSound(player.getLocation(), fallback, volume, pitch);
-        } catch (IllegalArgumentException ignored) {
-            // 無効なサウンド名は無視する。
-        }
-    }
-
-    /**
-     * サウンド名を {@link Registry#SOUNDS} から解決する。
-     * <p>
-     * {@code ENTITY_ARROW_HIT} のような旧 Enum 名、{@code entity.arrow.hit} の
-     * ようなレジストリキー、{@code minecraft:entity.arrow.hit} の名前空間付きキーを
-     * すべて受け付ける。
-     */
-    private static Sound parseSound(String name) {
-        String trimmed = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-
-        String namespace = "minecraft";
-        String path = trimmed;
-        int colon = trimmed.indexOf(':');
-        if (colon >= 0) {
-            namespace = trimmed.substring(0, colon);
-            path = trimmed.substring(colon + 1);
-        }
-        if (path.isEmpty()) {
-            return null;
-        }
-
-        NamespacedKey directKey;
-        try {
-            directKey = namespace.equals("minecraft")
-                    ? NamespacedKey.minecraft(path)
-                    : NamespacedKey.fromString(namespace + ":" + path);
-        } catch (IllegalArgumentException ignored) {
-            directKey = null;
-        }
-        Sound direct = directKey == null ? null : Registry.SOUNDS.get(directKey);
-        if (direct != null) {
-            return direct;
-        }
-
-        // 旧 Enum 名は区切り文字の情報が失われているため、英数字のみへ正規化して照合する。
-        String normalized = normalizeSoundName(path);
-        for (Sound candidate : Registry.SOUNDS) {
-            NamespacedKey key = Registry.SOUNDS.getKey(candidate);
-            if (key.getNamespace().equals(namespace)
-                    && normalizeSoundName(key.getKey()).equals(normalized)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private static String normalizeSoundName(String value) {
-        StringBuilder result = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isLetterOrDigit(c)) {
-                result.append(c);
-            }
-        }
-        return result.toString();
+        player.getWorld().playSound(player.getLocation(), sound, volume, pitch);
     }
 
     private void teleportVariant(Player player,

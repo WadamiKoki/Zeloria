@@ -323,6 +323,33 @@ public class YamlLoader {
     }
 
     /**
+     * 指定ディレクトリ配下の読み込み済みキーを取得する（相対パス順、不変ビュー）。
+     * <p>
+     * ディレクトリは {@code config/} からの相対パスで指定する。末尾の {@code /} は
+     * 有無どちらでもよい。
+     *
+     * @param directory ディレクトリ（例: {@code EntityData/mob}）
+     * @return 配下の YAML キー。ディレクトリが空の場合は空リスト
+     */
+    public List<String> getKeysUnder(String directory) {
+        if (directory == null || directory.isBlank()) {
+            return List.of();
+        }
+        String prefix = directory.trim().replace('\\', '/');
+        while (prefix.startsWith("./")) {
+            prefix = prefix.substring(2);
+        }
+        while (prefix.startsWith("/")) {
+            prefix = prefix.substring(1);
+        }
+        if (!prefix.endsWith("/")) {
+            prefix += "/";
+        }
+        final String normalizedPrefix = prefix;
+        return getKeys().stream().filter(key -> key.startsWith(normalizedPrefix)).toList();
+    }
+
+    /**
      * 指定キーの設定が読み込まれているか判定する。
      */
     public boolean contains(String path) {

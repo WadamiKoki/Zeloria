@@ -2,119 +2,51 @@ package com.zeloria.skill;
 
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-
 /**
  * {@code config/LevelData/level_settings.yml} から読み込んだレベル・経験値の設定。
  * <p>
- * 必要経験値は「基準値 × 成長率 ^ レベル × 段階倍率」で算出する。
- * 段階（ステージ）は {@code min_level}〜{@code max_level} の範囲ごとに
- * {@code exp_multiplier} を持ち、レベル帯ごとに要求量を調整できる。
+ * 必要経験値は Wynncraft 方式の二次関数で算出する。
+ * <ul>
+ *     <li>次レベルまで: {@code base_exp * (2 * level - 1)}</li>
+ *     <li>レベル 1 からの累計: {@code base_exp * (level - 1)^2}</li>
+ * </ul>
+ * 計算は {@code long} で行い、オーバーフロー時は {@link Long#MAX_VALUE} にクランプする。
  * <pre>
- * base_exp: 100
- * exp_growth: 1.15
- * max_level: 50
- * stages:
- *   - min_level: 0
- *     max_level: 9
- *     exp_multiplier: 1.0
- *   - min_level: 10
- *     max_level: 29
- *     exp_multiplier: 1.2
+ * base_exp: 1200
+ * max_level: 100
+ * tree_points_per_level: 1
  * </pre>
- * {@code max_level} に {@code -1} を指定した段階は上限なしとして扱う。
- * トップレベルの {@code max_level} を 1 以上に指定した場合は、段階から算出した
- * 上限より優先される。
- * 段階が 1 つも無い場合は倍率 1.0・レベル上限なしで動作する。
  */
 public final class LevelSettings {
 
     /** 既定の基準経験値。 */
-    public static final long DEFAULT_BASE_EXP = 100L;
+    public static final long DEFAULT_BASE_EXP = 1200L;
 
-    /** 既定のレベルごとの成長率。 */
-    public static final double DEFAULT_EXP_GROWTH = 1.15;
-
-    /** 上限なしを表す {@code max_level} の値。 */
-    public static final int UNLIMITED = -1;
+    /** 既定のレベル上限。 */
+    public static final int DEFAULT_MAX_LEVEL = 100;
 
     /** 既定のレベルアップ 1 回あたりに付与するツリーポイント。 */
     public static final int DEFAULT_TREE_POINTS_PER_LEVEL = 1;
 
     /** 設定が読み込めなかった場合に使用する既定値。 */
     public static final LevelSettings DEFAULT =
-            new LevelSettings(DEFAULT_BASE_EXP, DEFAULT_EXP_GROWTH, List.of());
+            new LevelSettings(DEFAULT_BASE_EXP, DEFAULT_MAX_LEVEL, DEFAULT_TREE_POINTS_PER_LEVEL);
 
-    /**
-     * レベル帯ごとの経験値倍率。
-     *
-     * @param minLevel      開始レベル（含む）
-     * @param maxLevel      終了レベル（含む）。{@link #UNLIMITED} は上限なし
-     * @param expMultiplier 必要経験値の倍率
-     */
-    public record Stage(int minLevel, int maxLevel, double expMultiplier) {
-
-        public Stage {
-            minLevel = Math.max(0, minLevel);
-            maxLevel = maxLevel == UNLIMITED ? UNLIMITED : Math.max(minLevel, maxLevel);
-            expMultiplier = expMultiplier <= 0.0 ? 1.0 : expMultiplier;
-        }
-
-        /**
-         * 指定レベルがこの段階に含まれるか判定する。
-         *
-         * @param level 判定するレベル
-         * @return 含まれる場合は {@code true}
-         */
-        public boolean contains(int level) {
-            return level >= minLevel && (maxLevel == UNLIMITED || level <= maxLevel);
-        }
-    }
 
     private final long baseExp;
-    private final double expGrowth;
-    private final List<Stage> stages;
     private final int maxLevel;
     private final int treePointsPerLevel;
 
-    public LevelSettings(long baseExp, double expGrowth, List<Stage> stages) {
-        this(baseExp, expGrowth, stages, UNLIMITED);
-    }
-
     /**
-     * レベル上限を明示的に指定して設定を生成する。
+     * 設定を生成する。
      *
-     * @param baseExp          基準経験値
-     * @param expGrowth        レベルごとの成長率
-     * @param stages           レベル帯ごとの経験値倍率
-     * @param explicitMaxLevel 明示的なレベル上限（1 以上で有効、{@link #UNLIMITED} 以下は段階から算出）
-     */
-    public LevelSettings(long baseExp, double expGrowth, List<Stage> stages, int explicitMaxLevel) {
-        this(baseExp, expGrowth, stages, explicitMaxLevel, DEFAULT_TREE_POINTS_PER_LEVEL);
-    }
-
-    /**
-     * ツリーポイント付与量まで指定して設定を生成する。
-     *
-     * @param baseExp           基準経験値
-     * @param expGrowth         レベルごとの成長率
-     * @param stages            レベル帯ごとの経験値倍率
-     * @param explicitMaxLevel  明示的なレベル上限（1 以上で有効、{@link #UNLIMITED} 以下は段階から算出）
+     * @param baseExp            基準経験値（1 以上）
+     * @param maxLevel           レベル上限（1 以上）
      * @param treePointsPerLevel レベルアップ 1 回あたりに付与するクラスツリーポイント
      */
-    public LevelSettings(long baseExp, double expGrowth, List<Stage> stages,
-                         int explicitMaxLevel, int treePointsPerLevel) {
+    public LevelSettings(long baseExp, int maxLevel, int treePointsPerLevel) {
         this.baseExp = Math.max(1L, baseExp);
-        this.expGrowth = expGrowth <= 0.0 ? DEFAULT_EXP_GROWTH : expGrowth;
-        this.stages = stages == null
-                ? List.of()
-                : List.copyOf(new ArrayList<>(stages));
-        this.maxLevel = explicitMaxLevel >= 1
-                ? explicitMaxLevel
-                : resolveMaxLevel(this.stages);
+        this.maxLevel = Math.max(1, maxLevel);
         this.treePointsPerLevel = Math.max(0, treePointsPerLevel);
     }
 
@@ -128,22 +60,9 @@ public final class LevelSettings {
         if (config == null) {
             return DEFAULT;
         }
-
-        List<Stage> parsed = new ArrayList<>();
-        for (Map<?, ?> raw : config.getMapList("stages")) {
-            parsed.add(new Stage(
-                    intValue(raw.get("min_level"), 0),
-                    intValue(raw.get("max_level"), 0),
-                    doubleValue(raw.get("exp_multiplier"), 1.0)));
-        }
-        // 範囲が重複した場合は、より狭い（min_level が大きい）段階を優先する。
-        parsed.sort(Comparator.comparingInt(Stage::minLevel));
-
         return new LevelSettings(
                 config.getLong("base_exp", DEFAULT_BASE_EXP),
-                config.getDouble("exp_growth", DEFAULT_EXP_GROWTH),
-                parsed,
-                config.getInt("max_level", UNLIMITED),
+                config.getInt("max_level", DEFAULT_MAX_LEVEL),
                 config.getInt("tree_points_per_level", DEFAULT_TREE_POINTS_PER_LEVEL));
     }
 
@@ -151,16 +70,8 @@ public final class LevelSettings {
         return baseExp;
     }
 
-    public double expGrowth() {
-        return expGrowth;
-    }
-
-    public List<Stage> stages() {
-        return stages;
-    }
-
     /**
-     * 到達可能な最大レベルを返す。上限がない場合は {@link Integer#MAX_VALUE}。
+     * 到達可能な最大レベルを返す。
      */
     public int maxLevel() {
         return maxLevel;
@@ -174,61 +85,23 @@ public final class LevelSettings {
     }
 
     /**
-     * 指定レベルの必要経験値を算出する。
+     * 指定レベルの「次レベルまでに必要な経験値」を返す。
      * <p>
-     * レベル 1 の次レベルに必要な経験値が {@code base_exp} ちょうどになるよう、
-     * 成長率は「現在レベル - 1」乗で適用する。返り値は必ず 1 以上。
+     * {@code base_exp * (2 * level - 1)} を {@code long} で計算する。
+     * レベル 1 では {@code base_exp}、レベル 2 では {@code 3 * base_exp} となり、
+     * レベル 1 からの累計は {@code base_exp * (level - 1)^2} と一致する。
+     * オーバーフローする場合は {@link Long#MAX_VALUE} を返す。
      *
-     * @param level レベル（1 未満は 1 として扱う）
-     * @return 次のレベルへ上がるために必要な経験値
+     * @param level 現在レベル（1 未満は 1 として扱う）
+     * @return 次のレベルへ上がるために必要な経験値（最低 1）
      */
     public long requiredExp(int level) {
         int clamped = Math.max(1, level);
-        double multiplier = multiplierFor(clamped);
-        double value = baseExp * Math.pow(expGrowth, clamped - 1) * multiplier;
-        if (!Double.isFinite(value)) {
+        long factor = 2L * clamped - 1L;
+        if (baseExp > Long.MAX_VALUE / factor) {
             return Long.MAX_VALUE;
         }
-        return Math.max(1L, Math.round(value));
-    }
-
-    /**
-     * 指定レベルに適用する経験値倍率を返す。
-     *
-     * @param level レベル
-     * @return 該当段階の倍率。該当なしの場合は 1.0
-     */
-    public double multiplierFor(int level) {
-        Stage matched = null;
-        for (Stage stage : stages) {
-            if (stage.contains(level)) {
-                matched = stage;
-            }
-        }
-        return matched == null ? 1.0 : matched.expMultiplier();
-    }
-
-    private static int resolveMaxLevel(List<Stage> stages) {
-        if (stages.isEmpty()) {
-            return Integer.MAX_VALUE;
-        }
-        int max = 0;
-        boolean unlimited = false;
-        for (Stage stage : stages) {
-            if (stage.maxLevel() == UNLIMITED) {
-                unlimited = true;
-            } else {
-                max = Math.max(max, stage.maxLevel());
-            }
-        }
-        return unlimited ? Integer.MAX_VALUE : max;
-    }
-
-    private static int intValue(Object raw, int fallback) {
-        return raw instanceof Number number ? number.intValue() : fallback;
-    }
-
-    private static double doubleValue(Object raw, double fallback) {
-        return raw instanceof Number number ? number.doubleValue() : fallback;
+        return Math.max(1L, baseExp * factor);
     }
 }
+

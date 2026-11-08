@@ -9,4 +9,4 @@ actions:
     particle: CRIT
     count: 15
   - type: SOUND
-    sound: ENTITY_RAVAGER_ROAR
+    sound: "entity.ravager.roar"

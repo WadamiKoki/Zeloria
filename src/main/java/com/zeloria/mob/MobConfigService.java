@@ -44,11 +44,7 @@ public class MobConfigService {
         mobs.clear();
         byId.clear();
 
-        for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(KEY_PREFIX)) {
-                continue;
-            }
-
+        for (String key : yamlLoader.getKeysUnder(KEY_PREFIX)) {
             FileConfiguration config = yamlLoader.getConfig(key);
             if (config == null) {
                 continue;

@@ -37,9 +37,6 @@ public enum VirtualInventoryTab {
 
     /**
      * 保存済み・表示用アイテムに記録されたタブ名を解決する。
-     * <p>
-     * 旧バージョンの {@code INVENTORY} / {@code EQUIPMENT} / {@code MATERIAL} も
-     * 受け付け、2 タブ構成へ移行する。
      *
      * @param raw タブ名
      * @return 解決されたタブ。不明な場合は {@code null}
@@ -50,8 +47,8 @@ public enum VirtualInventoryTab {
         }
         String normalized = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (normalized) {
-            case "INVENTORY", "MATERIAL", "STORAGE" -> STORAGE;
-            case "EQUIPMENT", "EQUIPMENT_STORAGE" -> EQUIPMENT_STORAGE;
+            case "STORAGE" -> STORAGE;
+            case "EQUIPMENT_STORAGE" -> EQUIPMENT_STORAGE;
             default -> null;
         };
     }

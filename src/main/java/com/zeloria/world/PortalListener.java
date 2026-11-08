@@ -101,7 +101,7 @@ public class PortalListener implements Listener {
 
         if (!portal.hasTargetTemplate()) {
             plugin.getLogger().warning(
-                    "ポータル '" + portal.id() + "' に target_template が設定されていません。");
+                    "ポータル '" + portal.id() + "' に to.world が設定されていません。");
             messageService().send(player, MESSAGE_FILE, "portal.creation_failed",
                     Map.of("layer_name", portal.id()));
             return;

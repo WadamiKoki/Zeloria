@@ -13,4 +13,4 @@ actions:
     particle: TOTEM_OF_UNDYING
     count: 20
   - type: SOUND
-    sound: ENTITY_RAVAGER_ROAR
+    sound: "entity.ravager.roar"

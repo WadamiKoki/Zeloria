@@ -50,8 +50,6 @@ public class DatabaseManager {
             CREATE TABLE IF NOT EXISTS %s (
                 uuid CHAR(36) NOT NULL,
                 player_name VARCHAR(64) NOT NULL,
-                level INT NOT NULL DEFAULT 1,
-                exp BIGINT NOT NULL DEFAULT 0,
                 money BIGINT NOT NULL DEFAULT 0,
                 current_class_id VARCHAR(64) NULL,
                 unlocked_classes TEXT NULL,
@@ -59,10 +57,11 @@ public class DatabaseManager {
                 class_exps_json LONGTEXT NULL,
                 class_tree_points_json LONGTEXT NULL,
                 allocated_class_nodes_json LONGTEXT NULL,
+                gathering_levels_json LONGTEXT NULL,
+                gathering_exps_json LONGTEXT NULL,
                 virtual_equipment_base64 LONGTEXT NULL,
                 virtual_inventory_json LONGTEXT NULL,
                 virtual_equipment_json LONGTEXT NULL,
-                virtual_material_json LONGTEXT NULL,
                 max_health DOUBLE NULL,
                 current_health DOUBLE NULL,
                 max_mana DOUBLE NULL,
@@ -100,11 +99,12 @@ public class DatabaseManager {
      * （{@code sql/reset.sql} で再作成する運用）。
      */
     public static final List<String> REQUIRED_PLAYERS_COLUMNS = List.of(
-            "uuid", "player_name", "level", "exp", "money",
+            "uuid", "player_name", "money",
             "current_class_id", "unlocked_classes",
             "class_levels_json", "class_exps_json", "class_tree_points_json", "allocated_class_nodes_json",
+            "gathering_levels_json", "gathering_exps_json",
             "virtual_equipment_base64",
-            "virtual_inventory_json", "virtual_equipment_json", "virtual_material_json",
+            "virtual_inventory_json", "virtual_equipment_json",
             "max_health", "current_health", "max_mana", "current_mana",
             "attack_power", "defense1", "defense2", "critical_rate", "critical_damage",
             "accuracy", "evasion", "dodge_cooldown_reduction", "cooldown_reduction",

@@ -11,7 +11,7 @@ attackSpeedTicks: 16
 attackRange: 2.5
 attackAngle: 60.0
 attackParticle: SWEEP_ATTACK
-attackSound: ENTITY_PLAYER_ATTACK_SWEEP
+attackSound: "entity.player.attack.sweep"
 requiredLevel: 0
 stats:
   maxHealth: 0

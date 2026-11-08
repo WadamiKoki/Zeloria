@@ -16,7 +16,7 @@ import java.util.UUID;
  * プレイヤーの RPG ステータスを Bukkit のプレイヤーへ反映するサービス。
  * <p>
  * 現時点でゲーム内へ反映するのは移動速度（{@code setWalkSpeed}）、満腹度ゲージ
- * （MP バー）、バニラのレベル／経験値バー（RPG レベル／経験値）である。
+ * （MP バー）、バニラのレベル／経験値バー（現在クラスのレベル／経験値）である。
  * HP / MP のモデル値は {@link PlayerStats} 内に保持し、バニラの体力バーへの
  * HP 同期は {@link CombatService#syncPlayerHealth(Player)} が担う。リスポーン時に
  * 本クラスから呼び出して全回復を表示へ反映する。最大 HP / 最大 MP は
@@ -93,7 +93,22 @@ public final class PlayerStatsService {
         }
         // refreshClassStats が基礎値の再計算とツリー効果の再適用まで行う。
         refreshClassStats(data);
-        apply(player, data.getStats());
+
+        PlayerStats stats = data.getStats();
+        // 死亡状態で保存されたデータ（HP 0）を読み込んだ場合、バニラ側で生存していれば
+        // 上限まで回復させる。死亡中・独自死亡の待機中（スペクテイター）には干渉しない。
+        if (!player.isDead() && !isAwaitingRespawn(player) && stats.getCurrentHealth() <= 0.0) {
+            stats.restoreVitals();
+        }
+
+        float walkSpeed = (float) clamp(stats.getMoveSpeed(), MIN_WALK_SPEED, MAX_WALK_SPEED);
+        runOnMainThread(player, () -> {
+            if (player.isOnline()) {
+                player.setWalkSpeed(walkSpeed);
+            }
+        });
+
+        syncVanillaStats(player, data);
     }
 
     /**
@@ -179,7 +194,7 @@ public final class PlayerStatsService {
      * 現在のクラスとレベルから基礎ステータスを再計算し、{@link PlayerStats} へ上書きしたうえで
      * ツリー効果（永続化されない補正）を再適用する。
      * <p>
-     * 計算式は {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。レベル 0 と 1 は
+     * 計算式は {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。レベル 1 は
      * {@code baseStats} のみとなる。
      * <p>
      * ツリー効果の割合は基礎値を基準に計算するため、基礎値を上書きした直後に
@@ -210,41 +225,10 @@ public final class PlayerStatsService {
             return;
         }
 
-        ClassStats effective = definition.statsAtLevel(stats.getLevel());
+        ClassStats effective = definition.statsAtLevel(data.getCurrentClassLevel());
         effective.applyTo(stats);
         // 基礎値の上書き後にツリー効果（加算プール）を再適用する。
         applyClassTreeStats(data, stats);
-    }
-
-    /**
-     * ステータスを反映する。
-     * <p>
-     * 移動速度は Bukkit の許容範囲（-1.0〜1.0）へクランプしてから適用する。
-     * 非同期スレッドから呼ばれた場合はメインスレッドへ委譲する
-     * （{@code setWalkSpeed} はプレイヤー状態を変更するため）。
-     *
-     * @param player 対象プレイヤー
-     * @param stats  反映するステータス
-     */
-    public void apply(Player player, PlayerStats stats) {
-        if (player == null || stats == null) {
-            return;
-        }
-
-        // 死亡状態で保存されたデータ（HP 0）を読み込んだ場合、バニラ側で生存していれば
-        // 上限まで回復させる。死亡中・独自死亡の待機中（スペクテイター）には干渉しない。
-        if (!player.isDead() && !isAwaitingRespawn(player) && stats.getCurrentHealth() <= 0.0) {
-            stats.restoreVitals();
-        }
-
-        float walkSpeed = (float) clamp(stats.getMoveSpeed(), MIN_WALK_SPEED, MAX_WALK_SPEED);
-        runOnMainThread(player, () -> {
-            if (player.isOnline()) {
-                player.setWalkSpeed(walkSpeed);
-            }
-        });
-
-        syncVanillaStats(player, stats);
     }
 
     /**
@@ -253,30 +237,34 @@ public final class PlayerStatsService {
      * <ul>
      *     <li>満腹度ゲージ: 現在 MP / 最大 MP の割合を 0〜20 に割り当てる（MP バーとして使用）</li>
      *     <li>満腹度の隠し値（saturation）: 常に 0（満腹度ゲージの揺れを防ぐ）</li>
-     *     <li>レベル: RPG レベル</li>
+     *     <li>レベル: 現在選択中クラスのレベル</li>
      *     <li>経験値バー: 次レベルまでの進捗（{@link LevelService#requiredExp(int)} を使用）</li>
      * </ul>
      * 非同期スレッドから呼ばれた場合はメインスレッドへ委譲する。
      *
      * @param player 対象プレイヤー
-     * @param stats  反映するステータス
+     * @param data   反映するプレイヤーデータ
      */
-    public void syncVanillaStats(Player player, PlayerStats stats) {
-        if (player == null || stats == null) {
+    public void syncVanillaStats(Player player, PlayerData data) {
+        if (player == null || data == null) {
             return;
         }
 
+        PlayerStats stats = data.getStats();
         int maxMana = (int) Math.round(stats.getMaxMana());
         int foodLevel = maxMana <= 0
                 ? 0
                 : (int) Math.round(clamp(stats.getCurrentMana() / maxMana, 0.0, 1.0) * 20.0);
 
-        int level = Math.max(0, stats.getLevel());
+        int level = Math.max(0, data.getCurrentClassLevel());
+        long currentExp = data.getCurrentClassExp();
         LevelService levelService = plugin.getLevelService();
-        long requiredExp = levelService == null ? 0L : levelService.requiredExp(level);
+        long requiredExp = level <= 0 || levelService == null
+                ? 0L
+                : levelService.requiredExp(level);
         float expProgress = requiredExp <= 0L
                 ? 0.0f
-                : (float) clamp((double) stats.getExp() / (double) requiredExp, 0.0, 1.0);
+                : (float) clamp((double) currentExp / (double) requiredExp, 0.0, 1.0);
 
         runOnMainThread(player, () -> {
             if (!player.isOnline()) {

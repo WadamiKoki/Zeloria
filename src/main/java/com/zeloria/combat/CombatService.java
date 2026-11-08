@@ -11,10 +11,7 @@ import com.zeloria.world.CollisionManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
-import org.bukkit.Registry;
-import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.AbstractArrow;
@@ -411,8 +408,8 @@ public final class CombatService {
     /**
      * バニラと同等の被弾音を周囲へ再生する。
      * <p>
-     * プレイヤーは {@link Sound#ENTITY_PLAYER_HURT}、それ以外（カスタムモブ）は
-     * {@link Sound#ENTITY_GENERIC_HURT} を使用し、音量・ピッチはバニラ既定値（1.0）に揃える。
+     * プレイヤーは {@code entity.player.hurt}、それ以外（カスタムモブ）は
+     * {@code entity.generic.hurt} を使用し、音量・ピッチはバニラ既定値（1.0）に揃える。
      *
      * @param victim 被弾したエンティティ
      */
@@ -420,7 +417,7 @@ public final class CombatService {
         if (victim == null || !victim.isValid()) {
             return;
         }
-        Sound sound = victim instanceof Player ? Sound.ENTITY_PLAYER_HURT : Sound.ENTITY_GENERIC_HURT;
+        String sound = victim instanceof Player ? "entity.player.hurt" : "entity.generic.hurt";
         victim.getWorld().playSound(victim.getLocation(), sound, 1.0f, 1.0f);
     }
 
@@ -736,13 +733,11 @@ public final class CombatService {
         if (location.getWorld() == null) {
             return;
         }
-        Sound sound = parseSound(weapon.attackSound());
-        if (sound == null) {
-            sound = parseSound(WeaponType.SWORD.attackSound());
+        String sound = weapon.attackSound();
+        if (sound.isBlank()) {
+            sound = WeaponType.SWORD.attackSound();
         }
-        if (sound != null) {
-            location.getWorld().playSound(location, sound, 1.0f, 1.0f);
-        }
+        location.getWorld().playSound(location, sound, 1.0f, 1.0f);
     }
 
     /**
@@ -757,65 +752,6 @@ public final class CombatService {
         } catch (IllegalArgumentException ignored) {
             return null;
         }
-    }
-
-    /**
-     * サウンド名を {@link Registry#SOUNDS} から解決する。
-     * <p>
-     * {@code ENTITY_PLAYER_ATTACK_SWEEP} のような旧 Enum 名、
-     * {@code entity.player.attack.sweep} のようなレジストリキーの双方を受け付ける。
-     */
-    private static Sound parseSound(String name) {
-        String trimmed = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-
-        String namespace = "minecraft";
-        String path = trimmed;
-        int colon = trimmed.indexOf(':');
-        if (colon >= 0) {
-            namespace = trimmed.substring(0, colon);
-            path = trimmed.substring(colon + 1);
-        }
-        if (path.isEmpty()) {
-            return null;
-        }
-
-        NamespacedKey directKey;
-        try {
-            directKey = namespace.equals("minecraft")
-                    ? NamespacedKey.minecraft(path)
-                    : NamespacedKey.fromString(namespace + ":" + path);
-        } catch (IllegalArgumentException ignored) {
-            directKey = null;
-        }
-        Sound direct = directKey == null ? null : Registry.SOUNDS.get(directKey);
-        if (direct != null) {
-            return direct;
-        }
-
-        String normalized = normalizeSoundName(path);
-        for (Sound candidate : Registry.SOUNDS) {
-            NamespacedKey key = Registry.SOUNDS.getKey(candidate);
-            if (key != null
-                    && key.getNamespace().equals(namespace)
-                    && normalizeSoundName(key.getKey()).equals(normalized)) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private static String normalizeSoundName(String value) {
-        StringBuilder result = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char character = value.charAt(i);
-            if (Character.isLetterOrDigit(character)) {
-                result.append(character);
-            }
-        }
-        return result.toString();
     }
 
     /**

@@ -3,7 +3,6 @@ package com.zeloria.skill;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.player.PlayerData;
-import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatsService;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -45,8 +44,8 @@ public class LevelService {
         this.settings = LevelSettings.fromConfig(config);
         plugin.getLogger().info(
                 "レベル設定を読み込みました (base_exp=" + settings.baseExp()
-                        + ", growth=" + settings.expGrowth()
-                        + ", stages=" + settings.stages().size() + ").");
+                        + ", max_level=" + settings.maxLevel()
+                        + ", tree_points_per_level=" + settings.treePointsPerLevel() + ").");
     }
 
     /**
@@ -71,7 +70,7 @@ public class LevelService {
     /**
      * 到達可能な最大レベルを取得する。
      *
-     * @return 最大レベル（上限なしの場合は {@link Integer#MAX_VALUE}）
+     * @return 最大レベル
      */
     public int maxLevel() {
         return settings.maxLevel();
@@ -94,12 +93,13 @@ public class LevelService {
     /**
      * プレイヤーデータへ経験値を付与し、必要に応じてレベルアップさせる。
      * <p>
-     * クラス選択済みの場合は「現在のクラス」のレベル・経験値を進め、レベルアップ
-     * 1 回につき {@link LevelSettings#treePointsPerLevel()} ポイントのクラスツリーポイントを
-     * 付与する。未選択の場合は従来どおりグローバル値を更新する。
+     * 「現在のクラス」のレベル・経験値を進め、レベルアップ 1 回につき
+     * {@link LevelSettings#treePointsPerLevel()} ポイントのクラスツリーポイントを
+     * 付与する。クラス未選択の場合は経験値を付与しない。
      * <p>
-     * 1 回の付与で複数レベル上がる場合にも対応する。最大レベルに到達した場合は
-     * 余剰経験値を保持せず、必要経験値ちょうどで停止する。
+     * 1 回の付与で複数レベル上がる場合にも対応する。最大レベル到達時は
+     * 余剰経験値を保持せず、必要経験値ちょうどで停止する。既に最大レベルへ
+     * 到達している場合は経験値を一切加算しない。
      *
      * @param data   対象データ（{@code null} の場合は何もしない）
      * @param amount 付与量
@@ -110,14 +110,21 @@ public class LevelService {
             return LevelResult.NONE;
         }
 
-        PlayerStats stats = data.getStats();
         String classId = data.getClassData().currentClassIdOrNull();
-        boolean classScoped = classId != null && !classId.isBlank();
+        if (classId == null || classId.isBlank()) {
+            // クラス未選択時は経験値を付与しない。
+            return LevelResult.NONE;
+        }
 
-        int oldLevel = classScoped ? data.getClassLevel(classId) : stats.getLevel();
-        int level = oldLevel;
-        long exp = (classScoped ? data.getClassExp(classId) : stats.getExp()) + amount;
         int maxLevel = settings.maxLevel();
+        int oldLevel = data.getClassLevel(classId);
+        if (oldLevel >= maxLevel) {
+            // カンスト時はそれ以上経験値を加算せず、既存の経験値は保持する。
+            return new LevelResult(oldLevel, oldLevel, 0, data.getClassExp(classId), 0L);
+        }
+
+        int level = oldLevel;
+        long exp = data.getClassExp(classId) + amount;
         int levelsGained = 0;
 
         while (level < maxLevel) {
@@ -136,17 +143,10 @@ public class LevelService {
             exp = 0L;
         }
 
-        if (classScoped) {
-            data.setClassLevel(classId, level);
-            data.setClassExp(classId, exp);
-            if (levelsGained > 0 && settings.treePointsPerLevel() > 0) {
-                data.addClassTreePoints(classId, levelsGained * settings.treePointsPerLevel());
-            }
-            // 既存のステータス計算・表示が参照するグローバル値へ反映する。
-            data.mirrorCurrentClassProgress();
-        } else {
-            stats.setLevel(level);
-            stats.setExp(exp);
+        data.setClassLevel(classId, level);
+        data.setClassExp(classId, exp);
+        if (levelsGained > 0 && settings.treePointsPerLevel() > 0) {
+            data.addClassTreePoints(classId, levelsGained * settings.treePointsPerLevel());
         }
 
         // レベルアップ時はクラス基礎ステータス（baseStats × レベル成長率）を再計算する。
@@ -158,7 +158,7 @@ public class LevelService {
         PlayerStatsService statsService = plugin.getPlayerStatsService();
         Player player = data.getUuid() == null ? null : Bukkit.getPlayer(data.getUuid());
         if (statsService != null && player != null) {
-            statsService.syncVanillaStats(player, stats);
+            statsService.syncVanillaStats(player, data);
         }
 
         return new LevelResult(oldLevel, level, levelsGained, exp, settings.requiredExp(level));

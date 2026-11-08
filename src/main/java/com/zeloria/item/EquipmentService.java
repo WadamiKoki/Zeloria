@@ -50,8 +50,8 @@ public class EquipmentService {
      * @return 必要レベル（0 は制限なし）
      */
     public int requiredLevel(ItemStack stack) {
-        // アイテム生成時に PDC へ保存した値を優先する。
-        // 保存が無い旧アイテムはアイテム定義の値へフォールバックする。
+        // アイテム生成時に PDC へ保存した値を優先し、未格納の場合は
+        // アイテム定義の値へフォールバックする。
         return itemService.getRequiredLevel(stack);
     }
 
@@ -67,7 +67,7 @@ public class EquipmentService {
             return false;
         }
         PlayerData data = PlayerData.getCached(player.getUniqueId());
-        int level = data == null ? 0 : data.getLevel();
+        int level = data == null ? 0 : data.getCurrentClassLevel();
         return level >= requiredLevel(stack);
     }
 
@@ -178,7 +178,7 @@ public class EquipmentService {
             return;
         }
 
-        int level = data.getLevel();
+        int level = data.getCurrentClassLevel();
         ItemStatBonus total = ItemStatBonus.NONE;
         for (EquipSlot slot : EquipSlot.values()) {
             ItemStack equipped = data.getEquipment(slot);

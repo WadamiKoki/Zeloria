@@ -9,4 +9,4 @@ actions:
     particle: CRIT
     count: 12
   - type: SOUND
-    sound: ENTITY_ARROW_HIT
+    sound: "entity.arrow.hit"

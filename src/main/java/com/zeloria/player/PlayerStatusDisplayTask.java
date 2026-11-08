@@ -107,7 +107,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
         // 空腹・自然減少・バニラのレベル操作などでバニラ側の値がずれるため、
         // 表示更新の有無に関わらず毎秒強制的に同期する。
-        syncVanillaStatus(player, stats);
+        syncVanillaStatus(player, data);
 
         TextDisplay display = displays.get(player.getUniqueId());
         if (display == null
@@ -137,9 +137,9 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
      * ステータス変更の有無に関わらず常に上書きする。
      *
      * @param player 対象プレイヤー
-     * @param stats  反映するステータス
+     * @param data   反映するプレイヤーデータ
      */
-    private void syncVanillaStatus(Player player, PlayerStats stats) {
+    private void syncVanillaStatus(Player player, PlayerData data) {
         CombatService combatService = plugin.getCombatService();
         if (combatService != null) {
             // 体力バーは「現在 HP / 最大 HP」の割合をバニラ最大 20 へ写す（下限 1.0 で死亡回避）。
@@ -149,7 +149,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         PlayerStatsService statsService = plugin.getPlayerStatsService();
         if (statsService != null) {
             // 満腹度 = MP 割合、レベル・経験値バー = RPG のレベルと次レベルまでの進捗。
-            statsService.syncVanillaStats(player, stats);
+            statsService.syncVanillaStats(player, data);
         }
     }
 

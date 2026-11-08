@@ -59,7 +59,7 @@ public class PlayerRegenTask extends BukkitRunnable {
             }
             if (regenerate(data.getStats())) {
                 // 満腹度（MP バー）・レベル／経験値表示を最新値へ追従させる。
-                statsService.syncVanillaStats(player, data.getStats());
+                statsService.syncVanillaStats(player, data);
             }
         }
     }

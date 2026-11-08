@@ -3,6 +3,8 @@ package com.zeloria.command;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.core.DatabaseService;
+import com.zeloria.gathering.GatheringService;
+import com.zeloria.gathering.GatheringType;
 import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
@@ -113,6 +115,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String INFO = "info";
     private static final String STATS = "stats";
     private static final String XP = "xp";
+    private static final String GATHERING = "gathering";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
     private static final String CREATE = "create";
@@ -178,6 +181,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> LAYER_TARGETS = List.of(ALL, ONLINE);
 
+    /** {@code /admin gathering <xp> ...} のサブコマンド候補。 */
+    private static final List<String> GATHERING_TARGETS = List.of(XP);
+
     /**
      * {@code /admin stats <player> <type> <value>} で変更可能なステータス種別。
      * <p>
@@ -199,7 +205,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gathering|gui|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -259,6 +265,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case INFO -> handleInfo(sender, args);
             case STATS -> handleStats(sender, args);
             case XP -> handleXp(sender, args);
+            case GATHERING -> handleGathering(sender, args);
             case GUI -> handleGui(sender, args);
             case BUILD -> handleBuild(sender, args);
             case LAYER -> handleLayer(sender, args);
@@ -291,6 +298,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(INFO);
                 candidates.add(STATS);
                 candidates.add(XP);
+                candidates.add(GATHERING);
                 candidates.add(GUI);
                 candidates.add(LAYER);
                 if (isBuildChannel() && plugin.getBuildManager() != null) {
@@ -326,6 +334,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         if (GIVE.equalsIgnoreCase(args[0])) {
             return completeGive(sender, args);
+        }
+
+        if (GATHERING.equalsIgnoreCase(args[0])) {
+            return completeGathering(sender, args);
         }
 
         if (INFO.equalsIgnoreCase(args[0]) || XP.equalsIgnoreCase(args[0])) {
@@ -472,7 +484,36 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin give <armor|material|weapon> <id> [amount]} のタブ補完。
+     * {@code /admin gathering xp <player> <type> <amount>} のタブ補完。
+     */
+    private List<String> completeGathering(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(ADMIN_PERMISSION)) {
+            return List.of();
+        }
+        if (args.length == 2) {
+            return partial(args[1], GATHERING_TARGETS);
+        }
+        if (!XP.equalsIgnoreCase(args[1])) {
+            return List.of();
+        }
+        if (args.length == 3) {
+            return partial(args[2], Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .toList());
+        }
+        if (args.length == 4) {
+            return partial(args[3], Arrays.stream(GatheringType.values())
+                    .map(GatheringType::key)
+                    .toList());
+        }
+        if (args.length == 5) {
+            return partial(args[4], List.of("100", "1000", "10000"));
+        }
+        return List.of();
+    }
+
+    /**
+     * {@code /admin give <armor|material|weapon|tool> <id> [amount]} のタブ補完。
      * <p>
      * 第 3 引数には {@link ItemService} が読み込んだ種別ごとの ID 一覧、
      * 第 4 引数には代表的な個数を候補として返す。
@@ -528,6 +569,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
         if (plugin.getLevelService() != null) {
             plugin.getLevelService().reload();
+        }
+        if (plugin.getGatheringService() != null) {
+            plugin.getGatheringService().reload();
         }
         if (plugin.getGuiConfigService() != null) {
             plugin.getGuiConfigService().reload();
@@ -1623,7 +1667,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin give <armor|material|weapon> <id> [amount]} のディスパッチ。
+     * {@code /admin give <armor|material|weapon|tool> <id> [amount]} のディスパッチ。
      * <p>
      * アイテム定義は {@link ItemService} から取得し、実行者自身の仮想インベントリへ格納する。
      */
@@ -2109,7 +2153,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (plugin.getPlayerStatsService() != null) {
-            plugin.getPlayerStatsService().apply(player, data.getStats());
+            plugin.getPlayerStatsService().apply(player, data);
         }
         if (plugin.getCombatService() != null) {
             plugin.getCombatService().syncPlayerHealth(player);
@@ -2216,6 +2260,11 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         LevelService.LevelResult result = levelService.grant(target, amount);
+        if (result == LevelService.LevelResult.NONE) {
+            send(sender, message("xp.no_class", Map.of(),
+                    "<red>クラス未選択のため経験値を付与できません。先にクラスを選択してください。</red>"));
+            return;
+        }
         send(sender, message("xp.success", Map.of(
                         "player", esc(target.getName()),
                         "amount", Long.toString(amount),
@@ -2227,6 +2276,93 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 "<green>{player}</green> <gray>に経験値</gray> <yellow>{amount}</yellow> "
                         + "<gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, "
                         + "EXP {exp}/{required})</dark_gray>"));
+    }
+
+    /**
+     * {@code /admin gathering xp <player> <type> <amount>} の本体。
+     * <p>
+     * オンラインプレイヤーへギャザリング経験値を付与し、レベルアップ処理は
+     * {@link GatheringService#grant(Player, GatheringType, long)} に委譲する。
+     *
+     * @param sender 実行者
+     * @param args   コマンド引数（{@code [gathering, xp, player, type, amount]}）
+     */
+    private void handleGathering(CommandSender sender, String[] args) {
+        if (args.length < 2 || !XP.equalsIgnoreCase(args[1])) {
+            send(sender, message("gathering.usage", Map.of(),
+                    "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"));
+            return;
+        }
+        if (args.length != 5) {
+            send(sender, message("gathering.usage", Map.of(),
+                    "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"));
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            send(sender, message("gathering.not_found", Map.of("player", esc(args[2])),
+                    "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"));
+            return;
+        }
+
+        GatheringType type = GatheringType.fromKey(args[3]);
+        if (type == null) {
+            send(sender, message("gathering.invalid_type", Map.of("type", esc(args[3])),
+                    "<red>不明なギャザリング種別です: <white>{type}</white></red> "
+                            + "<gray>指定可能: <white>mining, woodcutting, farming</white></gray>"));
+            return;
+        }
+
+        long amount;
+        try {
+            amount = Long.parseLong(args[4]);
+        } catch (NumberFormatException e) {
+            amount = 0L;
+        }
+        if (amount <= 0L) {
+            send(sender, message("gathering.invalid_amount", Map.of(),
+                    "<red>ギャザリング経験値は 1 以上の整数で指定してください。</red>"));
+            return;
+        }
+
+        GatheringService gatheringService = plugin.getGatheringService();
+        if (gatheringService == null) {
+            send(sender, message("gathering.unavailable", Map.of(),
+                    "<red>ギャザリングサービスが初期化されていません。</red>"));
+            return;
+        }
+        if (PlayerData.getCached(target.getUniqueId()) == null) {
+            send(sender, message("gathering.not_loaded", Map.of("player", esc(target.getName())),
+                    "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"));
+            return;
+        }
+
+        PlayerData data = PlayerData.getCached(target.getUniqueId());
+        if (data.getGatheringLevel(type) >= gatheringService.maxLevel(type)) {
+            send(sender, message("gathering.no_gain", Map.of("player", esc(target.getName())),
+                    "<yellow>{player}</yellow> <gray>は既に最大レベルです。</gray>"));
+            return;
+        }
+
+        GatheringService.GatheringResult result = gatheringService.grant(data, type, amount);
+        if (result == GatheringService.GatheringResult.NONE) {
+            send(sender, message("gathering.no_gain", Map.of("player", esc(target.getName())),
+                    "<yellow>{player}</yellow> <gray>は既に最大レベルです。</gray>"));
+            return;
+        }
+        send(sender, message("gathering.success", Map.of(
+                        "player", esc(target.getName()),
+                        "amount", Long.toString(amount),
+                        "type", esc(type.displayName()),
+                        "old_level", Integer.toString(result.oldLevel()),
+                        "new_level", Integer.toString(result.newLevel()),
+                        "levels", Integer.toString(result.levelsGained()),
+                        "exp", Long.toString(result.currentExp()),
+                        "required", Long.toString(result.requiredExp())),
+                "<green>{player}</green> <gray>に</gray> <white>{type}</white> "
+                        + "<gray>経験値</gray> <yellow>{amount}</yellow> <gray>を付与しました。</gray> "
+                        + "<dark_gray>(Lv {old_level} → {new_level}, EXP {exp}/{required})</dark_gray>"));
     }
 
     /**
@@ -2270,11 +2406,15 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private void sendStatsBlock(CommandSender sender, PlayerSnapshot snapshot) {
         LevelService levelService = plugin.getLevelService();
-        long requiredExp = levelService == null ? 0L : levelService.requiredExp(snapshot.level());
+        int level = snapshot.currentClassLevel();
+        long exp = snapshot.currentClassExp();
+        long requiredExp = level <= 0 || levelService == null
+                ? 0L
+                : levelService.requiredExp(level);
 
         send(sender, message("info.level", Map.of(
-                        "level", String.valueOf(snapshot.level()),
-                        "exp", String.valueOf(snapshot.exp()),
+                        "level", String.valueOf(level),
+                        "exp", String.valueOf(exp),
                         "required", String.valueOf(requiredExp)),
                 "<gray>Level:</gray> <yellow>{level}</yellow> <dark_gray>|</dark_gray> "
                         + "<gray>EXP:</gray> <white>{exp}</white><gray>/</gray><white>{required}</white>"));
@@ -2292,8 +2432,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         "attack", decimal(snapshot.attackPower()),
                         "defense1", decimal(snapshot.defense1()),
                         "defense2", decimal(snapshot.defense2()),
-                        // 旧テンプレート（DEF: {defense}）との互換用。合計値を渡す。
-                        "defense", decimal(snapshot.defense1() + snapshot.defense2()),
                         "crit_rate", decimal(snapshot.criticalRate()),
                         "crit_damage", decimal(snapshot.criticalDamage()),
                         "accuracy", decimal(snapshot.accuracy()),
@@ -2418,7 +2556,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private String giveUsage() {
         return message("give.usage", Map.of(),
-                "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon> \\<id> [amount]</white>");
+                "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon|tool> \\<id> [amount]</white>");
     }
 
     /**
@@ -2698,16 +2836,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     /**
      * 武器定義の武器タイプ表示を組み立てる。
-     * <p>
-     * 新キー {@code weaponTypes}（リスト）を優先し、無い場合は旧キー
-     * {@code weaponType}（単一文字列）へフォールバックする。
      */
     private static String weaponTypesLabel(FileConfiguration config) {
         List<String> weaponTypes = config.getStringList("weaponTypes");
-        if (!weaponTypes.isEmpty()) {
-            return String.join(", ", weaponTypes);
-        }
-        return text(config.getString("weaponType"), "-");
+        return weaponTypes.isEmpty() ? "-" : String.join(", ", weaponTypes);
     }
 
     /**
@@ -2792,7 +2924,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + " <white>Slot</white>: <yellow>"
                         + esc(text(config.getString("equipment_slot"), "-")) + "</yellow>"
                         + " <dark_gray>|</dark_gray> <white>DEF2</white>: <yellow>"
-                        + numberWithFallback(config, "stats.defense2", "defense2") + "</yellow>"
+                        + numberInStatsOrRoot(config, "defense2") + "</yellow>"
                         + " <dark_gray>|</dark_gray> <white>ReqLv</white>: <yellow>"
                         + number(config, "requiredLevel") + "</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
@@ -2855,7 +2987,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + "</yellow> <dark_gray>|</dark_gray> <white>DEF1</white>: <yellow>"
                         + number(config, "defense1")
                         + "</yellow> <dark_gray>|</dark_gray> <white>DEF2</white>: <yellow>"
-                        + numberWithFallback(config, "defense2", "defense")
+                        + number(config, "defense2")
                         + "</yellow> <dark_gray>|</dark_gray> <white>EXP</white>: <yellow>"
                         + number(config, "expReward") + "</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
@@ -2993,16 +3125,11 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * 指定キーが存在すればその値を、無ければ互換キーの値を数値として返す。
-     * <p>
-     * 旧形式の {@code defense} と新形式の {@code defense2} のように、
-     * 同じ意味のキーが併存する設定を 1 行表示するために使用する。
+     * {@code stats.<key>} が存在すればその値を、無ければルート直下の同名キーを数値として返す。
      */
-    private static String numberWithFallback(FileConfiguration config, String key, String fallbackKey) {
-        if (config != null && config.isSet(key)) {
-            return number(config, key);
-        }
-        return number(config, fallbackKey);
+    private static String numberInStatsOrRoot(FileConfiguration config, String key) {
+        String statsKey = "stats." + key;
+        return number(config, config != null && config.isSet(statsKey) ? statsKey : key);
     }
 
     private static String numberText(Number number) {

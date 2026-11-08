@@ -255,7 +255,7 @@ public class MenuService {
         }
 
         MenuGui menu = new MenuGui(player, gui.getMenu(), gui.getInventory(),
-                plugin.getLevelService());
+                plugin.getLevelService(), plugin.getGatheringService(), plugin.getClassManager());
         equipmentClickAt.remove(player.getUniqueId());
         menu.render(player, data);
         player.openInventory(menu.getInventory());
@@ -473,7 +473,7 @@ public class MenuService {
             if (messages != null) {
                 messages.actionBar(player, "equipment", "level_required",
                         Map.of("required", String.valueOf(equipmentService.requiredLevel(equipped)),
-                                "level", String.valueOf(data.getLevel())));
+                                "level", String.valueOf(data.getCurrentClassLevel())));
             }
             return;
         }
@@ -506,7 +506,7 @@ public class MenuService {
             if (messages != null) {
                 messages.actionBar(player, "equipment", "level_required",
                         Map.of("required", String.valueOf(equipmentService.requiredLevel(item)),
-                                "level", String.valueOf(data.getLevel())));
+                                "level", String.valueOf(data.getCurrentClassLevel())));
             }
             return;
         }

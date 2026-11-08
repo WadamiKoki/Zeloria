@@ -115,8 +115,7 @@ public record SpawnerData(
         Objects.requireNonNull(config, "config");
 
         String id = text(config.getString("id"), fallbackId(sourceKey));
-        String mobId = text(config.getString("mobId"),
-                text(config.getString("mob_id"), ""));
+        String mobId = text(config.getString("mobId"), "");
 
         return new SpawnerData(
                 id,

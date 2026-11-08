@@ -13,4 +13,4 @@ actions:
     particle: CRIT
     count: 12
   - type: SOUND
-    sound: ENTITY_PLAYER_ATTACK_CRIT
+    sound: "entity.player.attack.crit"

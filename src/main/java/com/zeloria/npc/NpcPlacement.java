@@ -54,7 +54,7 @@ public record NpcPlacement(
             return new NpcPlacement("", 0.0, 0.0, 0.0, 0.0f, 0.0f);
         }
         return new NpcPlacement(
-                text(map.get("npcId"), text(map.get("npc_id"), text(map.get("id"), ""))),
+                text(map.get("npcId"), ""),
                 number(map.get("x"), 0.0),
                 number(map.get("y"), 0.0),
                 number(map.get("z"), 0.0),

@@ -13,4 +13,4 @@ actions:
     particle: SPELL_WITCH
     count: 15
   - type: SOUND
-    sound: ENTITY_SPIDER_HURT
+    sound: "entity.spider.hurt"

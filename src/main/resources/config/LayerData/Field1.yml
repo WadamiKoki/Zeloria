@@ -15,18 +15,19 @@ display:
   pitch: 0.9
 
 portals:
-  to_hub:
-    world: ""
-    x: 0.5
-    y: 65.0
-    z: 0.5
-    target_template: "hub"
-    target:
+  - id: "to_hub"
+    from:
+      x: 0.5
+      y: 65.0
+      z: 0.5
+    to:
+      world: "hub"
       x: 0.5
       y: 65.0
       z: 0.5
       yaw: 0.0
       pitch: 0.0
+    radius: 1.0
 
 # 定点スポナー。spawnerId で config/SpawnerData/*.yml の定義を参照し、
 # 湧き数・間隔・検知半径・見た目はそちらで管理します。

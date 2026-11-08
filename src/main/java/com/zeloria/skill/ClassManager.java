@@ -14,7 +14,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -55,11 +54,7 @@ public final class ClassManager {
     public synchronized void reload() {
         Map<String, ZeloriaClass> loaded = new LinkedHashMap<>();
 
-        for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(DIRECTORY) || !isYaml(key)) {
-                continue;
-            }
-
+        for (String key : yamlLoader.getKeysUnder(DIRECTORY)) {
             FileConfiguration config = yamlLoader.getConfig(key);
             if (config == null) {
                 continue;
@@ -159,19 +154,11 @@ public final class ClassManager {
         List<String> weaponTypes = config.getStringList("weaponTypes");
         ClassStats baseStats = ClassStats.fromConfig(
                 config.getConfigurationSection("baseStats"), ClassStats.DEFAULT);
-        // 旧キー（levelUpStats: 固定加算値）も後方互換のため読み込む。
         ConfigurationSection percentSection = config.getConfigurationSection("levelUpPercent");
-        if (percentSection == null) {
-            percentSection = config.getConfigurationSection("levelUpStats");
-        }
         ClassStats levelUpPercent = ClassStats.fromConfig(percentSection, ClassStats.NONE);
 
         return new ZeloriaClass(id, displayName, description, icon, unlockedByDefault, skills,
                 weaponTypes, baseStats, levelUpPercent);
     }
 
-    private static boolean isYaml(String key) {
-        String lower = key.toLowerCase(Locale.ROOT);
-        return lower.endsWith(".yml") || lower.endsWith(".yaml");
-    }
 }

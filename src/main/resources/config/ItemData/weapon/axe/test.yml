@@ -11,7 +11,7 @@ attackSpeedTicks: 64
 attackRange: 5.0
 attackAngle: 0.0
 attackParticle: CRIT
-attackSound: ENTITY_PLAYER_ATTACK_CRIT
+attackSound: "entity.player.attack.crit"
 requiredLevel: 0
 stats:
   maxHealth: 0

@@ -9,4 +9,4 @@ actions:
     particle: CRIT
     count: 12
   - type: SOUND
-    sound: BLOCK_ANVIL_LAND
+    sound: "block.anvil.land"

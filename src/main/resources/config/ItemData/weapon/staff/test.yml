@@ -11,7 +11,7 @@ attackSpeedTicks: 32
 attackRange: 8.0
 attackAngle: 0.0
 attackParticle: FLAME
-attackSound: ENTITY_BLAZE_SHOOT
+attackSound: "entity.blaze.shoot"
 requiredLevel: 0
 stats:
   maxHealth: 0

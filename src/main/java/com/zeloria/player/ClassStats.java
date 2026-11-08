@@ -9,9 +9,8 @@ import org.bukkit.configuration.ConfigurationSection;
  * そのまま読み込み、{@link #atLevel(ClassStats, ClassStats, int)} で
  * 「基礎値 × (1 + 成長率[%] / 100 × (レベル - 1))」を算出する（単利成長）。
  * <p>
- * レベル 0（新規プレイヤー）とレベル 1 は基礎値のみを返す。レベル 0 で
- * 成長率を適用するとステータスが負になるため、成長回数は
- * {@code max(0, level - 1)} として扱う。
+ * レベル 1（クラス選択直後）は基礎値のみを返す。成長回数は
+ * {@code max(0, level - 1)} として扱うため、1 未満の値でも基礎値から変化しない。
  * <p>
  * 成長率は「基礎値に対する割合（%）」であるため、基礎値が 0 の項目は
  * 何レベルになっても 0 のままとなる。
@@ -156,7 +155,7 @@ public record ClassStats(
      * 指定レベルでの実効基礎値を算出する（単利成長）。
      * <p>
      * {@code baseStats × (1 + levelUpPercent / 100 × (level - 1))}。
-     * レベル 0 と 1 は基礎値のみを返す。
+     * レベル 1 は基礎値のみを返す（1 未満も同じ）。
      *
      * @param baseStats      基礎ステータス（{@code null} は {@link #DEFAULT}）
      * @param levelUpPercent レベルアップ成長率（%／レベル、{@code null} は {@link #NONE}）

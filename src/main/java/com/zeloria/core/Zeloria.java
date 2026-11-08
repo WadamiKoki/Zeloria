@@ -32,6 +32,7 @@ import com.zeloria.party.PartyCommand;
 import com.zeloria.party.PartyManager;
 import com.zeloria.gui.SimpleGuiListener;
 import com.zeloria.skill.LevelService;
+import com.zeloria.gathering.GatheringService;
 import com.zeloria.core.LoggerService;
 import com.zeloria.core.MessageService;
 import com.zeloria.mob.MobConfigService;
@@ -105,6 +106,7 @@ public final class Zeloria extends JavaPlugin {
             "SpawnerData",
             "LayerData",
             "LevelData",
+            "GatheringData",
             "MessageData",
             "gui"
     );
@@ -148,6 +150,7 @@ public final class Zeloria extends JavaPlugin {
     private VirtualInventoryService virtualInventoryService;
 
     private LevelService levelService;
+    private GatheringService gatheringService;
     private DatabaseService databaseService;
     private DatabaseManager databaseManager;
     private PlayerRepository playerRepository;
@@ -293,6 +296,7 @@ public final class Zeloria extends JavaPlugin {
         this.equipmentService = new EquipmentService(this, this.itemService);
         this.virtualInventoryService = new VirtualInventoryService(this);
         this.levelService = new LevelService(this, this.yamlLoader);
+        this.gatheringService = new GatheringService(this, this.yamlLoader);
         this.classManager = new ClassManager(this, this.yamlLoader);
         this.treeDataService = new TreeDataService(this, this.yamlLoader);
         this.skillVariantManager = new SkillVariantManager(this, this.yamlLoader);
@@ -1000,6 +1004,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public LevelService getLevelService() {
         return levelService;
+    }
+
+    /**
+     * GatheringService を取得する。
+     *
+     * @return プラグインの GatheringService（onEnable 前は null）
+     */
+    public GatheringService getGatheringService() {
+        return gatheringService;
     }
 
     /**

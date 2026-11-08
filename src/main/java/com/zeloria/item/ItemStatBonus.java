@@ -6,8 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
  * 武器・防具 YAML のステータス補正ブロック。
  * <p>
  * {@code stats:} セクション配下、またはルート直下のどちらでも記述できる。
- * キーはテンプレートで読みやすい camelCase を基本とし、既存設定との互換のため
- * snake_case（{@code max_health} など）も受け付ける。
+ * キーは camelCase を使用する。
  * 値は GUI / Lore 表示と同じ単位（会心率は %、CT 短縮は %、移動速度は %、
  * 防御貫通率・吸血率は %）で保持する。
  * <pre>
@@ -85,32 +84,25 @@ public record ItemStatBonus(
             return NONE;
         }
         return new ItemStatBonus(
-                stat(config, "maxHealth", "max_health", "max_hp"),
-                stat(config, "maxMana", "max_mana", "max_mp"),
-                stat(config, "attackPower", "attack_power", "atk", "attack"),
-                stat(config, "defense1", "defense_1"),
-                stat(config, "defense2", "defense_2", "defense", "def"),
-                stat(config, "criticalRate", "crit_rate", "critical_rate"),
-                stat(config, "criticalDamage", "crit_dmg", "critical_damage"),
-                stat(config, "accuracy", "hit"),
-                stat(config, "evasion", "dodge"),
-                stat(config, "dodgeCooldownReduction", "dodge_cdr", "dodge_cooldown_reduction"),
-                stat(config, "cooldownReduction", "cdr", "cooldown_reduction"),
-                stat(config, "moveSpeed", "move_speed", "walk_speed"),
-                stat(config, "healthRegenFlat", "hp_regen", "health_regen_flat"),
-                stat(config, "healthRegenPercent", "hp_regen_percent", "health_regen_percent"),
-                stat(config, "manaRegenFlat", "mp_regen", "mana_regen_flat"),
-                stat(config, "manaRegenPercent", "mp_regen_percent", "mana_regen_percent"),
-                stat(config, "armorPenetration", "armor_penetration"),
-                stat(config, "lifesteal", "life_steal"),
+                stat(config, "maxHealth"),
+                stat(config, "maxMana"),
+                stat(config, "attackPower"),
+                stat(config, "defense1"),
+                stat(config, "defense2"),
+                stat(config, "criticalRate"),
+                stat(config, "criticalDamage"),
+                stat(config, "accuracy"),
+                stat(config, "evasion"),
+                stat(config, "dodgeCooldownReduction"),
+                stat(config, "cooldownReduction"),
+                stat(config, "moveSpeed"),
+                stat(config, "healthRegenFlat"),
+                stat(config, "healthRegenPercent"),
+                stat(config, "manaRegenFlat"),
+                stat(config, "manaRegenPercent"),
+                stat(config, "armorPenetration"),
+                stat(config, "lifesteal"),
                 requiredLevel(config));
-    }
-
-    /**
-     * 第 2 段階の防御力（旧 API 互換）。{@link #defense2()} と同じ値を返す。
-     */
-    public double defense() {
-        return defense2;
     }
 
     /**
@@ -163,34 +155,24 @@ public record ItemStatBonus(
     }
 
     /**
-     * {@code requiredLevel} / {@code required_level} を読み込む。
+     * {@code requiredLevel} を読み込む。
      * <p>
      * ルート直下を優先し、無ければ {@code stats:} 配下も参照する。
      */
     private static int requiredLevel(FileConfiguration config) {
-        for (String key : new String[]{"requiredLevel", "required_level"}) {
-            if (config.contains(key)) {
-                return Math.max(0, config.getInt(key, 0));
-            }
-            if (config.contains("stats." + key)) {
-                return Math.max(0, config.getInt("stats." + key, 0));
-            }
+        if (config.contains("requiredLevel")) {
+            return Math.max(0, config.getInt("requiredLevel", 0));
         }
-        return 0;
+        return Math.max(0, config.getInt("stats.requiredLevel", 0));
     }
 
     /**
      * {@code stats.<key>} を優先し、無ければルート直下の同名キーを読む。
      */
-    private static double stat(FileConfiguration config, String... keys) {
-        for (String key : keys) {
-            if (config.contains("stats." + key)) {
-                return config.getDouble("stats." + key, 0.0);
-            }
-            if (config.contains(key)) {
-                return config.getDouble(key, 0.0);
-            }
+    private static double stat(FileConfiguration config, String key) {
+        if (config.contains("stats." + key)) {
+            return config.getDouble("stats." + key, 0.0);
         }
-        return 0.0;
+        return config.getDouble(key, 0.0);
     }
 }

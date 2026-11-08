@@ -476,7 +476,7 @@ public class BuildManager {
     /**
      * 現在開いているテンプレート ID を取得する。
      * <p>
-     * 後方互換用。複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
+     * 複数開いている場合は {@link #buildWorlds} の最初のエントリを返す。
      *
      * @return 建築中のテンプレート ID。開いていない場合は {@code null}
      */
@@ -1495,7 +1495,7 @@ public class BuildManager {
     }
 
     /**
-     * 現在開いているテンプレート ID を 1 つ取得する（後方互換用）。
+     * 現在開いているテンプレート ID を 1 つ取得する。
      *
      * @return テンプレート ID。開いていない場合は {@code null}
      */

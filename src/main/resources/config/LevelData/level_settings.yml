@@ -1,32 +1,20 @@
 id: "level_settings"
 name: "レベル・経験値設定"
 
-# 必要経験値 = base_exp * exp_growth ^ (レベル - 1) * 段階倍率
-# レベル 1 の次レベルに必要な経験値は base_exp と同じ値になります。
+# 必要経験値は Wynncraft 方式の二次関数で算出します。
+#   次レベルまで : base_exp * (2 * level - 1)
+#   累計経験値   : base_exp * (level - 1)^2
+# 例: base_exp=1200 の場合
+#   Lv.1 -> 2 : 1200
+#   Lv.2 -> 3 : 3600
+#   Lv.99 -> 100 : 236400
+# stages / exp_growth は廃止されました。
 
-base_exp: 100
-exp_growth: 1.15
+base_exp: 1200
 
-# 到達可能な最大レベル。1 以上で明示指定され、-1 または未設定の場合は
-# 下記 stages の max_level から自動算出される。
-max_level: 50
+# 到達可能な最大レベル。
+max_level: 100
 
 # クラスレベルが 1 上がるごとに付与するクラスツリーポイント。
 tree_points_per_level: 1
 
-stages:
-  - min_level: 0
-    max_level: 9
-    exp_multiplier: 1.0
-  - min_level: 10
-    max_level: 29
-    exp_multiplier: 1.2
-  - min_level: 30
-    max_level: 59
-    exp_multiplier: 1.5
-  - min_level: 60
-    max_level: 89
-    exp_multiplier: 2.0
-  - min_level: 90
-    max_level: 99
-    exp_multiplier: 3.0

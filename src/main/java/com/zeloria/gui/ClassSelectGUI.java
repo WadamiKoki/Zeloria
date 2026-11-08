@@ -584,7 +584,7 @@ public final class ClassSelectGUI implements Listener {
             return;
         }
 
-        // 装備中のアイテムは旧クラスの武器制限を持つ可能性があるため、
+        // 装備中のアイテムは切り替え前のクラスの武器制限を持つ可能性があるため、
         // クラス変更前にすべて外してもらう。
         EquipmentService equipmentService = plugin.getEquipmentService();
         if (equipmentService != null && equipmentService.hasEquipped(data)) {
@@ -665,9 +665,7 @@ public final class ClassSelectGUI implements Listener {
     /**
      * クラス選択の可否を判定し、可能なら現在のクラスを更新する。
      * <p>
-     * 初回選択（未選択状態）の場合は、クラス別進行が未作成なら現在のグローバル
-     * レベル・経験値を引き継ぐ。切り替え時は選択先クラスの進行状況を
-     * {@link PlayerStats} へ反映する（未進行ならレベル 0 から開始）。
+     * 未進行のクラスを選択した場合は、レベル 1・経験値 0 で初期化する。
      */
     private Selection select(PlayerData data, String classId) {
         if (data == null) {
@@ -683,11 +681,8 @@ public final class ClassSelectGUI implements Listener {
         if (classId.equals(classData.currentClassIdOrNull())) {
             return Selection.ALREADY;
         }
-        if (classData.currentClassIdOrNull() == null) {
-            data.ensureClassProgress(classId);
-        }
+        data.initializeClassProgress(classId);
         classData.setCurrentClassId(classId);
-        data.mirrorCurrentClassProgress();
         return Selection.SELECTED;
     }
 

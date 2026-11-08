@@ -62,11 +62,7 @@ public final class SkillVariantManager {
     public synchronized void reload() {
         Map<String, SkillVariantData> loaded = new LinkedHashMap<>();
 
-        for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(DIRECTORY) || !isYaml(key)) {
-                continue;
-            }
-
+        for (String key : yamlLoader.getKeysUnder(DIRECTORY)) {
             String classId = DefinitionParser.classIdOf(key, DIRECTORY, VARIANT_SEGMENT);
             if (classId.isEmpty()) {
                 continue;
@@ -189,8 +185,4 @@ public final class SkillVariantManager {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static boolean isYaml(String key) {
-        String lower = key.toLowerCase(Locale.ROOT);
-        return lower.endsWith(".yml") || lower.endsWith(".yaml");
-    }
 }

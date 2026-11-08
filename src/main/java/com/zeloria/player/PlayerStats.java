@@ -59,9 +59,6 @@ public class PlayerStats {
     /** 既定の防御力（第 2 段階: 防具用）。 */
     public static final double DEFAULT_DEFENSE2 = 0.0;
 
-    /** 旧 API 互換の防御力既定値（防具防御力と同値）。 */
-    public static final double DEFAULT_DEFENSE = DEFAULT_DEFENSE2;
-
     /** 既定のクリティカル率（%）。 */
     public static final double DEFAULT_CRITICAL_RATE = 5.0;
 
@@ -100,18 +97,6 @@ public class PlayerStats {
 
     /** 既定の吸血率（比率）。 */
     public static final double DEFAULT_LIFESTEAL = 0.0;
-
-    /** 既定のレベル（新規プレイヤーは 1 から開始する）。 */
-    public static final int DEFAULT_LEVEL = 1;
-
-    /** 既定の経験値。 */
-    public static final long DEFAULT_EXP = 0L;
-
-    /** レベル。 */
-    private int level = DEFAULT_LEVEL;
-
-    /** 現在レベルで保持している経験値。 */
-    private long exp = DEFAULT_EXP;
 
     /**
      * 装備などによる一時的な補正値。
@@ -181,36 +166,6 @@ public class PlayerStats {
     public synchronized void restoreVitals() {
         this.currentHealth = getMaxHealth();
         this.currentMana = getMaxMana();
-    }
-
-    /* ------------------------------------------------------------------
-     * レベル・経験値
-     * ------------------------------------------------------------------ */
-
-    public synchronized int getLevel() {
-        return level;
-    }
-
-    /**
-     * レベルを設定する（0 未満は 0）。
-     *
-     * @param level レベル
-     */
-    public synchronized void setLevel(int level) {
-        this.level = Math.max(0, level);
-    }
-
-    public synchronized long getExp() {
-        return exp;
-    }
-
-    /**
-     * 現在レベルで保持している経験値を設定する（0 未満は 0）。
-     *
-     * @param exp 経験値
-     */
-    public synchronized void setExp(long exp) {
-        this.exp = Math.max(0L, exp);
     }
 
     /* ------------------------------------------------------------------
@@ -443,27 +398,6 @@ public class PlayerStats {
      */
     public synchronized void setDefense2(double defense2) {
         this.defense2 = Math.max(0.0, defense2);
-    }
-
-    /**
-     * 旧 API 互換。防具防御力（{@link #getDefense2()}）を返す。
-     */
-    public synchronized double getDefense() {
-        return getDefense2();
-    }
-
-    /**
-     * 旧 API 互換。防具防御力の基礎値を返す。
-     */
-    public synchronized double getBaseDefense() {
-        return getBaseDefense2();
-    }
-
-    /**
-     * 旧 API 互換。防具防御力（{@link #setDefense2(double)}）を設定する。
-     */
-    public synchronized void setDefense(double defense) {
-        setDefense2(defense);
     }
 
     /**

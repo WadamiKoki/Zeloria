@@ -135,9 +135,7 @@ public record MobData(
             if (entry == null) {
                 continue;
             }
-            Object rawId = entry.containsKey("itemId")
-                    ? entry.get("itemId")
-                    : entry.get("item_id");
+            Object rawId = entry.get("itemId");
             if (rawId == null) {
                 continue;
             }

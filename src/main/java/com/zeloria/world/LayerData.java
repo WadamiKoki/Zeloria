@@ -1,7 +1,6 @@
 package com.zeloria.world;
 
 import com.zeloria.npc.NpcPlacement;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.util.ArrayList;
@@ -70,13 +69,10 @@ public class LayerData {
         LayerDisplay display = LayerDisplay.fromConfig(config.getConfigurationSection("display"));
 
         Map<String, PortalDefinition> portals = new LinkedHashMap<>();
-        ConfigurationSection portalsSection = config.getConfigurationSection("portals");
-        if (portalsSection != null) {
-            for (String portalId : portalsSection.getKeys(false)) {
-                ConfigurationSection portalSection = portalsSection.getConfigurationSection(portalId);
-                if (portalSection != null) {
-                    portals.put(portalId, PortalDefinition.fromConfig(portalId, portalSection));
-                }
+        for (Map<?, ?> raw : config.getMapList("portals")) {
+            PortalDefinition portal = PortalDefinition.fromMap(raw);
+            if (portal.isValid()) {
+                portals.put(portal.id(), portal);
             }
         }
 

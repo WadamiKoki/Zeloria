@@ -16,22 +16,22 @@ import java.util.Locale;
 public enum WeaponType {
 
     /** 剣。広めの扇形攻撃。 */
-    SWORD(32, 3.5, 90.0, "SWEEP_ATTACK", "ENTITY_PLAYER_ATTACK_SWEEP"),
+    SWORD(32, 3.5, 90.0, "SWEEP_ATTACK", "entity.player.attack.sweep"),
 
     /** 大斧。レイキャストによる直線攻撃（幅 3 ブロック）。 */
-    AXE(64, 5.0, 0.0, "CRIT", "ENTITY_PLAYER_ATTACK_CRIT"),
+    AXE(64, 5.0, 0.0, "CRIT", "entity.player.attack.crit"),
 
     /** 短剣。狭めの扇形攻撃で、最も近い 1 体のみに命中する。 */
-    DAGGER(16, 2.5, 60.0, "SWEEP_ATTACK", "ENTITY_PLAYER_ATTACK_SWEEP"),
+    DAGGER(16, 2.5, 60.0, "SWEEP_ATTACK", "entity.player.attack.sweep"),
 
     /** 杖。火球を発射する遠距離武器。 */
-    STAFF(32, 8.0, 0.0, "FLAME", "ENTITY_BLAZE_SHOOT"),
+    STAFF(32, 8.0, 0.0, "FLAME", "entity.blaze.shoot"),
 
     /** 弓。矢を発射する遠距離武器。 */
-    BOW(32, 12.0, 0.0, "CRIT", "ENTITY_ARROW_SHOOT"),
+    BOW(32, 12.0, 0.0, "CRIT", "entity.arrow.shoot"),
 
     /** 未知の武器種。SWORD 相当の近接攻撃として扱う。 */
-    UNKNOWN(32, 3.0, 90.0, "SWEEP_ATTACK", "ENTITY_PLAYER_ATTACK_SWEEP");
+    UNKNOWN(32, 3.0, 90.0, "SWEEP_ATTACK", "entity.player.attack.sweep");
 
     private final int attackSpeedTicks;
     private final double attackRange;

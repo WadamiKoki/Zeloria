@@ -9,4 +9,4 @@ actions:
     particle: EXPLOSION
     count: 1
   - type: SOUND
-    sound: ENTITY_GENERIC_EXPLODE
+    sound: "entity.generic.explode"

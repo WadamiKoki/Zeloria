@@ -13,4 +13,4 @@ actions:
     particle: TOTEM_OF_UNDYING
     count: 20
   - type: SOUND
-    sound: BLOCK_BEACON_ACTIVATE
+    sound: "block.beacon.activate"

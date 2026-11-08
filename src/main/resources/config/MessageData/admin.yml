@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gathering|gui|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -20,7 +20,7 @@ mob:
     failed: "<red>モブのスポーンに失敗しました: <white>{mob_id}</white> <gray>({error})</gray></red>"
 
 give:
-  usage: "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon> \\<id> [amount]</white>"
+  usage: "<gray>使い方:</gray> <white>/admin give \\<armor|material|weapon|tool> \\<id> [amount]</white>"
   success: "<green>アイテム</green> <white>{item_name}</white> <gray>を</gray> <white>{amount}</white> <gray>個付与しました。</gray>"
   partial: "<yellow>アイテム</yellow> <white>{item_name}</white> <gray>を</gray> <white>{amount}</white> <gray>個付与しました。</gray> <dark_gray>(溢れ: <gray>{leftover}</gray> 個)</dark_gray>"
   full: "<red>プレイヤーインベントリに空きがありません。</red>"
@@ -55,7 +55,18 @@ xp:
   not_found: "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"
   not_loaded: "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"
   invalid_amount: "<red>経験値は 1 以上の整数で指定してください。</red>"
+  no_class: "<red>クラス未選択のため経験値を付与できません。先にクラスを選択してください。</red>"
   unavailable: "<red>レベルサービスが初期化されていません。</red>"
+
+gathering:
+  usage: "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"
+  success: "<green>{player}</green> <gray>に</gray> <white>{type}</white> <gray>経験値</gray> <yellow>{amount}</yellow> <gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, EXP {exp}/{required})</dark_gray>"
+  not_found: "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"
+  not_loaded: "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"
+  invalid_type: "<red>不明なギャザリング種別です: <white>{type}</white></red> <gray>指定可能: <white>mining, woodcutting, farming</white></gray>"
+  invalid_amount: "<red>ギャザリング経験値は 1 以上の整数で指定してください。</red>"
+  no_gain: "<yellow>{player}</yellow> <gray>は既に最大レベルです。</gray>"
+  unavailable: "<red>ギャザリングサービスが初期化されていません。</red>"
 
 gui:
   usage: "<gray>使い方:</gray> <white>/admin gui \\<yml></white>"

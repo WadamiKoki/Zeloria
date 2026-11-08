@@ -22,6 +22,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -220,7 +221,7 @@ public class VirtualInventoryService {
             player.setItemOnCursor(null);
         }
 
-        // ロック枠に残っている実アイテム（旧データや外部プラグイン由来）は、
+        // ロック枠に残っている実アイテム（外部プラグインや手動配置など）は、
         // 上書きして失わないよう退避しておく。
         List<ItemStack> displaced = new ArrayList<>();
         collectDisplaced(inventory.getItem(WEAPON_HOTBAR_SLOT), displaced);
@@ -237,7 +238,7 @@ public class VirtualInventoryService {
         applyArmor(inventory, EquipSlot.BOOTS, data.getEquipment(EquipSlot.BOOTS));
 
         // メインインベントリ（9〜35）をタブ切り替え式の仮想インベントリへ切り替える。
-        // 旧データなどで残っている実アイテムは、失わないよう仮想インベントリへ取り込む。
+        // メインインベントリに残っている実アイテムは、失わないよう仮想インベントリへ取り込む。
         absorbPhysicalBagItems(player, data, inventory);
         renderBag(player, data, inventory);
 
@@ -573,7 +574,8 @@ public class VirtualInventoryService {
             return 0L;
         }
 
-        long added = store(data, tabFor(definition), definition.id(), amount);
+        VirtualInventoryTab target = tabFor(definition);
+        long added = store(data, target, definition.id(), amount);
         if (added > 0) {
             updateBag(player);
         }
@@ -830,7 +832,7 @@ public class VirtualInventoryService {
         }
         return switch (definition.category()) {
             case ARMOR, WEAPON -> VirtualInventoryTab.EQUIPMENT_STORAGE;
-            case MATERIAL -> VirtualInventoryTab.STORAGE;
+            case MATERIAL, TOOL -> VirtualInventoryTab.STORAGE;
         };
     }
 
@@ -864,8 +866,7 @@ public class VirtualInventoryService {
         }
 
         VirtualInventoryTab tab = currentTab(player);
-        List<Map.Entry<String, VirtualItemEntry>> entries =
-                new ArrayList<>(data.getVirtualBag(tab).entrySet());
+        List<Map.Entry<String, VirtualItemEntry>> entries = sortedBagEntries(data, tab);
         int maxScroll = maxScroll(entries.size());
         int offset = Math.max(0, Math.min(maxScroll, currentScroll(player, entries.size())));
         currentScrolls.put(player.getUniqueId(), offset);
@@ -887,6 +888,44 @@ public class VirtualInventoryService {
         inventory.setItem(SCROLL_UP_SLOT, scrollButton("up", "▲ 上へスクロール", offset, maxScroll));
         inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down", "▼ 下へスクロール", offset, maxScroll));
         inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, offset, maxScroll, used, free));
+    }
+
+    /**
+     * 表示用にタブ内のエントリ一覧を生成する。
+     * <p>
+     * 保管庫（{@link VirtualInventoryTab#STORAGE}）のみ自動ソートする。
+     * ツール（{@link ItemCategory#TOOL}）を最上部へまとめ、それ以外は
+     * itemId の昇順、同一 itemId は枠キーの昇順で安定させる。
+     * 装備保管庫は既存の並び順を維持する。
+     *
+     * @param data プレイヤーデータ
+     * @param tab  表示中のタブ
+     * @return 表示順に並べたエントリ
+     */
+    private List<Map.Entry<String, VirtualItemEntry>> sortedBagEntries(
+            PlayerData data, VirtualInventoryTab tab) {
+        List<Map.Entry<String, VirtualItemEntry>> entries =
+                new ArrayList<>(data.getVirtualBag(tab).entrySet());
+        if (tab != VirtualInventoryTab.STORAGE) {
+            return entries;
+        }
+        entries.sort(Comparator
+                .comparingInt((Map.Entry<String, VirtualItemEntry> entry) ->
+                        isToolEntry(entry.getValue()) ? 0 : 1)
+                .thenComparing(entry -> entry.getValue().itemId(), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(entry -> entry.getKey(), String.CASE_INSENSITIVE_ORDER));
+        return entries;
+    }
+
+    /**
+     * エントリがツールか判定する。
+     */
+    private boolean isToolEntry(VirtualItemEntry entry) {
+        if (entry == null) {
+            return false;
+        }
+        ItemData definition = findItem(entry.itemId());
+        return definition != null && definition.category() == ItemCategory.TOOL;
     }
 
     private int currentScroll(Player player, int entryCount) {
@@ -1012,7 +1051,7 @@ public class VirtualInventoryService {
     }
 
     /**
-     * 旧データなどでメインインベントリ（9〜35）に残っている実アイテムを
+     * メインインベントリ（9〜35）に残っている実アイテムを
      * 仮想インベントリへ取り込む。
      * <p>
      * プラグイン製アイテムでない場合はホットバー 1〜8 へ退避し、

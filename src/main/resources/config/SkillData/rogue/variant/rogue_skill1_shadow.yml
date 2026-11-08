@@ -11,4 +11,4 @@ actions:
     particle: SMOKE
     count: 20
   - type: SOUND
-    sound: ENTITY_ENDERMAN_TELEPORT
+    sound: "entity.enderman.teleport"

@@ -15,17 +15,20 @@ display:
   pitch: 1.2
 
 portals:
-  to_field:
-    world: "hub_instance_1"
-    x: 0.5
-    y: 65.0
-    z: 0.5
-    target_template: "field_1"
-    target_x: 0.5
-    target_y: 65.0
-    target_z: 0.5
-    target_yaw: 0.0
-    target_pitch: 0.0
+  - id: "to_field"
+    from:
+      world: "hub_instance_1"
+      x: 0.5
+      y: 65.0
+      z: 0.5
+    to:
+      world: "field_1"
+      x: 0.5
+      y: 65.0
+      z: 0.5
+      yaw: 0.0
+      pitch: 0.0
+    radius: 1.0
 
 npcs:
   - npcId: test

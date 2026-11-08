@@ -175,7 +175,6 @@ public final class ClassTreeGUI implements Listener {
         }
 
         TreeData tree = treeDataService.tree();
-        data.mirrorCurrentClassProgress();
 
         int offset = clamp(scrollOffsets.getOrDefault(player.getUniqueId(), 0),
                 0, tree.maxScrollOffset());

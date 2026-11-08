@@ -1,8 +1,6 @@
 package com.zeloria.world;
 
-import org.bukkit.configuration.ConfigurationSection;
-
-import java.util.Objects;
+import java.util.Map;
 
 /**
  * レイヤー内に配置するポータルの定義。
@@ -10,42 +8,35 @@ import java.util.Objects;
  * {@code LayerData} の {@code portals} セクションにおける 1 エントリに対応する。
  * <pre>
  * portals:
- *   to_field:
- *     world: "hub_instance_1"   # 空なら対象レイヤーの全インスタンスで有効
- *     x: 10.5
- *     y: 65.0
- *     z: 10.5
- *     radius: 1.5
- *     target_template: "field_1"
- *     target_x: 0.5
- *     target_y: 65.0
- *     target_z: 0.5
- *     target_yaw: 0.0
- *     target_pitch: 0.0
- * </pre>
- * 転送先は上記のフラットな {@code target_*} 形式に加え、次のネスト形式も受け付ける:
- * <pre>
- *     target:
- *       template: "field_1"
+ *   - id: "to_field"
+ *     from:
+ *       world: "hub_instance_1"   # 空なら対象レイヤーの全インスタンスで有効
+ *       x: 10.5
+ *       y: 65.0
+ *       z: 10.5
+ *     to:
+ *       world: "field_1"          # 転送先レイヤーのテンプレート ID
  *       x: 0.5
  *       y: 65.0
  *       z: 0.5
  *       yaw: 0.0
  *       pitch: 0.0
+ *     radius: 1.0
  * </pre>
+ * {@code radius} は記載のみで、実際の発動半径は常に {@link #PORTAL_RADIUS} を使用する。
  *
  * @param id             ポータル ID
- * @param world          ポータルが設置されたワールド名（空ならレイヤーの全インスタンス）
- * @param x              設置座標 X
- * @param y              設置座標 Y
- * @param z              設置座標 Z
+ * @param world          ポータルを有効にする設置元ワールド名（{@code from.world}。空なら全インスタンス）
+ * @param x              設置座標 X（{@code from.x}）
+ * @param y              設置座標 Y（{@code from.y}）
+ * @param z              設置座標 Z（{@code from.z}）
  * @param radius         発動半径
- * @param targetTemplate 転送先レイヤーのテンプレート ID
- * @param targetX        転送先 X（未指定なら {@code null}）
- * @param targetY        転送先 Y（未指定なら {@code null}）
- * @param targetZ        転送先 Z（未指定なら {@code null}）
- * @param targetYaw      転送先 Yaw（未指定なら {@code null}）
- * @param targetPitch    転送先 Pitch（未指定なら {@code null}）
+ * @param targetTemplate 転送先レイヤーのテンプレート ID（{@code to.world}）
+ * @param targetX        転送先 X（{@code to.x}。未指定なら {@code null}）
+ * @param targetY        転送先 Y（{@code to.y}。未指定なら {@code null}）
+ * @param targetZ        転送先 Z（{@code to.z}。未指定なら {@code null}）
+ * @param targetYaw      転送先 Yaw（{@code to.yaw}。未指定なら {@code null}）
+ * @param targetPitch    転送先 Pitch（{@code to.pitch}。未指定なら {@code null}）
  */
 public record PortalDefinition(
         String id,
@@ -82,38 +73,41 @@ public record PortalDefinition(
     }
 
     /**
-     * ポータル定義を YAML セクションから読み込む。
+     * YAML のリスト要素（マップ）からポータル定義を生成する。
      *
-     * @param id      ポータル ID
-     * @param section ポータルの設定セクション
+     * @param map 1 エントリ分のマップ
      * @return ポータル定義
      */
-    public static PortalDefinition fromConfig(String id, ConfigurationSection section) {
-        Objects.requireNonNull(section, "section");
-
-        ConfigurationSection target = section.getConfigurationSection("target");
-
-        String template = section.getString("target_template");
-        if (template == null || template.isBlank()) {
-            template = target == null ? "" : target.getString("template",
-                    target.getString("target_template", ""));
+    public static PortalDefinition fromMap(Map<?, ?> map) {
+        if (map == null) {
+            return empty();
         }
 
+        Map<?, ?> from = nestedMap(map.get("from"));
+        Map<?, ?> to = nestedMap(map.get("to"));
+
         return new PortalDefinition(
-                id,
-                section.getString("world", ""),
-                section.getDouble("x", 0.0),
-                section.getDouble("y", 0.0),
-                section.getDouble("z", 0.0),
-                // radius は互換のため読み取り自体は行わず、常に仕様値を使用する。
+                text(map.get("id"), ""),
+                text(from.get("world"), ""),
+                number(from.get("x"), 0.0),
+                number(from.get("y"), 0.0),
+                number(from.get("z"), 0.0),
+                // 半径は仕様固定のため、設定値は読み取らない。
                 PORTAL_RADIUS,
-                template,
-                number(section, target, "target_x", "x"),
-                number(section, target, "target_y", "y"),
-                number(section, target, "target_z", "z"),
-                floatNumber(section, target, "target_yaw", "yaw"),
-                floatNumber(section, target, "target_pitch", "pitch")
+                text(to.get("world"), ""),
+                nullableNumber(to.get("x")),
+                nullableNumber(to.get("y")),
+                nullableNumber(to.get("z")),
+                nullableFloat(to.get("yaw")),
+                nullableFloat(to.get("pitch"))
         );
+    }
+
+    /**
+     * ポータル ID が設定されているか判定する。
+     */
+    public boolean isValid() {
+        return !id.isBlank();
     }
 
     /**
@@ -130,20 +124,56 @@ public record PortalDefinition(
         return targetX != null && targetY != null && targetZ != null;
     }
 
-    private static Double number(ConfigurationSection section, ConfigurationSection nested,
-                                 String flatKey, String nestedKey) {
-        if (section.isSet(flatKey)) {
-            return section.getDouble(flatKey);
+    private static PortalDefinition empty() {
+        return new PortalDefinition("", "", 0.0, 0.0, 0.0, PORTAL_RADIUS, "",
+                null, null, null, null, null);
+    }
+
+    private static Map<?, ?> nestedMap(Object value) {
+        return value instanceof Map<?, ?> map ? map : Map.of();
+    }
+
+    private static String text(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
         }
-        if (nested != null && nested.isSet(nestedKey)) {
-            return nested.getDouble(nestedKey);
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? fallback : text;
+    }
+
+    private static double number(Object value, double fallback) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private static Double nullableNumber(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Double.parseDouble(text.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
         return null;
     }
 
-    private static Float floatNumber(ConfigurationSection section, ConfigurationSection nested,
-                                     String flatKey, String nestedKey) {
-        Double value = number(section, nested, flatKey, nestedKey);
-        return value == null ? null : value.floatValue();
+    private static Float nullableFloat(Object value) {
+        Double number = nullableNumber(value);
+        return number == null ? null : number.floatValue();
     }
 }

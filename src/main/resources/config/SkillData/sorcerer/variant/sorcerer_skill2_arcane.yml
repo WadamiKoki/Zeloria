@@ -13,4 +13,4 @@ actions:
     particle: SNOWFLAKE
     count: 20
   - type: SOUND
-    sound: BLOCK_GLASS_BREAK
+    sound: "block.glass.break"

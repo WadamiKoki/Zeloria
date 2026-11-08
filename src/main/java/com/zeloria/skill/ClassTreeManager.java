@@ -42,9 +42,6 @@ public final class ClassTreeManager {
     /** 全クラス共通のツリー形状ファイル（クラスツリーとしては読み込まない）。 */
     private static final String SHARED_SHAPE_KEY = "ClassData/tree/tree.yml";
 
-    /** {@code <classId>_tree.yml} 形式のファイル名からクラス ID を取り出すための接尾辞。 */
-    private static final String TREE_FILE_SUFFIX = "_tree";
-
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
     private final TreeDataService treeDataService;
@@ -74,8 +71,8 @@ public final class ClassTreeManager {
         TreeData shape = treeDataService.tree();
         Map<String, ClassTreeData> loaded = new LinkedHashMap<>();
 
-        for (String key : yamlLoader.getKeys()) {
-            if (!key.startsWith(DIRECTORY) || !isYaml(key) || isSharedShape(key)) {
+        for (String key : yamlLoader.getKeysUnder(DIRECTORY)) {
+            if (isSharedShape(key)) {
                 continue;
             }
 
@@ -125,11 +122,7 @@ public final class ClassTreeManager {
     private ClassTreeData parse(String key, FileConfiguration config, TreeData shape) {
         // クラス ID はファイル名から決定する（例: ClassData/tree/knight.yml → knight）。
         // ClassData/classes/*.yml の id と重複しないよう、ツリー側では id を定義しない。
-        // 互換性のため `<classId>_tree.yml` 形式のファイル名にも対応する。
         String classId = DefinitionParser.normalizeId(DefinitionParser.fileName(key));
-        if (classId.endsWith(TREE_FILE_SUFFIX)) {
-            classId = classId.substring(0, classId.length() - TREE_FILE_SUFFIX.length());
-        }
         if (classId.isEmpty()) {
             throw new IllegalArgumentException("classId が空です");
         }
@@ -201,10 +194,6 @@ public final class ClassTreeManager {
         }
 
         Object effectLore = section.get("effectLore");
-        if (effectLore == null) {
-            // 旧形式（effects）との後方互換。
-            effectLore = section.get("effects");
-        }
 
         return new ClassTreeNode(
                 nodeId,
@@ -430,9 +419,5 @@ public final class ClassTreeManager {
     /** 共通形状の {@code tree.yml} か判定する。 */
     private static boolean isSharedShape(String key) {
         return SHARED_SHAPE_KEY.equalsIgnoreCase(key.replace('\\', '/'));
-    }
-
-    private static boolean isYaml(String key) {
-        return key.endsWith(".yml") || key.endsWith(".yaml");
     }
 }

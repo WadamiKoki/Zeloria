@@ -1,0 +1,8 @@
+id: "farming_test_hoe"
+name: "<white>テスト用クワ"
+material: WOODEN_HOE
+lore:
+  - "<gray>採集用ツールのテスト定義。"
+gatheringType: FARMING
+requiredLevel: 1
+sell_price: 10

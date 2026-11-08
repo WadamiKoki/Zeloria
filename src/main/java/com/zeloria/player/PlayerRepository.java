@@ -26,11 +26,12 @@ public class PlayerRepository {
 
     /** 取得・保存対象のカラム（{@code last_updated} は DB 側で自動更新する）。 */
     private static final String COLUMNS = """
-            uuid, player_name, level, exp, money,
+            uuid, player_name, money,
             current_class_id, unlocked_classes,
             class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
+            gathering_levels_json, gathering_exps_json,
             virtual_equipment_base64,
-            virtual_inventory_json, virtual_equipment_json, virtual_material_json,
+            virtual_inventory_json, virtual_equipment_json,
             max_health, current_health, max_mana, current_mana,
             attack_power, defense1, defense2, critical_rate, critical_damage,
             accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -57,11 +58,12 @@ public class PlayerRepository {
 
     private static final String INSERT_SQL = """
             INSERT INTO %s (
-                uuid, player_name, level, exp, money,
+                uuid, player_name, money,
                 current_class_id, unlocked_classes,
                 class_levels_json, class_exps_json, class_tree_points_json, allocated_class_nodes_json,
+                gathering_levels_json, gathering_exps_json,
                 virtual_equipment_base64,
-                virtual_inventory_json, virtual_equipment_json, virtual_material_json,
+                virtual_inventory_json, virtual_equipment_json,
                 max_health, current_health, max_mana, current_mana,
                 attack_power, defense1, defense2, critical_rate, critical_damage,
                 accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -70,14 +72,12 @@ public class PlayerRepository {
                 armor_penetration, lifesteal,
                 cooldown_end_at,
                 last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
-                level = VALUES(level),
-                exp = VALUES(exp),
                 money = VALUES(money),
                 current_class_id = VALUES(current_class_id),
                 unlocked_classes = VALUES(unlocked_classes),
@@ -85,10 +85,11 @@ public class PlayerRepository {
                 class_exps_json = VALUES(class_exps_json),
                 class_tree_points_json = VALUES(class_tree_points_json),
                 allocated_class_nodes_json = VALUES(allocated_class_nodes_json),
+                gathering_levels_json = VALUES(gathering_levels_json),
+                gathering_exps_json = VALUES(gathering_exps_json),
                 virtual_equipment_base64 = VALUES(virtual_equipment_base64),
                 virtual_inventory_json = VALUES(virtual_inventory_json),
                 virtual_equipment_json = VALUES(virtual_equipment_json),
-                virtual_material_json = VALUES(virtual_material_json),
                 max_health = VALUES(max_health),
                 current_health = VALUES(current_health),
                 max_mana = VALUES(max_mana),
@@ -296,13 +297,11 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 36 columns（last_updated を除く）, 36 placeholders,
-            // max bind index 36。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 35 columns（last_updated を除く）, 35 placeholders,
+            // max bind index 35。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
-            statement.setInt(index++, snapshot.level());
-            statement.setLong(index++, snapshot.exp());
             statement.setLong(index++, snapshot.money());
             statement.setString(index++, snapshot.currentClassId());
             statement.setString(index++, snapshot.unlockedClasses());
@@ -310,10 +309,11 @@ public class PlayerRepository {
             statement.setString(index++, snapshot.classExpsJson());
             statement.setString(index++, snapshot.classTreePointsJson());
             statement.setString(index++, snapshot.allocatedClassNodesJson());
+            statement.setString(index++, snapshot.gatheringLevelsJson());
+            statement.setString(index++, snapshot.gatheringExpsJson());
             statement.setString(index++, snapshot.virtualEquipmentBase64());
             statement.setString(index++, snapshot.virtualInventoryJson());
             statement.setString(index++, snapshot.virtualEquipmentJson());
-            statement.setString(index++, snapshot.virtualMaterialJson());
             statement.setDouble(index++, snapshot.maxHealth());
             statement.setDouble(index++, snapshot.currentHealth());
             statement.setDouble(index++, snapshot.maxMana());
@@ -344,8 +344,6 @@ public class PlayerRepository {
         return new PlayerSnapshot(
                 UUID.fromString(rs.getString("uuid")),
                 rs.getString("player_name"),
-                rs.getInt("level"),
-                rs.getLong("exp"),
                 rs.getLong("money"),
                 rs.getString("current_class_id"),
                 rs.getString("unlocked_classes"),
@@ -353,10 +351,11 @@ public class PlayerRepository {
                 rs.getString("class_exps_json"),
                 rs.getString("class_tree_points_json"),
                 rs.getString("allocated_class_nodes_json"),
+                rs.getString("gathering_levels_json"),
+                rs.getString("gathering_exps_json"),
                 rs.getString("virtual_equipment_base64"),
                 rs.getString("virtual_inventory_json"),
                 rs.getString("virtual_equipment_json"),
-                rs.getString("virtual_material_json"),
                 statOr(rs, "max_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "current_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "max_mana", PlayerStats.DEFAULT_MAX_MANA),

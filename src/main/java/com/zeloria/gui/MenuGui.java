@@ -1,8 +1,11 @@
 package com.zeloria.gui;
 
+import com.zeloria.gathering.GatheringService;
+import com.zeloria.gathering.GatheringType;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
+import com.zeloria.skill.ClassManager;
 import com.zeloria.skill.LevelService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -47,6 +50,8 @@ public final class MenuGui implements InventoryHolder {
     private final UUID playerId;
     private final MenuLayout layout;
     private final LevelService levelService;
+    private final GatheringService gatheringService;
+    private final ClassManager classManager;
 
     /** GUI スロット番号 → 仮想装備スロット。 */
     private final Map<Integer, EquipSlot> equipmentSlots;
@@ -61,14 +66,19 @@ public final class MenuGui implements InventoryHolder {
      *
      * @param player   対象プレイヤー
      * @param layout   {@code gui/menu.yml} のレイアウト設定（装備枠・装飾枠の位置を参照）
-     * @param settings {@code gui/inventory.yml} の設定（menu.yml に装備枠定義が無い場合の後方互換）
+     * @param settings {@code gui/inventory.yml} の設定（menu.yml に装備枠定義が無い場合の既定値）
      * @param levelService 必要経験値の表示に使用するレベルサービス
+     * @param gatheringService 採取レベルの表示に使用するギャザリングサービス
+     * @param classManager クラス一覧の取得に使用するクラスマネージャー
      */
     public MenuGui(Player player, MenuLayout layout, InventorySettings settings,
-                   LevelService levelService) {
+                   LevelService levelService, GatheringService gatheringService,
+                   ClassManager classManager) {
         this.playerId = Objects.requireNonNull(player, "player").getUniqueId();
         this.layout = Objects.requireNonNull(layout, "layout");
         this.levelService = levelService;
+        this.gatheringService = gatheringService;
+        this.classManager = classManager;
         this.equipmentSlots = buildEquipmentSlots(layout, settings);
         this.featureSlots = buildFeatureSlots(layout);
         this.inventory = Bukkit.createInventory(this, layout.totalSlots(),
@@ -217,9 +227,11 @@ public final class MenuGui implements InventoryHolder {
         }
 
         PlayerStats stats = data.getStats();
-        long requiredExp = levelService == null
+        int classLevel = data.getCurrentClassLevel();
+        long classExp = data.getCurrentClassExp();
+        long requiredExp = classLevel <= 0 || levelService == null
                 ? 0L
-                : levelService.requiredExp(stats.getLevel());
+                : levelService.requiredExp(classLevel);
 
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta meta = item.getItemMeta();
@@ -228,31 +240,95 @@ public final class MenuGui implements InventoryHolder {
                 skullMeta.setOwningPlayer(player);
             }
             meta.displayName(MINI.deserialize("<!italic><white>" + player.getName() + "</white>"));
-            meta.lore(List.of(
-                    MINI.deserialize("<!italic><gray>レベル: <yellow>" + stats.getLevel()
-                            + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: <white>"
-                            + formatLong(stats.getExp()) + "</white>/<white>"
-                            + formatLong(requiredExp) + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
-                            + "</red>/<white>" + formatDouble(stats.getMaxHealth()) + "</white>"
-                            + " <dark_gray>|</dark_gray> <gray>MP: <blue>"
-                            + formatDouble(stats.getCurrentMana()) + "</blue>/<white>"
-                            + formatDouble(stats.getMaxMana()) + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>攻撃力: <white>"
-                            + formatDouble(stats.getAttackPower()) + "</white> <dark_gray>|</dark_gray> "
-                            + "<gray>防御力: <white>" + formatDouble(stats.getDefense()) + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>会心率: <white>"
-                            + formatDouble(stats.getCriticalRate()) + "%</white> <dark_gray>|</dark_gray> "
-                            + "<gray>回避率: <white>" + formatDouble(stats.getEvasion())
-                            + "%</white></gray>"),
-                    MINI.deserialize("<!italic><gray>移動速度: <white>"
-                            + formatDouble(stats.getMoveSpeed()
-                            / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)
-                            + "%</white></gray>")));
+            List<Component> lore = new ArrayList<>();
+            lore.add(MINI.deserialize("<!italic><gray>レベル: <yellow>" + classLevel
+                    + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: <white>"
+                    + formatLong(classExp) + "</white>/<white>"
+                    + formatLong(requiredExp) + "</white></gray>"));
+            lore.add(MINI.deserialize("<!italic><gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
+                    + "</red>/<white>" + formatDouble(stats.getMaxHealth()) + "</white>"
+                    + " <dark_gray>|</dark_gray> <gray>MP: <blue>"
+                    + formatDouble(stats.getCurrentMana()) + "</blue>/<white>"
+                    + formatDouble(stats.getMaxMana()) + "</white></gray>"));
+            lore.add(MINI.deserialize("<!italic><gray>攻撃力: <white>"
+                    + formatDouble(stats.getAttackPower()) + "</white> <dark_gray>|</dark_gray> "
+                    + "<gray>防御力: <white>" + formatDouble(stats.getDefense2()) + "</white></gray>"));
+            lore.add(MINI.deserialize("<!italic><gray>会心率: <white>"
+                    + formatDouble(stats.getCriticalRate()) + "%</white> <dark_gray>|</dark_gray> "
+                    + "<gray>回避率: <white>" + formatDouble(stats.getEvasion())
+                    + "%</white></gray>"));
+            lore.add(MINI.deserialize("<!italic><gray>移動速度: <white>"
+                    + formatDouble(stats.getMoveSpeed()
+                    / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)
+                    + "%</white></gray>"));
+            appendClassLore(lore, data);
+            appendGatheringLore(lore, data);
+            meta.lore(lore);
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
         inventory.setItem(guiSlot, item);
+    }
+
+    /**
+     * 全クラスのレベル・進捗率を Lore へ追記する。
+     * <p>
+     * {@link ClassManager#ids()} を ID 昇順に並べ、未進行のクラスも
+     * レベル 1・進捗 0% として表示する。最大レベル到達時は {@code (MAX)} を表示する。
+     * ギャザリング表示との区切りとして、先頭に空行を入れる。
+     */
+    private void appendClassLore(List<Component> lore, PlayerData data) {
+        if (classManager == null) {
+            return;
+        }
+        List<String> classIds = new ArrayList<>(classManager.ids());
+        if (classIds.isEmpty()) {
+            return;
+        }
+        Collections.sort(classIds);
+        lore.add(Component.empty());
+
+        for (String classId : classIds) {
+            int level = data.getClassLevel(classId);
+            String progress;
+            if (levelService == null) {
+                progress = "0%";
+            } else if (level >= levelService.maxLevel()) {
+                progress = "MAX";
+            } else {
+                long required = levelService.requiredExp(level);
+                long percent = required <= 0L
+                        ? 100L
+                        : Math.round((double) data.getClassExp(classId) / (double) required * 100.0);
+                progress = Math.max(0L, Math.min(100L, percent)) + "%";
+            }
+            lore.add(MINI.deserialize("<!italic><gray>"
+                    + classId.toLowerCase(Locale.ROOT)
+                    + " </gray><yellow>Lv." + level + "</yellow> <white>("
+                    + progress + ")</white>"));
+        }
+    }
+
+    /**
+     * 採取レベル・進捗率を Lore の末尾へ追記する。
+     * <p>
+     * 最大レベル到達時は進捗率の代わりに {@code (MAX)} を表示する。
+     * ギャザリングサービスが未初期化の場合は何も追記しない。
+     */
+    private void appendGatheringLore(List<Component> lore, PlayerData data) {
+        if (gatheringService == null) {
+            return;
+        }
+        lore.add(Component.empty());
+        for (GatheringType type : GatheringType.values()) {
+            int level = data.getGatheringLevel(type);
+            String progress = level >= gatheringService.maxLevel(type)
+                    ? "MAX"
+                    : gatheringService.getProgressPercent(data, type) + "%";
+            lore.add(MINI.deserialize("<!italic><gray>" + type.displayName()
+                    + "</gray> <yellow>Lv." + level + "</yellow> <white>("
+                    + progress + ")</white>"));
+        }
     }
 
     private static String formatLong(long value) {
@@ -375,7 +451,7 @@ public final class MenuGui implements InventoryHolder {
             return Collections.unmodifiableMap(result);
         }
 
-        // 後方互換: menu.yml に装備枠定義が無い場合は inventory.yml（既定値）を使う。
+        // menu.yml に装備枠定義が無い場合は inventory.yml（既定値）を使う。
         if (settings != null) {
             for (EquipSlot slot : EquipSlot.values()) {
                 int guiSlot = settings.equipmentSlot(slot);

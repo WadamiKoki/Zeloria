@@ -9,4 +9,4 @@ actions:
     particle: FLAME
     count: 20
   - type: SOUND
-    sound: ENTITY_BLAZE_SHOOT
+    sound: "entity.blaze.shoot"

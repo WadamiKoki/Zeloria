@@ -1,5 +1,6 @@
 package com.zeloria.player;
 
+import com.zeloria.gathering.GatheringType;
 import com.zeloria.player.PlayerClassData;
 import org.bukkit.inventory.ItemStack;
 
@@ -19,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * DB の {@code players} テーブルと対応し、次の情報を保持する。
  * <ul>
- *     <li>基本情報: レベル・経験値・所持金</li>
+ *     <li>基本情報: 所持金、クラス別レベル・経験値</li>
  *     <li>RPG ステータス: {@link PlayerStats}（HP / MP・攻撃力・防御力・クリティカル・
  *         命中 / 回避・クールダウン短縮・移動速度・リジェネ・防御貫通・吸血）</li>
  *     <li>クラス状態: 現在のクラス・解放済みクラス</li>
@@ -37,6 +38,12 @@ public class PlayerData {
      * ログイン中のプレイヤーデータを保持するオンメモリキャッシュ（UUID キー）。
      */
     private static final Map<UUID, PlayerData> CACHE = new ConcurrentHashMap<>();
+
+    /** クラス別レベルの既定値（クラス選択時に 1 から開始する）。 */
+    public static final int DEFAULT_CLASS_LEVEL = 1;
+
+    /** ギャザリングレベルの既定値（全種別 1 から開始する）。 */
+    public static final int DEFAULT_GATHERING_LEVEL = 1;
 
     private UUID uuid;
     private String name = "";
@@ -72,6 +79,12 @@ public class PlayerData {
 
     /** クラス ID → 解放済みツリーノード ID。 */
     private final Map<String, Set<String>> allocatedClassNodes = new LinkedHashMap<>();
+
+    /** ギャザリング種別 → アカウント共通レベル。 */
+    private final Map<GatheringType, Integer> gatheringLevels = new EnumMap<>(GatheringType.class);
+
+    /** ギャザリング種別 → アカウント共通経験値。 */
+    private final Map<GatheringType, Long> gatheringExps = new EnumMap<>(GatheringType.class);
 
     public PlayerData() {
     }
@@ -150,8 +163,6 @@ public class PlayerData {
         return new PlayerSnapshot(
                 uuid,
                 name,
-                stats.getLevel(),
-                stats.getExp(),
                 money,
                 classData.currentClassIdOrNull(),
                 classData.serializedUnlocked(),
@@ -159,10 +170,11 @@ public class PlayerData {
                 ClassProgressJson.encodeLongMap(classExps),
                 ClassProgressJson.encodeIntMap(classTreePoints),
                 ClassProgressJson.encodeSetMap(allocatedClassNodes),
+                GatheringJson.encodeLevels(gatheringLevels),
+                GatheringJson.encodeExps(gatheringExps),
                 InventorySerializer.encodeEquipment(equippedItems),
                 VirtualInventoryJson.encode(virtualInventory),
                 VirtualInventoryJson.encode(virtualEquipment),
-                "{}",
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
                 stats.getBaseMaxMana(),
@@ -204,9 +216,6 @@ public class PlayerData {
         data.money = snapshot.money();
 
         // 最大値 → 現在値の順で設定し、クランプが現在値を切り捨てないようにする。
-        // 旧データのレベル 0 も、開始レベル 1 へ引き上げる。
-        data.stats.setLevel(Math.max(PlayerStats.DEFAULT_LEVEL, snapshot.level()));
-        data.stats.setExp(snapshot.exp());
         data.stats.setMaxHealth(snapshot.maxHealth());
         data.stats.setCurrentHealth(snapshot.currentHealth());
         data.stats.setMaxMana(snapshot.maxMana());
@@ -235,87 +244,17 @@ public class PlayerData {
                 snapshot.classExpsJson(),
                 snapshot.classTreePointsJson(),
                 snapshot.allocatedClassNodesJson());
+        data.restoreGatheringProgress(
+                snapshot.gatheringLevelsJson(),
+                snapshot.gatheringExpsJson());
 
-        // 旧データ（クラス別進行が未保存）は、グローバルレベルを現在のクラスへ引き継ぐ。
-        data.ensureClassProgress(snapshot.currentClassId());
-        data.mirrorCurrentClassProgress();
+        data.initializeCurrentClassProgress();
 
         data.equippedItems.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
         data.virtualInventory.putAll(VirtualInventoryJson.decode(snapshot.virtualInventoryJson()));
         data.virtualEquipment.putAll(VirtualInventoryJson.decode(snapshot.virtualEquipmentJson()));
-        // 旧 MATERIAL タブは廃止し、保管庫（STORAGE）へ統合する。
-        mergeLegacyEntries(data.virtualInventory,
-                VirtualInventoryJson.decode(snapshot.virtualMaterialJson()));
 
         return data;
-    }
-
-    /**
-     * 廃止した素材タブのエントリを保管庫へ統合する。
-     * <p>
-     * 既に同じアイテム ID のエントリがある場合は数量を合算する。枠キーが衝突する
-     * 場合は、衝突しないキーを割り当てる。上限を超えた分は
-     * {@link VirtualItemEntry#MAX_AMOUNT} でクランプする。
-     */
-    private static void mergeLegacyEntries(Map<String, VirtualItemEntry> target,
-                                           Map<String, VirtualItemEntry> source) {
-        if (source == null || source.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<String, VirtualItemEntry> mapEntry : source.entrySet()) {
-            VirtualItemEntry entry = mapEntry.getValue();
-            if (entry == null || entry.itemId().isBlank() || entry.amount() <= 0) {
-                continue;
-            }
-
-            // 枠キーが異なっていても、同じアイテム ID が既に保管庫にあれば数量を合算する。
-            String existingKey = findEntryKeyByItemId(target, entry.itemId());
-            if (existingKey != null) {
-                VirtualItemEntry existing = target.get(existingKey);
-                long amount = Math.min(VirtualItemEntry.MAX_AMOUNT,
-                        existing.amount() + entry.amount());
-                target.put(existingKey, new VirtualItemEntry(entry.itemId(), amount,
-                        existing.serializedData().isBlank()
-                                ? entry.serializedData() : existing.serializedData()));
-                continue;
-            }
-
-            String key = mapEntry.getKey();
-            if (target.containsKey(key)) {
-                key = uniqueEntryKey(target, entry.itemId());
-            }
-            target.put(key, entry);
-        }
-    }
-
-    /**
-     * 指定したアイテム ID を持つ既存エントリのキーを探す。
-     *
-     * @param target 検索対象
-     * @param itemId アイテム ID
-     * @return 見つかったキー。存在しない場合は {@code null}
-     */
-    private static String findEntryKeyByItemId(Map<String, VirtualItemEntry> target, String itemId) {
-        for (Map.Entry<String, VirtualItemEntry> mapEntry : target.entrySet()) {
-            VirtualItemEntry entry = mapEntry.getValue();
-            if (entry != null && entry.itemId().equals(itemId)) {
-                return mapEntry.getKey();
-            }
-        }
-        return null;
-    }
-
-    private static String uniqueEntryKey(Map<String, VirtualItemEntry> target, String itemId) {
-        if (!target.containsKey(itemId)) {
-            return itemId;
-        }
-        int suffix = 2;
-        String key = itemId + "#" + suffix;
-        while (target.containsKey(key)) {
-            suffix++;
-            key = itemId + "#" + suffix;
-        }
-        return key;
     }
 
     /* ------------------------------------------------------------------
@@ -477,21 +416,61 @@ public class PlayerData {
      * ------------------------------------------------------------------ */
 
     /**
-     * 指定クラスのレベルを取得する。未進行の場合は 0。
+     * 指定クラスのレベルを取得する。未進行の場合も既定値の 1 を返す。
      */
     public synchronized int getClassLevel(String classId) {
         String normalized = normalizeClassId(classId);
-        return normalized.isEmpty() ? 0 : classLevels.getOrDefault(normalized, 0);
+        if (normalized.isEmpty()) {
+            return 0;
+        }
+        return Math.max(DEFAULT_CLASS_LEVEL,
+                classLevels.getOrDefault(normalized, DEFAULT_CLASS_LEVEL));
     }
 
     /**
-     * 指定クラスのレベルを設定する。
+     * 指定クラスのレベルを設定する（1 未満は 1）。
      */
     public synchronized void setClassLevel(String classId, int level) {
         String normalized = normalizeClassId(classId);
         if (!normalized.isEmpty()) {
-            classLevels.put(normalized, Math.max(0, level));
+            classLevels.put(normalized, Math.max(DEFAULT_CLASS_LEVEL, level));
         }
+    }
+
+    /**
+     * 指定クラスの進行データが未作成なら、レベル 1・経験値 0 で初期化する。
+     * <p>
+     * 既存の進行データがある場合は上書きしない。
+     *
+     * @param classId クラス ID
+     */
+    public synchronized void initializeClassProgress(String classId) {
+        String normalized = normalizeClassId(classId);
+        if (!normalized.isEmpty()) {
+            int currentLevel = classLevels.getOrDefault(normalized, DEFAULT_CLASS_LEVEL);
+            classLevels.put(normalized, Math.max(DEFAULT_CLASS_LEVEL, currentLevel));
+            classExps.putIfAbsent(normalized, 0L);
+        }
+    }
+
+    /**
+     * 現在選択中のクラスのレベルを取得する。
+     *
+     * @return 現在クラスのレベル。未選択の場合は 0
+     */
+    public synchronized int getCurrentClassLevel() {
+        String classId = classData.currentClassIdOrNull();
+        return classId == null ? 0 : getClassLevel(classId);
+    }
+
+    /**
+     * 現在選択中のクラスの経験値を取得する。
+     *
+     * @return 現在クラスの経験値。未選択の場合は 0
+     */
+    public synchronized long getCurrentClassExp() {
+        String classId = classData.currentClassIdOrNull();
+        return classId == null ? 0L : getClassExp(classId);
     }
 
     /**
@@ -608,7 +587,7 @@ public class PlayerData {
 
         ClassProgressJson.decodeIntMap(classLevelsJson)
                 .forEach((key, value) -> classLevels.put(
-                        normalizeClassId(key), Math.max(PlayerStats.DEFAULT_LEVEL, value)));
+                        normalizeClassId(key), Math.max(DEFAULT_CLASS_LEVEL, value)));
         ClassProgressJson.decodeLongMap(classExpsJson)
                 .forEach((key, value) -> classExps.put(normalizeClassId(key), value));
         ClassProgressJson.decodeIntMap(classTreePointsJson)
@@ -627,40 +606,82 @@ public class PlayerData {
         });
     }
 
-    /**
-     * クラス別進行状況が未作成の場合、現在のグローバルレベル・経験値を引き継ぐ。
-     * <p>
-     * クラス別進行の導入前に育成したプレイヤーが、クラス選択時にレベルを失わないための
-     * 移行処理。既に何らかの進行が保存されているクラスには何もしない。
-     */
-    public synchronized void ensureClassProgress(String classId) {
-        String normalized = normalizeClassId(classId);
-        if (normalized.isEmpty()) {
-            return;
-        }
-        if (classLevels.containsKey(normalized)) {
-            return;
-        }
+    /* ------------------------------------------------------------------
+     * ギャザリング（採取）の進行状況（アカウント共通）
+     * ------------------------------------------------------------------ */
 
-        int level = Math.max(PlayerStats.DEFAULT_LEVEL, stats.getLevel());
-        long exp = classExps.getOrDefault(normalized, Math.max(0L, stats.getExp()));
-        classLevels.put(normalized, level);
-        classExps.putIfAbsent(normalized, exp);
+    /**
+     * 指定種別のギャザリングレベルを取得する。未進行の場合は 1。
+     *
+     * @param type ギャザリング種別
+     * @return レベル（1 以上）
+     */
+    public synchronized int getGatheringLevel(GatheringType type) {
+        if (type == null) {
+            return DEFAULT_GATHERING_LEVEL;
+        }
+        return Math.max(DEFAULT_GATHERING_LEVEL,
+                gatheringLevels.getOrDefault(type, DEFAULT_GATHERING_LEVEL));
     }
 
     /**
-     * 現在選択中のクラスのレベル・経験値をグローバル値（{@link PlayerStats}）へ反映する。
-     * <p>
-     * レベル表示・必要経験値計算・既存のステータス計算は {@link PlayerStats#getLevel()}
-     * を参照するため、クラス切り替え時にもこのメソッドで同期する。
+     * 指定種別のギャザリングレベルを設定する（1 未満は 1）。
+     *
+     * @param type  ギャザリング種別
+     * @param level レベル
      */
-    public synchronized void mirrorCurrentClassProgress() {
-        String classId = classData.currentClassIdOrNull();
-        if (classId == null || classId.isEmpty()) {
-            return;
+    public synchronized void setGatheringLevel(GatheringType type, int level) {
+        if (type != null) {
+            gatheringLevels.put(type, Math.max(DEFAULT_GATHERING_LEVEL, level));
         }
-        stats.setLevel(getClassLevel(classId));
-        stats.setExp(getClassExp(classId));
+    }
+
+    /**
+     * 指定種別のギャザリング経験値を取得する。未進行の場合は 0。
+     *
+     * @param type ギャザリング種別
+     * @return 経験値（0 以上）
+     */
+    public synchronized long getGatheringExp(GatheringType type) {
+        return type == null ? 0L : Math.max(0L, gatheringExps.getOrDefault(type, 0L));
+    }
+
+    /**
+     * 指定種別のギャザリング経験値を設定する（0 未満は 0）。
+     *
+     * @param type ギャザリング種別
+     * @param exp  経験値
+     */
+    public synchronized void setGatheringExp(GatheringType type, long exp) {
+        if (type != null) {
+            gatheringExps.put(type, Math.max(0L, exp));
+        }
+    }
+
+    /**
+     * DB から復元したギャザリング進行状況を反映する。
+     *
+     * @param gatheringLevelsJson レベル JSON
+     * @param gatheringExpsJson   経験値 JSON
+     */
+    public synchronized void restoreGatheringProgress(String gatheringLevelsJson,
+                                                      String gatheringExpsJson) {
+        gatheringLevels.clear();
+        gatheringExps.clear();
+        GatheringJson.decodeLevels(gatheringLevelsJson).forEach(
+                (type, level) -> gatheringLevels.put(type, Math.max(DEFAULT_GATHERING_LEVEL, level)));
+        GatheringJson.decodeExps(gatheringExpsJson).forEach(
+                (type, exp) -> gatheringExps.put(type, Math.max(0L, exp)));
+    }
+
+    /**
+     * 復元した現在クラスの進行データが未作成ならレベル 1・経験値 0 で初期化する。
+     */
+    private void initializeCurrentClassProgress() {
+        String classId = classData.currentClassIdOrNull();
+        if (classId != null && !classId.isBlank()) {
+            initializeClassProgress(classId);
+        }
     }
 
     private static String normalizeClassId(String value) {
@@ -687,22 +708,6 @@ public class PlayerData {
         this.name = name == null ? "" : name;
     }
 
-    public synchronized int getLevel() {
-        return stats.getLevel();
-    }
-
-    public synchronized void setLevel(int level) {
-        stats.setLevel(level);
-    }
-
-    public synchronized long getExp() {
-        return stats.getExp();
-    }
-
-    public synchronized void setExp(long exp) {
-        stats.setExp(exp);
-    }
-
     /**
      * RPG ステータスを取得する。
      * <p>
@@ -714,34 +719,6 @@ public class PlayerData {
      */
     public PlayerStats getStats() {
         return stats;
-    }
-
-    /**
-     * 現在 HP を取得する（旧 API。{@link #getStats()} の現在 HP を返す）。
-     */
-    public synchronized double getHp() {
-        return stats.getCurrentHealth();
-    }
-
-    /**
-     * 現在 HP を設定する（旧 API。{@link PlayerStats#setCurrentHealth(double)} に委譲）。
-     */
-    public synchronized void setHp(double hp) {
-        stats.setCurrentHealth(hp);
-    }
-
-    /**
-     * 現在 MP を取得する（旧 API。{@link #getStats()} の現在 MP を返す）。
-     */
-    public synchronized double getMp() {
-        return stats.getCurrentMana();
-    }
-
-    /**
-     * 現在 MP を設定する（旧 API。{@link PlayerStats#setCurrentMana(double)} に委譲）。
-     */
-    public synchronized void setMp(double mp) {
-        stats.setCurrentMana(mp);
     }
 
     /**
@@ -768,114 +745,4 @@ public class PlayerData {
         this.money = money;
     }
 
-    /**
-     * 攻撃力を取得する（旧 API。{@link PlayerStats#getAttackPower()} に委譲）。
-     */
-    public synchronized double getAtk() {
-        return stats.getAttackPower();
-    }
-
-    public synchronized void setAtk(double atk) {
-        stats.setAttackPower(atk);
-    }
-
-    /**
-     * 防御力を取得する（旧 API。{@link PlayerStats#getDefense()} に委譲）。
-     */
-    public synchronized double getDef() {
-        return stats.getDefense();
-    }
-
-    public synchronized void setDef(double def) {
-        stats.setDefense(def);
-    }
-
-    /**
-     * クリティカル率（%）を取得する（旧 API）。
-     */
-    public synchronized double getCritRate() {
-        return stats.getCriticalRate();
-    }
-
-    public synchronized void setCritRate(double critRate) {
-        stats.setCriticalRate(critRate);
-    }
-
-    /**
-     * クリティカルダメージ（% 加算）を取得する（旧 API）。
-     */
-    public synchronized double getCritDmg() {
-        return stats.getCriticalDamage();
-    }
-
-    /**
-     * クリティカルダメージ（% 加算）を設定する（旧 API）。
-     */
-    public synchronized void setCritDmg(double critDmg) {
-        stats.setCriticalDamage(critDmg);
-    }
-
-    /**
-     * クールダウン短縮率（%）を取得する（旧 API。内部値は比率のため 100 倍して返す）。
-     */
-    public synchronized double getCdr() {
-        return stats.getCooldownReduction() * 100.0;
-    }
-
-    /**
-     * クールダウン短縮率（%）を設定する（旧 API。内部値は比率のため 100 で割る）。
-     */
-    public synchronized void setCdr(double cdr) {
-        stats.setCooldownReduction(cdr / 100.0);
-    }
-
-    /**
-     * 移動速度（%）を取得する（旧 API。{@link PlayerStats#DEFAULT_MOVE_SPEED} を 100% として換算）。
-     */
-    public synchronized double getMoveSpeed() {
-        return toLegacyMoveSpeedPercent(stats.getMoveSpeed());
-    }
-
-    /**
-     * 移動速度（%）を設定する（旧 API。100% が {@link PlayerStats#DEFAULT_MOVE_SPEED} に相当）。
-     */
-    public synchronized void setMoveSpeed(double moveSpeed) {
-        stats.setMoveSpeed(fromLegacyMoveSpeedPercent(moveSpeed));
-    }
-
-    /**
-     * ヘルス固定リジェネを取得する（旧 API。{@link PlayerStats#getHealthRegenFlat()} に委譲）。
-     */
-    public synchronized double getHpRegen() {
-        return stats.getHealthRegenFlat();
-    }
-
-    public synchronized void setHpRegen(double hpRegen) {
-        stats.setHealthRegenFlat(hpRegen);
-    }
-
-    /**
-     * マナ固定リジェネを取得する（旧 API）。
-     */
-    public synchronized double getMpRegen() {
-        return stats.getManaRegenFlat();
-    }
-
-    public synchronized void setMpRegen(double mpRegen) {
-        stats.setManaRegenFlat(mpRegen);
-    }
-
-    /**
-     * WalkSpeed の比率を旧 API のパーセント表記（既定速度 = 100%）へ換算する。
-     */
-    private static double toLegacyMoveSpeedPercent(double walkSpeed) {
-        return walkSpeed / PlayerStats.DEFAULT_MOVE_SPEED * 100.0;
-    }
-
-    /**
-     * 旧 API のパーセント表記（既定速度 = 100%）を WalkSpeed の比率へ換算する。
-     */
-    private static double fromLegacyMoveSpeedPercent(double percent) {
-        return percent / 100.0 * PlayerStats.DEFAULT_MOVE_SPEED;
-    }
 }

@@ -5,8 +5,8 @@ import java.util.Locale;
 /**
  * アイテム種別。
  * <p>
- * 管理コマンドの引数（{@code armor} / {@code material} / {@code weapon}）と、
- * 設定フォルダ（{@code ItemData/armor/} / {@code ItemData/material/} / {@code ItemData/weapon/}）を対応付ける。
+ * 管理コマンドの引数（{@code armor} / {@code material} / {@code weapon} / {@code tool}）と、
+ * 設定フォルダ（{@code ItemData/armor/} など）を対応付ける。
  */
 public enum ItemCategory {
 
@@ -17,7 +17,10 @@ public enum ItemCategory {
     MATERIAL("material", "ItemData/material"),
 
     /** 武器。{@code config/ItemData/weapon/*.yml} */
-    WEAPON("weapon", "ItemData/weapon");
+    WEAPON("weapon", "ItemData/weapon"),
+
+    /** 採取ツール。{@code config/ItemData/tool/<種別>/*.yml} */
+    TOOL("tool", "ItemData/tool");
 
     private final String key;
     private final String folder;

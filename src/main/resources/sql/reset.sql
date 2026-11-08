@@ -20,8 +20,6 @@ DROP TABLE IF EXISTS players;
 CREATE TABLE players (
     uuid CHAR(36) NOT NULL,
     player_name VARCHAR(64) NOT NULL,
-    level INT NOT NULL DEFAULT 1,
-    exp BIGINT NOT NULL DEFAULT 0,
     money BIGINT NOT NULL DEFAULT 0,
     current_class_id VARCHAR(64) NULL,
     unlocked_classes TEXT NULL,
@@ -32,10 +30,11 @@ CREATE TABLE players (
     class_exps_json LONGTEXT NULL,
     class_tree_points_json LONGTEXT NULL,
     allocated_class_nodes_json LONGTEXT NULL,
+    gathering_levels_json LONGTEXT NULL,
+    gathering_exps_json LONGTEXT NULL,
     virtual_equipment_base64 LONGTEXT NULL,
     virtual_inventory_json LONGTEXT NULL,
     virtual_equipment_json LONGTEXT NULL,
-    virtual_material_json LONGTEXT NULL,
     max_health DOUBLE NULL,
     current_health DOUBLE NULL,
     max_mana DOUBLE NULL,
@@ -63,15 +62,3 @@ CREATE TABLE players (
         ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (uuid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- 既存環境向けマイグレーション（DROP TABLE を実行せずに列だけ追加する場合）
--- ----------------------------------------------------------------------------
--- 上記 CREATE TABLE は開発用の再作成用です。既存データを残す場合は、
--- 以下の ALTER 文、または sql/migrate_virtual_inventory.sql と
--- sql/migrate_stats_persistence.sql を必要な分だけ 1 度実行してください。
--- ============================================================================
--- ALTER TABLE players
---     ADD COLUMN virtual_inventory_json LONGTEXT NULL AFTER virtual_equipment_base64,
---     ADD COLUMN virtual_equipment_json LONGTEXT NULL AFTER virtual_inventory_json,
---     ADD COLUMN virtual_material_json LONGTEXT NULL AFTER virtual_equipment_json;

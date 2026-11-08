@@ -22,7 +22,7 @@ import java.util.List;
  * attackRange: 3.5
  * attackAngle: 90.0
  * attackParticle: SWEEP_ATTACK
- * attackSound: ENTITY_PLAYER_ATTACK_SWEEP
+ * attackSound: "entity.player.attack.sweep"
  * requiredLevel: 0
  * stats:
  *   attackPower: 4
@@ -69,13 +69,6 @@ public final class WeaponData extends ItemData {
         String name = text(config.getString("name"), id);
 
         List<String> weaponTypes = config.getStringList("weaponTypes");
-        if (weaponTypes.isEmpty()) {
-            // 旧キー（単一文字列）との後方互換。
-            String legacy = config.getString("weaponType");
-            if (legacy != null && !legacy.isBlank()) {
-                weaponTypes = List.of(legacy);
-            }
-        }
 
         // 武器種共通の既定値。個別の武器 YAML で未指定の場合はここで補完する。
         WeaponType primaryType = WeaponType.primary(weaponTypes);

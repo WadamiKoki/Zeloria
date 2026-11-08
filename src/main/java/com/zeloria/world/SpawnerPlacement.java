@@ -50,7 +50,7 @@ public record SpawnerPlacement(
             return new SpawnerPlacement("", 0.0, 0.0, 0.0);
         }
         return new SpawnerPlacement(
-                text(map.get("spawnerId"), text(map.get("spawner_id"), "")),
+                text(map.get("spawnerId"), ""),
                 number(map.get("x"), 0.0),
                 number(map.get("y"), 0.0),
                 number(map.get("z"), 0.0)
