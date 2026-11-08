@@ -1,0 +1,43 @@
+id: "party"
+name: "パーティ関連メッセージ"
+
+# /party コマンドの結果通知。{player} {party} などの波括弧は送信時に置換される。
+command:
+  usage: "<gray>使い方:</gray> <white>/party \\<create|invite|accept|leave|list></white>"
+
+create:
+  success: "<green>パーティ <white>{party}</white> を作成しました。</green> <dark_gray>(最大 {max} 人)</dark_gray>"
+
+restore:
+  joined: "<gray>パーティ <white>{party}</white> に復帰しました。</gray>"
+
+invite:
+  sent: "<gray><white>{player}</white> をパーティ <white>{party}</white> に招待しました。</gray>"
+  received: "<yellow><white>{player}</white> からパーティ <white>{party}</white> に招待されました。</yellow> <gray><white>/party accept</white> で参加できます。</gray> <dark_gray>({seconds}秒以内)</dark_gray>"
+
+accept:
+  success: "<green>パーティ <white>{party}</white> に参加しました。</green>"
+  broadcast: "<gray><white>{player}</white> がパーティに参加しました。</gray>"
+
+leave:
+  success: "<gray>パーティ <white>{party}</white> から脱退しました。</gray>"
+  broadcast: "<gray><white>{player}</white> がパーティから脱退しました。</gray>"
+  leader_moved: "<gray><white>{player}</white> がパーティの新しいリーダーになりました。</gray>"
+  disbanded: "<gray>パーティ <white>{party}</white> を解散しました。</gray>"
+
+list:
+  header: "<gray>パーティ <white>{party}</white> <dark_gray>({size}/{max})</dark_gray></gray>"
+  entry: "<gray>- <white>{player}</white> <dark_gray>({role} / {status})</dark_gray></gray>"
+
+error:
+  already_in_party: "<red>すでにパーティに所属しています。</red>"
+  name_required: "<red>パーティ名を指定してください。</red> <gray>/party create \\<name></gray>"
+  name_taken: "<red>パーティ名 <white>{party}</white> は既に使われています。</red>"
+  not_in_party: "<red>パーティに所属していません。</red>"
+  party_full: "<red>パーティ <white>{party}</white> は満員です。</red> <dark_gray>(最大 {max} 人)</dark_gray>"
+  target_offline: "<red>プレイヤー <white>{player}</white> はオンラインではありません。</red>"
+  target_self: "<red>自分自身は招待できません。</red>"
+  target_in_party: "<red>プレイヤー <white>{player}</white> はすでにパーティに所属しています。</red>"
+  no_invite: "<red>有効な招待がありません。</red>"
+  invite_expired: "<red>招待の有効期限が切れています。</red>"
+  leader_offline: "<red>リーダーがオフラインのため、この操作はできません。</red>"

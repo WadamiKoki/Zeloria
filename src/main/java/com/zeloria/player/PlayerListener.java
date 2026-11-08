@@ -3,6 +3,7 @@ package com.zeloria.player;
 import com.zeloria.combat.CombatStateService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.EquipmentService;
+import com.zeloria.party.PartyManager;
 import com.zeloria.world.LayerManager;
 import com.zeloria.skill.CooldownService;
 import org.bukkit.Bukkit;
@@ -71,6 +72,13 @@ public class PlayerListener implements Listener {
         event.joinMessage(null);
 
         Player player = event.getPlayer();
+
+        // パーティはログアウト後もメモリに残るため、UUID から所属を引き直して復帰させる。
+        PartyManager partyManager = plugin.getPartyManager();
+        if (partyManager != null) {
+            partyManager.handleJoin(player);
+        }
+
         recordLastLogin(player);
         PlayerData cached = PlayerData.getCached(player.getUniqueId());
         if (cached != null) {
@@ -120,6 +128,12 @@ public class PlayerListener implements Listener {
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+
+        // パーティは脱退させず、オフライン表示用に名前だけをキャッシュする。
+        PartyManager partyManager = plugin.getPartyManager();
+        if (partyManager != null) {
+            partyManager.handleQuit(player);
+        }
 
         // クールダウンは PlayerService が保存直前にシリアライズするため、
         // スナップショット作成後に破棄する（ここでは何もしない）。

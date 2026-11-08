@@ -28,6 +28,8 @@ import com.zeloria.world.LayerNpcService;
 import com.zeloria.npc.NpcDamageListener;
 import com.zeloria.npc.NpcInteractListener;
 import com.zeloria.npc.NpcManager;
+import com.zeloria.party.PartyCommand;
+import com.zeloria.party.PartyManager;
 import com.zeloria.gui.SimpleGuiListener;
 import com.zeloria.skill.LevelListener;
 import com.zeloria.skill.LevelService;
@@ -253,6 +255,9 @@ public final class Zeloria extends JavaPlugin {
     /** レイヤーワールドのロード時に {@code LayerData.npcs} を配置するサービス。 */
     private LayerNpcService layerNpcService;
 
+    /** パーティ（メモリ管理のみ・永続化なし）の作成・招待・脱退を管理する。 */
+    private PartyManager partyManager;
+
     @Override
     public void onEnable() {
         // channel.yml はサーバーごとに異なるため自動生成しない。
@@ -278,6 +283,7 @@ public final class Zeloria extends JavaPlugin {
         this.loggerService.log(LoggerService.Category.SYSTEM, "プラグインを有効化しています。");
 
         this.messageService = new MessageService(this, this.yamlLoader);
+        this.partyManager = new PartyManager(this);
         this.layerConfigService = new LayerConfigService(this, this.yamlLoader);
         this.mobConfigService = new MobConfigService(this, this.yamlLoader);
         this.collisionManager = new CollisionManager(this, this.yamlLoader);
@@ -357,6 +363,9 @@ public final class Zeloria extends JavaPlugin {
         }
         if (this.cooldownService != null) {
             this.cooldownService.clearAll();
+        }
+        if (this.partyManager != null) {
+            this.partyManager.clearAll();
         }
         if (this.combatStateService != null) {
             this.combatStateService.clearAll();
@@ -722,6 +731,7 @@ public final class Zeloria extends JavaPlugin {
      */
     private void registerCommands() {
         registerMenuCommand();
+        registerPartyCommand();
 
         PluginCommand command = getCommand("admin");
         if (command == null) {
@@ -745,6 +755,23 @@ public final class Zeloria extends JavaPlugin {
         }
 
         MenuCommand executor = new MenuCommand(this);
+        command.setExecutor(executor);
+        command.setTabCompleter(executor);
+    }
+
+    /**
+     * {@code /party} コマンドを登録する。
+     * <p>
+     * 権限は不要で、全プレイヤーが実行できる。
+     */
+    private void registerPartyCommand() {
+        PluginCommand command = getCommand("party");
+        if (command == null) {
+            getLogger().warning("plugin.yml にコマンド 'party' が定義されていないため登録できません。");
+            return;
+        }
+
+        PartyCommand executor = new PartyCommand(this);
         command.setExecutor(executor);
         command.setTabCompleter(executor);
     }
@@ -1293,5 +1320,14 @@ public final class Zeloria extends JavaPlugin {
      */
     public ClassTreeGUI getClassTreeGUI() {
         return classTreeGUI;
+    }
+
+    /**
+     * PartyManager を取得する。
+     *
+     * @return プラグインの PartyManager（onEnable 前は null）
+     */
+    public PartyManager getPartyManager() {
+        return partyManager;
     }
 }

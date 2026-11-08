@@ -14,6 +14,9 @@ commands:
     description: Zeloria の管理コマンド
     usage: /admin <reload|test yaml|test db|give|npc|build|stop>
     aliases: [zeloria]
+  party:
+    description: パーティを操作する
+    usage: /party <create|invite|accept|leave|list>
 
 permissions:
   zeloria.menu:
