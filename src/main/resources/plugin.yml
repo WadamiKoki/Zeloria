@@ -35,5 +35,5 @@ permissions:
     description: 安全停止コマンド (/admin stop) を実行する
     default: op
   zeloria.admin.build:
-    description: 建築モード (/admin build) と建築ワールドへの入場を許可する
+    description: 建築コマンド (/admin build) とビルドモードの切り替えを許可する
     default: op

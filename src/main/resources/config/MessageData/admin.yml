@@ -75,8 +75,15 @@ gui:
   unavailable: "<red>GUI を開けません（未初期化）: <white>{yml}</white></red>"
 
 build:
-  channel_only: "<red>建築モードはチャンネル1でのみ使用できます</red>"
-  usage: "<gray>使い方:</gray> <white>/admin build create <yml></white> <dark_gray>|</dark_gray> <white>/admin build join <yml></white> <dark_gray>|</dark_gray> <white>/admin build list</white> <dark_gray>|</dark_gray> <white>/admin build info [yml]</white> <dark_gray>|</dark_gray> <white>/admin build save [yml] [force]</white> <dark_gray>|</dark_gray> <white>/admin build unsave [yml] [force]</white>"
+  channel_only: "<red>建築ワールドの操作はチャンネル1でのみ使用できます</red>"
+  usage: "<gray>使い方:</gray> <white>/admin build mode</white> <dark_gray>|</dark_gray> <white>/admin build create <yml></white> <dark_gray>|</dark_gray> <white>/admin build join <yml></white> <dark_gray>|</dark_gray> <white>/admin build list</white> <dark_gray>|</dark_gray> <white>/admin build info [yml]</white> <dark_gray>|</dark_gray> <white>/admin build save [yml] [force]</white> <dark_gray>|</dark_gray> <white>/admin build unsave [yml] [force]</white>"
+  mode:
+    enabled: "<green>ビルドモードを ON にしました。</green>"
+    disabled: "<green>ビルドモードを OFF にしました。</green>"
+    equipped: "<red>装備をすべて外してからビルドモードに入ってください。</red>"
+    player_only: "<red>ビルドモードを切り替えるにはプレイヤーとして実行してください。</red>"
+    unavailable: "<yellow>ビルドモードサービスが初期化されていません。</yellow>"
+    data_unavailable: "<yellow>プレイヤーデータが読み込まれていません。しばらくしてから再実行してください。</yellow>"
   busy: "<yellow>建築ワールドの処理中です。完了してから再実行してください。</yellow>"
   not_active: "<yellow>建築中のワールドはありません。</yellow>"
   not_open: "<yellow>建築ワールド '<white>{template}</white>' は開かれていません。/admin build create <white>{template}</white> で作成してください。</yellow>"

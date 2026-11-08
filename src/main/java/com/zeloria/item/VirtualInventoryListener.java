@@ -6,6 +6,7 @@ import com.zeloria.core.MessageService;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.VirtualInventoryTab;
 import com.zeloria.world.BuildManager;
+import com.zeloria.world.BuildModeService;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -69,8 +70,8 @@ public class VirtualInventoryListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        // 建築ワールドではバニラのインベントリ操作をそのまま許可する。
-        if (isBuildWorld(player)) {
+        // ビルドモード中はバニラのインベントリ操作をそのまま許可する。
+        if (isBuildMode(player)) {
             return;
         }
 
@@ -192,7 +193,7 @@ public class VirtualInventoryListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        if (isBuildWorld(player) || event.getAction() == InventoryAction.NOTHING) {
+        if (isBuildMode(player) || event.getAction() == InventoryAction.NOTHING) {
             return;
         }
 
@@ -207,7 +208,7 @@ public class VirtualInventoryListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        if (isBuildWorld(player)) {
+        if (isBuildMode(player)) {
             return;
         }
         if (VirtualItem.isVirtual(event.getOldCursor())) {
@@ -250,7 +251,7 @@ public class VirtualInventoryListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerInteract(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND || isBuildWorld(event.getPlayer())) {
+        if (event.getHand() != EquipmentSlot.HAND || isBuildMode(event.getPlayer())) {
             return;
         }
         Action action = event.getAction();
@@ -333,7 +334,7 @@ public class VirtualInventoryListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onAttemptPickupItem(PlayerAttemptPickupItemEvent event) {
         Player player = event.getPlayer();
-        if (isBuildWorld(player)) {
+        if (isBuildMode(player)) {
             return;
         }
 
@@ -379,31 +380,26 @@ public class VirtualInventoryListener implements Listener {
     }
 
     /**
-     * 建築ワールドへの入退場時に仮想インベントリ表示を切り替える。
+     * ビルドモード中に建築ワールドから退出した場合、自動的にビルドモードを終了する。
      * <p>
-     * 入場時はバニラのホットバー操作を許可し、退出時は仮想表示を再適用する。
-     * テレポート確定後にインベントリを操作するため、次の tick で実行する。
+     * 建築ワールドへの入場では切り替えない。テレポート確定後にインベントリを操作するため、
+     * 次の tick で実行する。ビルドモードでない場合は何もしない。
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
-        boolean leavingBuildWorld = BuildManager.isBuildWorld(event.getFrom());
+        boolean leavingBuildWorld = BuildManager.isBuildWorld(event.getFrom())
+                && !BuildManager.isBuildWorld(player.getWorld());
+        if (!leavingBuildWorld) {
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) {
                 return;
             }
-            VirtualInventoryService service = plugin.getVirtualInventoryService();
-            if (service == null) {
-                return;
-            }
-            if (isBuildWorld(player)) {
-                service.enterBuildMode(player);
-            } else if (leavingBuildWorld) {
-                // 建築ワールドから通常レイヤーへ戻ったときだけ、ホットバーの物理アイテムを
-                // クリアして仮想表示を再適用する。
-                service.leaveBuildMode(player);
-            } else {
-                service.refresh(player);
+            BuildModeService buildModeService = plugin.getBuildModeService();
+            if (buildModeService != null && buildModeService.isActive(player)) {
+                buildModeService.deactivate(player);
             }
         });
     }
@@ -438,20 +434,20 @@ public class VirtualInventoryListener implements Listener {
     private void scheduleRefresh(Player player) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             VirtualInventoryService service = plugin.getVirtualInventoryService();
-            if (service == null || !player.isOnline()) {
+            if (service == null || !player.isOnline() || isBuildMode(player)) {
                 return;
             }
-            if (isBuildWorld(player)) {
-                service.enterBuildMode(player);
-            } else {
-                service.refresh(player);
-            }
+            service.refresh(player);
         });
     }
 
-    /** 対象プレイヤーが建築ワールド内にいるか判定する。 */
-    private static boolean isBuildWorld(Player player) {
-        return player != null && BuildManager.isBuildWorld(player.getWorld());
+    /** 対象プレイヤーが手動ビルドモード中か判定する。 */
+    private boolean isBuildMode(Player player) {
+        if (player == null) {
+            return false;
+        }
+        BuildModeService buildModeService = plugin.getBuildModeService();
+        return buildModeService != null && buildModeService.isActive(player);
     }
 
     /**
@@ -462,6 +458,10 @@ public class VirtualInventoryListener implements Listener {
         VirtualInventoryService service = plugin.getVirtualInventoryService();
         if (service != null) {
             service.clear(event.getPlayer());
+        }
+        BuildModeService buildModeService = plugin.getBuildModeService();
+        if (buildModeService != null) {
+            buildModeService.clear(event.getPlayer().getUniqueId());
         }
     }
 

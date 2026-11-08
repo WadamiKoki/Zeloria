@@ -3,9 +3,7 @@ package com.zeloria.combat;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.skill.SkillSlotService;
-import com.zeloria.world.BuildManager;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -16,7 +14,6 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
 import java.util.Objects;
@@ -26,7 +23,6 @@ import java.util.Objects;
  * <ul>
  *     <li>仮想武器を手に持ち、スニーク + 下向き（pitch &gt; 45）+ 右クリックで ON/OFF</li>
  *     <li>仮想武器以外へ持ち替えたら OFF</li>
- *     <li>建築ワールドへのテレポート直前は強制 OFF</li>
  *     <li>退出時はスキル表示を解除し、状態を破棄</li>
  *     <li>死亡時はスキル表示を解除</li>
  * </ul>
@@ -99,27 +95,6 @@ public final class CombatModeListener implements Listener {
             return;
         }
         modeService.deactivate(player);
-    }
-
-    /**
-     * 建築ワールドへのテレポート直前に戦闘モードを解除する。
-     * <p>
-     * ワールド変更後（{@link org.bukkit.event.player.PlayerChangedWorldEvent}）ではなく、
-     * テレポート確定直前のこのタイミングだけで解除する。移動先が建築ワールドでない場合は
-     * 何もしない。{@link CombatModeService#deactivate(Player)} は冪等のため、
-     * 既に OFF の場合は副作用がない。
-     */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        Location destination = event.getTo();
-        if (destination == null || destination.getWorld() == null
-                || !BuildManager.isBuildWorld(destination.getWorld())) {
-            return;
-        }
-        CombatModeService modeService = plugin.getCombatModeService();
-        if (modeService != null) {
-            modeService.deactivate(event.getPlayer());
-        }
     }
 
     /**

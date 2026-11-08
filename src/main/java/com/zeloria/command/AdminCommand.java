@@ -5,11 +5,13 @@ import com.zeloria.core.YamlLoader;
 import com.zeloria.core.DatabaseService;
 import com.zeloria.gathering.GatheringService;
 import com.zeloria.gathering.GatheringType;
+import com.zeloria.item.EquipmentService;
 import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.world.BuildManager;
+import com.zeloria.world.BuildModeService;
 import com.zeloria.world.LayerCleanupTask;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerData;
@@ -93,6 +95,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *     <li>{@code /admin stats <player> <type> <value>} - 基礎ステータスを加算（負の値で減算）して保存する</li>
  *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
  *     <li>{@code /admin xp <player> <amount>} - 経験値を付与する</li>
+ *     <li>{@code /admin build mode} - 手動ビルドモードを ON / OFF する</li>
  *     <li>{@code /admin build create <yml>} / {@code /admin build join <yml>} - 建築ワールドを作成／参加する</li>
  *     <li>{@code /admin build list|info|save|unsave} - チャンネル 1 の建築ワールドを管理する</li>
  *     <li>{@code /admin stop} - プレイヤーデータ保存・レイヤー破棄・ワールド保存を行ってから安全に停止する</li>
@@ -118,6 +121,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String GATHERING = "gathering";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
+    private static final String MODE = "mode";
     private static final String CREATE = "create";
     private static final String JOIN = "join";
     private static final String LAYER = "layer";
@@ -231,18 +235,33 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        String sub = args[0].toLowerCase(Locale.ROOT);
+
+        // ビルドモードは建物を置くためのプレイヤー状態であり、建築ワールドやチャンネルに
+        // 依存しない。zeloria.admin.build を持つプレイヤーならどこでも切り替えられる。
+        if (BUILD.equals(sub) && args.length >= 2 && MODE.equalsIgnoreCase(args[1])) {
+            if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                send(sender, noPermission(BuildManager.BUILD_PERMISSION));
+                return true;
+            }
+            if (args.length != 2) {
+                send(sender, buildUsage());
+                return true;
+            }
+            handleBuildMode(sender);
+            return true;
+        }
+
         // 全サブコマンドの共通権限。未保有の場合はサブコマンドを解析せず早期に拒否する。
         if (!sender.hasPermission(ADMIN_PERMISSION)) {
             send(sender, noPermission(ADMIN_PERMISSION));
             return true;
         }
 
-        String sub = args[0].toLowerCase(Locale.ROOT);
-
-        // 建築モードはチャンネル 1 専用。サブコマンドの解析より前に判定する。
+        // 建築ワールドの操作はチャンネル 1 専用。サブコマンドの解析より前に判定する。
         if (BUILD.equals(sub) && !isBuildChannel()) {
             send(sender, message("build.channel_only", Map.of(),
-                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+                    "<red>建築ワールドの操作はチャンネル1でのみ使用できます</red>"));
             return true;
         }
 
@@ -301,9 +320,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(GATHERING);
                 candidates.add(GUI);
                 candidates.add(LAYER);
-                if (isBuildChannel() && plugin.getBuildManager() != null) {
-                    candidates.add(BUILD);
-                }
+            }
+            // ビルドモードはチャンネル 1 以外でも切り替えられるため、権限だけで候補に出す。
+            if (sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                candidates.add(BUILD);
             }
             if (sender.hasPermission(STOP_PERMISSION)) {
                 candidates.add(STOP);
@@ -376,26 +396,38 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         if (BUILD.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+                return List.of();
+            }
+
+            if (args.length == 2) {
+                Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                candidates.add(MODE);
+                // 建築ワールドの操作は、チャンネル 1 かつ管理権限がある場合だけ候補に出す。
+                if (isBuildChannel()
+                        && sender.hasPermission(ADMIN_PERMISSION)
+                        && plugin.getBuildManager() != null) {
+                    candidates.add(CREATE);
+                    candidates.add(JOIN);
+                    candidates.add(LIST);
+                    candidates.add(INFO);
+                    candidates.add(SAVE);
+                    candidates.add(UNSAVE);
+                }
+                return partial(args[1], candidates);
+            }
+
             BuildManager buildManager = plugin.getBuildManager();
             if (!isBuildChannel()
                     || !sender.hasPermission(ADMIN_PERMISSION)
-                    || buildManager == null) {
+                    || buildManager == null
+                    || MODE.equalsIgnoreCase(args[1])) {
                 return List.of();
             }
 
             Set<String> openTemplates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             openTemplates.addAll(buildManager.getOpenTemplateIds());
 
-            if (args.length == 2) {
-                Set<String> candidates = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-                candidates.add(CREATE);
-                candidates.add(JOIN);
-                candidates.add(LIST);
-                candidates.add(INFO);
-                candidates.add(SAVE);
-                candidates.add(UNSAVE);
-                return partial(args[1], candidates);
-            }
             if (args.length == 3) {
                 String action = args[1];
                 // create / join は config/LayerData/ の YAML 名（拡張子なし）を候補にする。
@@ -908,8 +940,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin build}: チャンネル 1 の建築モードを操作する。
+     * {@code /admin build}: チャンネル 1 の建築ワールドと手動ビルドモードを操作する。
      * <ul>
+     *     <li>{@code /admin build mode} - 手動ビルドモードを ON / OFF する</li>
      *     <li>{@code /admin build create <yml>} - テンプレートから建築ワールドを新規作成して入場する</li>
      *     <li>{@code /admin build join <yml>} - 開いている建築ワールドへ参加する</li>
      *     <li>{@code /admin build list} - 開いている建築ワールドを一覧表示する</li>
@@ -917,7 +950,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      *     <li>{@code /admin build save [yml] [force]} - 保存して Hub へ戻る</li>
      *     <li>{@code /admin build unsave [yml] [force]} - 保存せずに破棄して Hub へ戻る</li>
      * </ul>
-     * 建築モードは {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
+     * 建築ワールドの操作は {@link BuildManager} が生成されるチャンネル 1 でのみ利用できる。
+     * {@code mode} は {@code /admin build mode} としてサブコマンド解析前に処理され、
+     * 建築ワールドやチャンネルに依存しない。
      */
     private void handleBuild(CommandSender sender, String[] args) {
         // list / info は建築モードの状態確認のみのため、zeloria.admin だけで実行できる。
@@ -929,7 +964,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             BuildManager buildManager = plugin.getBuildManager();
             if (buildManager == null) {
                 send(sender, message("build.channel_only", Map.of(),
-                        "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+                        "<red>建築ワールドの操作はチャンネル1でのみ使用できます</red>"));
                 return;
             }
             if (args.length > 3 || (LIST.equalsIgnoreCase(args[1]) && args.length != 2)) {
@@ -963,7 +998,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         BuildManager buildManager = plugin.getBuildManager();
         if (buildManager == null) {
             send(sender, message("build.channel_only", Map.of(),
-                    "<red>建築モードはチャンネル1でのみ使用できます</red>"));
+                    "<red>建築ワールドの操作はチャンネル1でのみ使用できます</red>"));
             return;
         }
 
@@ -994,6 +1029,68 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         send(sender, message("command.unknown_subcommand", Map.of("input", args[1]),
                 "<red>不明なサブコマンドです: <white>{input}</white></red>"));
         send(sender, buildUsage());
+    }
+
+    /**
+     * {@code /admin build mode}: 手動ビルドモードを ON / OFF する。
+     * <p>
+     * ON にする場合は、クラス変更時と同じ {@link EquipmentService#hasEquipped(PlayerData)}
+     * で装備がすべて外れていることを確認する。OFF の場合は装備チェックを行わない。
+     * ワールド・チャンネルの制限はなく、{@code zeloria.admin.build} を持つプレイヤーだけが
+     * 実行できる。
+     *
+     * @param sender 実行者
+     */
+    private void handleBuildMode(CommandSender sender) {
+        if (!sender.hasPermission(BuildManager.BUILD_PERMISSION)) {
+            send(sender, noPermission(BuildManager.BUILD_PERMISSION));
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            send(sender, message("build.mode.player_only", Map.of(),
+                    "<red>ビルドモードを切り替えるにはプレイヤーとして実行してください。</red>"));
+            return;
+        }
+
+        BuildModeService buildModeService = plugin.getBuildModeService();
+        if (buildModeService == null) {
+            send(sender, message("build.mode.unavailable", Map.of(),
+                    "<yellow>ビルドモードサービスが初期化されていません。</yellow>"));
+            return;
+        }
+
+        // OFF は装備状態に関係なく常に許可する。
+        if (buildModeService.isActive(player)) {
+            buildModeService.deactivate(player);
+            send(sender, message("build.mode.disabled", Map.of(),
+                    "<green>ビルドモードを OFF にしました。</green>"));
+            return;
+        }
+
+        PlayerData data = PlayerData.getCached(player.getUniqueId());
+        if (data == null) {
+            send(sender, message("build.mode.data_unavailable", Map.of(),
+                    "<yellow>プレイヤーデータが読み込まれていません。しばらくしてから再実行してください。</yellow>"));
+            return;
+        }
+
+        EquipmentService equipmentService = plugin.getEquipmentService();
+        if (equipmentService == null) {
+            send(sender, message("build.mode.unavailable", Map.of(),
+                    "<yellow>ビルドモードサービスが初期化されていません。</yellow>"));
+            return;
+        }
+
+        // クラス変更時と同じチェックを流用し、装備中のアイテムがある間は ON にしない。
+        if (equipmentService.hasEquipped(data)) {
+            send(sender, message("build.mode.equipped", Map.of(),
+                    "<red>装備をすべて外してからビルドモードに入ってください。</red>"));
+            return;
+        }
+
+        buildModeService.activate(player);
+        send(sender, message("build.mode.enabled", Map.of(),
+                "<green>ビルドモードを ON にしました。</green>"));
     }
 
     /**
@@ -1117,7 +1214,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      */
     private String buildUsage() {
         return message("build.usage", Map.of(),
-                "<gray>使い方:</gray> <white>/admin build create <yml></white> "
+                "<gray>使い方:</gray> <white>/admin build mode</white> "
+                        + "<dark_gray>|</dark_gray> <white>/admin build create <yml></white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build join <yml></white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build list</white> "
                         + "<dark_gray>|</dark_gray> <white>/admin build info [yml]</white> "

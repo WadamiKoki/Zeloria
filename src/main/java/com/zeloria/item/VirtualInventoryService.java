@@ -9,7 +9,7 @@ import com.zeloria.player.VirtualInventoryTab;
 import com.zeloria.player.VirtualItemEntry;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.skill.SkillSlotService;
-import com.zeloria.world.BuildManager;
+import com.zeloria.world.BuildModeService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -192,20 +192,27 @@ public class VirtualInventoryService {
      * @param player 対象プレイヤー
      */
     public void refresh(Player player) {
+        refresh(player, false);
+    }
+
+    /**
+     * 仮想表示を再同期する。
+     *
+     * @param player       対象プレイヤー
+     * @param forceDisplay ビルドモード中でも表示を適用する場合は {@code true}
+     */
+    private void refresh(Player player, boolean forceDisplay) {
         if (player == null || !player.isOnline()) {
             return;
         }
         if (!Bukkit.isPrimaryThread()) {
-            Bukkit.getScheduler().runTask(plugin, () -> refresh(player));
+            Bukkit.getScheduler().runTask(plugin, () -> refresh(player, forceDisplay));
             return;
         }
 
-        // 建築ワールドではバニラのホットバー・インベントリをそのまま使う。
-        if (BuildManager.isBuildWorld(player.getWorld())) {
-            removeVirtualItems(player, true);
-            if (VirtualItem.isVirtual(player.getItemOnCursor())) {
-                player.setItemOnCursor(null);
-            }
+        // ビルドモード中は建物を置くためのバニラ操作を優先し、仮想表示を書き戻さない。
+        BuildModeService buildModeService = plugin.getBuildModeService();
+        if (!forceDisplay && buildModeService != null && buildModeService.isActive(player)) {
             return;
         }
 
@@ -217,11 +224,10 @@ public class VirtualInventoryService {
     }
 
     /**
-     * 建築ワールド入場時に仮想インベントリ表示を解除し、バニラ操作へ戻す。
+     * ビルドモード ON 時に仮想インベントリ表示を解除し、バニラ操作へ戻す。
      * <p>
-     * 戦闘モードの解除はテレポート直前（{@code PlayerTeleportEvent}）で完了している前提とし、
-     * ここでは仮想アイテムの除去だけを行う。退出時は
-     * {@link #leaveBuildMode(Player)} で再適用する。
+     * 戦闘モードの解除は {@link BuildModeService} が先に行う。ここでは仮想アイテムの
+     * 除去だけを行い、ビルドモード OFF 時は {@link #leaveBuildMode(Player)} で再適用する。
      *
      * @param player 対象プレイヤー
      */
@@ -243,11 +249,11 @@ public class VirtualInventoryService {
     }
 
     /**
-     * 建築ワールド退出時にホットバーの物理アイテムをクリアし、仮想表示を再適用する。
+     * ビルドモード OFF 時にホットバーの物理アイテムをクリアし、仮想表示を再適用する。
      * <p>
-     * 建築ワールドではバニラのホットバーをそのまま使うため slot 0〜8 に物理アイテムが
-     * 残り得る。通常レイヤーへ戻る際はこれらを削除し、武器・スキル枠・メニュー本・
-     * パネルを改めて仮想表示で埋める。メインインベントリ（slot 9〜35）は対象外。
+     * ビルドモード中はバニラのホットバーをそのまま使うため slot 0〜8 に物理アイテムが
+     * 残り得る。これらを削除し、武器・スキル枠・メニュー本・パネルを改めて仮想表示で
+     * 埋める。メインインベントリ（slot 9〜35）は対象外。
      *
      * @param player 対象プレイヤー
      */
@@ -262,11 +268,11 @@ public class VirtualInventoryService {
         clearBuildHotbar(player);
         currentTabs.put(player.getUniqueId(), VirtualInventoryTab.STORAGE);
         currentScrolls.put(player.getUniqueId(), 0);
-        refresh(player);
+        refresh(player, true);
     }
 
     /**
-     * 建築ワールド退出時にホットバー slot 0〜8 の物理アイテムを削除する。
+     * ビルドモード OFF 時にホットバー slot 0〜8 の物理アイテムを削除する。
      * <p>
      * 仮想アイテムは {@link #refresh(Player)} で再配置するため、ここでは実アイテムだけを
      * 対象とする。メインインベントリ（slot 9〜35）には触れない。
@@ -509,11 +515,6 @@ public class VirtualInventoryService {
         }
         currentTabs.put(player.getUniqueId(), VirtualInventoryTab.STORAGE);
         currentScrolls.put(player.getUniqueId(), 0);
-        // 建築ワールド内で再接続した場合はバニラ操作を維持する。
-        if (BuildManager.isBuildWorld(player.getWorld())) {
-            enterBuildMode(player);
-            return;
-        }
         if (PlayerData.getCached(player.getUniqueId()) == null) {
             // DB 読み込みが参加処理に間に合わなかった場合は、1 秒後に再試行する。
             Bukkit.getScheduler().runTaskLater(plugin, () -> updateBag(player), 20L);

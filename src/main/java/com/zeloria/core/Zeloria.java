@@ -21,6 +21,7 @@ import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerEffectService;
 import com.zeloria.world.LayerEntryListener;
 import com.zeloria.world.BuildManager;
+import com.zeloria.world.BuildModeService;
 import com.zeloria.world.BuildWorldGuardListener;
 import com.zeloria.world.CollisionManager;
 import com.zeloria.world.LayerManager;
@@ -219,6 +220,9 @@ public final class Zeloria extends JavaPlugin {
     /** プレイヤーごとの戦闘モード ON / OFF を保持するサービス。 */
     private CombatModeService combatModeService;
 
+    /** プレイヤーごとの手動ビルドモード ON / OFF を保持するサービス。 */
+    private BuildModeService buildModeService;
+
     /** 戦闘モード中の HP / MP・スキル情報を表示するアクションバータスク。 */
     private CombatActionBarTask combatActionBarTask;
 
@@ -312,6 +316,7 @@ public final class Zeloria extends JavaPlugin {
         this.skillCastNotifier = new SkillCastNotifier(this);
         this.skillSlotService = new SkillSlotService(this);
         this.combatModeService = new CombatModeService(this, this.skillSlotService);
+        this.buildModeService = new BuildModeService(this);
 
         this.databaseService = new DatabaseService(this);
         this.databaseService.connect();
@@ -1312,6 +1317,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public CombatModeService getCombatModeService() {
         return combatModeService;
+    }
+
+    /**
+     * BuildModeService を取得する。
+     *
+     * @return プラグインの BuildModeService（onEnable 前は null）
+     */
+    public BuildModeService getBuildModeService() {
+        return buildModeService;
     }
 
     /**
