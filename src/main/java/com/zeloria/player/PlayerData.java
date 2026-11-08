@@ -179,6 +179,7 @@ public class PlayerData {
                 VirtualInventoryJson.encode(virtualInventory),
                 VirtualInventoryJson.encode(virtualEquipment),
                 SettingsJson.encode(settings),
+                AdminBonusesJson.encode(stats.getAdminBonuses()),
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
                 stats.getBaseMaxMana(),
@@ -258,6 +259,10 @@ public class PlayerData {
         data.virtualInventory.putAll(VirtualInventoryJson.decode(snapshot.virtualInventoryJson()));
         data.virtualEquipment.putAll(VirtualInventoryJson.decode(snapshot.virtualEquipmentJson()));
         data.settings = SettingsJson.decode(snapshot.playerSettingsJson());
+        // 管理者補正は専用カラム（admin_bonuses_json）から復元し、
+        // 基礎値・装備補正とは別枠で保持する（適用順: 基礎 → 管理者 → ツリー → 装備）。
+        data.stats.applyAdminBonuses(
+                AdminBonusesJson.decode(snapshot.adminBonusesJson()));
 
         return data;
     }

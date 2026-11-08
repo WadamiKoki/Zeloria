@@ -1,6 +1,7 @@
 package com.zeloria.item;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.gui.MenuGui;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.PlayerData;
@@ -174,6 +175,11 @@ public class VirtualInventoryListener implements Listener {
         // 通常クリックでは武器・防具をその場で装備する（装備できた場合のみ）。
         if (event.isShiftClick()) {
             service.moveEntry(player, tab, key);
+            return;
+        }
+        // 装備の着脱はメニュー GUI からのみ行う。メニューを開いていない状態で
+        // 仮想インベントリのアイテムをクリックしても装備しない。
+        if (!isMenuOpen(player)) {
             return;
         }
         if (event.getClick() == ClickType.LEFT || event.getClick() == ClickType.RIGHT) {
@@ -428,6 +434,16 @@ public class VirtualInventoryListener implements Listener {
                 menuService.open(player);
             }
         });
+    }
+
+    /**
+     * メニュー GUI を開いているか判定する。
+     *
+     * @param player 対象プレイヤー
+     * @return メニュー GUI を開いている場合は {@code true}
+     */
+    private static boolean isMenuOpen(Player player) {
+        return player.getOpenInventory().getTopInventory().getHolder() instanceof MenuGui;
     }
 
     /**

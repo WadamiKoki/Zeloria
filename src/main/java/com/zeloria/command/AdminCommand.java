@@ -24,6 +24,7 @@ import com.zeloria.mob.MobData;
 import com.zeloria.mob.MobStatsService;
 import com.zeloria.npc.NpcData;
 import com.zeloria.npc.NpcManager;
+import com.zeloria.player.AdminBonusesJson;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.InventorySerializer;
 import com.zeloria.player.PlayerData;
@@ -91,8 +92,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - {@code EntityData/mob} の定義を指定して
  *         モブをスポーンする</li>
- *     <li>{@code /admin info <player>} / {@code /admin stats <player>} - プレイヤー情報・RPG ステータスを表示する</li>
- *     <li>{@code /admin stats <player> <type> <value>} - 基礎ステータスを加算（負の値で減算）して保存する</li>
+ *     <li>{@code /admin info <player>} - プレイヤー情報・RPG ステータスを表示する</li>
+ *     <li>{@code /admin stats <player> <type> <value>} - 管理者補正としてステータスを加算（負の値で減算）して保存する</li>
  *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
  *     <li>{@code /admin xp <player> <level|gathering> <amount> [type]}
  *         - クラスまたはギャザリング経験値を付与する</li>
@@ -577,7 +578,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         int count = yamlLoader.loadAllConfigs();
 
-        // LayerData / MessageData / EntityData/mob / GUI のキャッシュも最新化する。
+        // LayerData / SystemData / MessageData / EntityData/mob / GUI のキャッシュも最新化する。
         if (plugin.getLayerConfigService() != null) {
             plugin.getLayerConfigService().reload();
         }
@@ -1915,26 +1916,23 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin stats <player> [<type> <value>]} の本体。
+     * {@code /admin stats <player> <type> <value>} の本体。
      * <p>
-     * {@code type/value} が省略された場合は {@code /admin info} と同じ取得経路で
-     * スナップショットを解決し、RPG ステータスだけを表示する。オンライン中の値は
-     * 保存前の最新値を優先する。
+     * ステータスを表示する用途は {@code /admin info <player>} に統合したため、
+     * 本コマンドは変更専用とする。指定した増減は基礎値へ直接加算せず、
+     * {@link PlayerStats#getAdminBonuses()} へ「管理者補正」として加算する。
+     * これによりクラス基礎値の再計算が走っても値が消えない。
      * <p>
-     * {@code type/value} が指定された場合は変更モードとして動作し、現在値へ
-     * {@code value} を加算する（負の値で減算）。変更は {@link PlayerService} /
-     * {@link PlayerRepository} の保存経路を通して即時保存する。
+     * 変更は {@link PlayerService} / {@link PlayerRepository} の保存経路を通して
+     * 即時保存する。
      *
      * @param sender 実行者
-     * @param args   コマンド引数（{@code [stats, player]} または
-     *               {@code [stats, player, type, value]}）
+     * @param args   コマンド引数（{@code [stats, player, type, value]}）
      */
     private void handleStats(CommandSender sender, String[] args) {
-        if (args.length != 2 && args.length != 4) {
+        if (args.length != 4) {
             send(sender, message("stats.usage", Map.of(),
-                    "<gray>使い方:</gray> <white>/admin stats \\<player></white>"
-                            + " <dark_gray>|</dark_gray> "
-                            + "<white>/admin stats \\<player> \\<type> \\<value></white>"));
+                    "<gray>使い方:</gray> <white>/admin stats \\<player> \\<type> \\<value></white>"));
             return;
         }
 
@@ -1945,38 +1943,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        String query = args[1];
-        if (args.length == 4) {
-            handleStatsChange(sender, playerService, query, args[2], args[3]);
-            return;
-        }
-
-        Player online = resolveOnlinePlayer(query);
-        PlayerData cached = online == null ? null : PlayerData.getCached(online.getUniqueId());
-
-        playerService.getRepository().findStatus(query).whenComplete((result, error) -> {
-            PlayerStatus status = result == null ? null : result.orElse(null);
-            PlayerSnapshot snapshot = status == null ? null : status.snapshot();
-            if (cached != null) {
-                snapshot = cached.snapshot();
-            }
-
-            if (snapshot == null) {
-                if (error != null) {
-                    send(sender, message("stats.error",
-                            Map.of("error", esc(rootMessage(error))),
-                            "<red>ステータスの取得に失敗しました: <gray>{error}</gray></red>"));
-                } else {
-                    send(sender, message("stats.not_found", Map.of("player", esc(query)),
-                            "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"));
-                }
-                return;
-            }
-
-            send(sender, message("info.header", Map.of("player", esc(snapshot.playerName())),
-                    "<gold>=== <white>{player}</white> ===</gold>"));
-            sendStatsBlock(sender, snapshot);
-        });
+        handleStatsChange(sender, playerService, args[1], args[2], args[3]);
     }
 
     /**
@@ -2101,111 +2068,112 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         String type = rawType.toLowerCase(Locale.ROOT).replace('-', '_');
+        PlayerStats.Bonuses admin = stats.getAdminBonuses();
         switch (type) {
             case "hp", "max_hp", "max_health" -> {
-                double oldValue = stats.getBaseMaxHealth();
-                stats.setMaxHealth(oldValue + amount);
-                return new StatChange("max_health", oldValue, stats.getBaseMaxHealth());
+                double oldValue = stats.getMaxHealth();
+                stats.applyAdminBonuses(admin.plus("maxHealth", amount));
+                return new StatChange("max_health", oldValue, stats.getMaxHealth());
             }
             case "current_hp", "current_health" -> {
-                double oldValue = stats.getBaseCurrentHealth();
+                double oldValue = stats.getCurrentHealth();
                 stats.setCurrentHealth(oldValue + amount);
-                return new StatChange("current_health", oldValue, stats.getBaseCurrentHealth());
+                return new StatChange("current_health", oldValue, stats.getCurrentHealth());
             }
             case "mp", "max_mp", "max_mana" -> {
-                double oldValue = stats.getBaseMaxMana();
-                stats.setMaxMana(oldValue + amount);
-                return new StatChange("max_mana", oldValue, stats.getBaseMaxMana());
+                double oldValue = stats.getMaxMana();
+                stats.applyAdminBonuses(admin.plus("maxMana", amount));
+                return new StatChange("max_mana", oldValue, stats.getMaxMana());
             }
             case "current_mp", "current_mana" -> {
-                double oldValue = stats.getBaseCurrentMana();
+                double oldValue = stats.getCurrentMana();
                 stats.setCurrentMana(oldValue + amount);
-                return new StatChange("current_mana", oldValue, stats.getBaseCurrentMana());
+                return new StatChange("current_mana", oldValue, stats.getCurrentMana());
             }
             case "attack", "attack_power" -> {
-                double oldValue = stats.getBaseAttackPower();
-                stats.setAttackPower(oldValue + amount);
-                return new StatChange("attack_power", oldValue, stats.getBaseAttackPower());
+                double oldValue = stats.getAttackPower();
+                stats.applyAdminBonuses(admin.plus("attackPower", amount));
+                return new StatChange("attack_power", oldValue, stats.getAttackPower());
             }
             case "defense", "defense2" -> {
-                double oldValue = stats.getBaseDefense2();
-                stats.setDefense2(oldValue + amount);
-                return new StatChange("defense2", oldValue, stats.getBaseDefense2());
+                double oldValue = stats.getDefense2();
+                stats.applyAdminBonuses(admin.plus("defense2", amount));
+                return new StatChange("defense2", oldValue, stats.getDefense2());
             }
             case "defense1" -> {
-                double oldValue = stats.getBaseDefense1();
-                stats.setDefense1(oldValue + amount);
-                return new StatChange("defense1", oldValue, stats.getBaseDefense1());
+                double oldValue = stats.getDefense1();
+                stats.applyAdminBonuses(admin.plus("defense1", amount));
+                return new StatChange("defense1", oldValue, stats.getDefense1());
             }
             case "critical_rate", "crit_rate" -> {
-                double oldValue = stats.getBaseCriticalRate();
-                stats.setCriticalRate(oldValue + amount);
-                return new StatChange("critical_rate", oldValue, stats.getBaseCriticalRate());
+                double oldValue = stats.getCriticalRate();
+                stats.applyAdminBonuses(admin.plus("criticalRate", amount));
+                return new StatChange("critical_rate", oldValue, stats.getCriticalRate());
             }
             case "critical_damage", "crit_damage" -> {
-                double oldValue = stats.getBaseCriticalDamage();
-                stats.setCriticalDamage(oldValue + amount);
-                return new StatChange("critical_damage", oldValue, stats.getBaseCriticalDamage());
+                double oldValue = stats.getCriticalDamage();
+                stats.applyAdminBonuses(admin.plus("criticalDamage", amount));
+                return new StatChange("critical_damage", oldValue, stats.getCriticalDamage());
             }
             case "accuracy" -> {
-                double oldValue = stats.getBaseAccuracy();
-                stats.setAccuracy(oldValue + amount);
-                return new StatChange("accuracy", oldValue, stats.getBaseAccuracy());
+                double oldValue = stats.getAccuracy();
+                stats.applyAdminBonuses(admin.plus("accuracy", amount));
+                return new StatChange("accuracy", oldValue, stats.getAccuracy());
             }
             case "evasion" -> {
-                double oldValue = stats.getBaseEvasion();
-                stats.setEvasion(oldValue + amount);
-                return new StatChange("evasion", oldValue, stats.getBaseEvasion());
+                double oldValue = stats.getEvasion();
+                stats.applyAdminBonuses(admin.plus("evasion", amount));
+                return new StatChange("evasion", oldValue, stats.getEvasion());
             }
             case "dodge_cooldown_reduction" -> {
-                double oldValue = stats.getBaseDodgeCooldownReduction();
-                stats.setDodgeCooldownReduction(oldValue + amount);
+                double oldValue = stats.getDodgeCooldownReduction();
+                stats.applyAdminBonuses(admin.plus("dodgeCooldownReduction", amount));
                 return new StatChange("dodge_cooldown_reduction", oldValue,
-                        stats.getBaseDodgeCooldownReduction());
+                        stats.getDodgeCooldownReduction());
             }
             case "cooldown_reduction" -> {
-                double oldValue = stats.getBaseCooldownReduction();
-                stats.setCooldownReduction(oldValue + amount);
+                double oldValue = stats.getCooldownReduction();
+                stats.applyAdminBonuses(admin.plus("cooldownReduction", amount));
                 return new StatChange("cooldown_reduction", oldValue,
-                        stats.getBaseCooldownReduction());
+                        stats.getCooldownReduction());
             }
             case "walk_speed", "move_speed" -> {
-                double oldValue = stats.getBaseMoveSpeed();
-                stats.setMoveSpeed(oldValue + amount);
-                return new StatChange("move_speed", oldValue, stats.getBaseMoveSpeed());
+                double oldValue = stats.getMoveSpeed();
+                stats.applyAdminBonuses(admin.plus("moveSpeed", amount));
+                return new StatChange("move_speed", oldValue, stats.getMoveSpeed());
             }
             case "health_regen_flat" -> {
-                double oldValue = stats.getBaseHealthRegenFlat();
-                stats.setHealthRegenFlat(oldValue + amount);
-                return new StatChange("health_regen_flat", oldValue, stats.getBaseHealthRegenFlat());
+                double oldValue = stats.getHealthRegenFlat();
+                stats.applyAdminBonuses(admin.plus("healthRegenFlat", amount));
+                return new StatChange("health_regen_flat", oldValue, stats.getHealthRegenFlat());
             }
             case "health_regen_percent" -> {
-                double oldValue = stats.getBaseHealthRegenPercent();
-                stats.setHealthRegenPercent(oldValue + amount);
+                double oldValue = stats.getHealthRegenPercent();
+                stats.applyAdminBonuses(admin.plus("healthRegenPercent", amount));
                 return new StatChange("health_regen_percent", oldValue,
-                        stats.getBaseHealthRegenPercent());
+                        stats.getHealthRegenPercent());
             }
             case "mana_regen_flat" -> {
-                double oldValue = stats.getBaseManaRegenFlat();
-                stats.setManaRegenFlat(oldValue + amount);
-                return new StatChange("mana_regen_flat", oldValue, stats.getBaseManaRegenFlat());
+                double oldValue = stats.getManaRegenFlat();
+                stats.applyAdminBonuses(admin.plus("manaRegenFlat", amount));
+                return new StatChange("mana_regen_flat", oldValue, stats.getManaRegenFlat());
             }
             case "mana_regen_percent" -> {
-                double oldValue = stats.getBaseManaRegenPercent();
-                stats.setManaRegenPercent(oldValue + amount);
+                double oldValue = stats.getManaRegenPercent();
+                stats.applyAdminBonuses(admin.plus("manaRegenPercent", amount));
                 return new StatChange("mana_regen_percent", oldValue,
-                        stats.getBaseManaRegenPercent());
+                        stats.getManaRegenPercent());
             }
             case "armor_penetration" -> {
-                double oldValue = stats.getBaseArmorPenetration();
-                stats.setArmorPenetration(oldValue + amount);
+                double oldValue = stats.getArmorPenetration();
+                stats.applyAdminBonuses(admin.plus("armorPenetration", amount));
                 return new StatChange("armor_penetration", oldValue,
-                        stats.getBaseArmorPenetration());
+                        stats.getArmorPenetration());
             }
             case "lifesteal" -> {
-                double oldValue = stats.getBaseLifesteal();
-                stats.setLifesteal(oldValue + amount);
-                return new StatChange("lifesteal", oldValue, stats.getBaseLifesteal());
+                double oldValue = stats.getLifesteal();
+                stats.applyAdminBonuses(admin.plus("lifesteal", amount));
+                return new StatChange("lifesteal", oldValue, stats.getLifesteal());
             }
             default -> {
                 return null;
@@ -2522,6 +2490,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         long requiredExp = level <= 0 || levelService == null
                 ? 0L
                 : levelService.requiredExp(level);
+        // 管理者補正は専用カラム（admin_bonuses_json）に保存されているため、
+        // 表示時に復元して基礎値へ加算し、括弧書きで内訳を併記する。
+        PlayerStats.Bonuses admin =
+                AdminBonusesJson.decode(snapshot.adminBonusesJson());
 
         send(sender, message("info.level", Map.of(
                         "level", String.valueOf(level),
@@ -2531,25 +2503,38 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + "<gray>EXP:</gray> <white>{exp}</white><gray>/</gray><white>{required}</white>"));
         send(sender, message("info.vitals", Map.of(
                         "health", decimal(snapshot.currentHealth()),
-                        "max_health", decimal(snapshot.maxHealth()),
+                        "max_health", decimal(snapshot.maxHealth() + admin.maxHealth())
+                                + adminSuffix(admin.maxHealth()),
                         "mana", decimal(snapshot.currentMana()),
-                        "max_mana", decimal(snapshot.maxMana()),
+                        "max_mana", decimal(snapshot.maxMana() + admin.maxMana())
+                                + adminSuffix(admin.maxMana()),
                         "money", String.valueOf(snapshot.money())),
                 "<gray>HP:</gray> <red>{health}</red><gray>/</gray><white>{max_health}</white> "
                         + "<dark_gray>|</dark_gray> <gray>MP:</gray> <blue>{mana}</blue>"
                         + "<gray>/</gray><white>{max_mana}</white> <dark_gray>|</dark_gray> "
                         + "<gray>Money:</gray> <gold>{money}</gold>"));
         send(sender, message("info.combat", Map.of(
-                        "attack", decimal(snapshot.attackPower()),
-                        "defense1", decimal(snapshot.defense1()),
-                        "defense2", decimal(snapshot.defense2()),
-                        "crit_rate", decimal(snapshot.criticalRate()),
-                        "crit_damage", decimal(snapshot.criticalDamage()),
-                        "accuracy", decimal(snapshot.accuracy()),
-                        "evasion", decimal(snapshot.evasion()),
-                        "cdr", decimal(snapshot.cooldownReduction() * 100.0),
-                        "move_speed", decimal(
-                                snapshot.walkSpeed() / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)),
+                        "attack", decimal(snapshot.attackPower() + admin.attackPower())
+                                + adminSuffix(admin.attackPower()),
+                        "defense1", decimal(snapshot.defense1() + admin.defense1())
+                                + adminSuffix(admin.defense1()),
+                        "defense2", decimal(snapshot.defense2() + admin.defense2())
+                                + adminSuffix(admin.defense2()),
+                        "crit_rate", decimal(snapshot.criticalRate() + admin.criticalRate())
+                                + adminSuffix(admin.criticalRate()),
+                        "crit_damage", decimal(snapshot.criticalDamage() + admin.criticalDamage())
+                                + adminSuffix(admin.criticalDamage()),
+                        "accuracy", decimal(snapshot.accuracy() + admin.accuracy())
+                                + adminSuffix(admin.accuracy()),
+                        "evasion", decimal(snapshot.evasion() + admin.evasion())
+                                + adminSuffix(admin.evasion()),
+                        "cdr", decimal((snapshot.cooldownReduction()
+                                + admin.cooldownReduction()) * 100.0)
+                                + adminSuffix(admin.cooldownReduction() * 100.0),
+                        "move_speed", decimal((snapshot.walkSpeed() + admin.moveSpeed())
+                                / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)
+                                + adminSuffix(admin.moveSpeed()
+                                / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)),
                 "<gray>ATK:</gray> <white>{attack}</white> <dark_gray>|</dark_gray> "
                         + "<gray>DEF1:</gray> <white>{defense1}</white> <dark_gray>|</dark_gray> "
                         + "<gray>DEF2:</gray> <white>{defense2}</white> <dark_gray>|</dark_gray> "
@@ -2560,13 +2545,42 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + "<gray>CDR:</gray> <white>{cdr}%</white> <dark_gray>|</dark_gray> "
                         + "<gray>Speed:</gray> <white>{move_speed}%</white>"));
         send(sender, message("info.regen", Map.of(
-                        "hp_flat", decimal(snapshot.healthRegenFlat()),
-                        "hp_percent", decimal(snapshot.healthRegenPercent() * 100.0),
-                        "mp_flat", decimal(snapshot.manaRegenFlat()),
-                        "mp_percent", decimal(snapshot.manaRegenPercent() * 100.0)),
+                        "hp_flat", decimal(snapshot.healthRegenFlat() + admin.healthRegenFlat())
+                                + adminSuffix(admin.healthRegenFlat()),
+                        "hp_percent", decimal((snapshot.healthRegenPercent()
+                                + admin.healthRegenPercent()) * 100.0)
+                                + adminSuffix(admin.healthRegenPercent() * 100.0),
+                        "mp_flat", decimal(snapshot.manaRegenFlat() + admin.manaRegenFlat())
+                                + adminSuffix(admin.manaRegenFlat()),
+                        "mp_percent", decimal((snapshot.manaRegenPercent()
+                                + admin.manaRegenPercent()) * 100.0)
+                                + adminSuffix(admin.manaRegenPercent() * 100.0),
+                        "armor_pen", decimal((snapshot.armorPenetration()
+                                + admin.armorPenetration()) * 100.0)
+                                + adminSuffix(admin.armorPenetration() * 100.0),
+                        "lifesteal", decimal((snapshot.lifesteal() + admin.lifesteal()) * 100.0)
+                                + adminSuffix(admin.lifesteal() * 100.0)),
                 "<gray>Regen:</gray> HP <white>{hp_flat}</white> + <white>{hp_percent}%</white>"
                         + " <dark_gray>|</dark_gray> MP <white>{mp_flat}</white> + "
-                        + "<white>{mp_percent}%</white>"));
+                        + "<white>{mp_percent}%</white> <dark_gray>|</dark_gray> "
+                        + "<gray>Pen:</gray> <white>{armor_pen}%</white> <dark_gray>|</dark_gray> "
+                        + "<gray>Lifesteal:</gray> <white>{lifesteal}%</white>"));
+    }
+
+    /**
+     * 管理者補正の内訳を {@code [+10]} / {@code [-5]} 形式で返す。
+     * <p>
+     * 0 の場合は空文字を返し、表示を冗長にしない。
+     *
+     * @param value 管理者補正値
+     * @return 表示用サフィックス
+     */
+    private static String adminSuffix(double value) {
+        if (value == 0.0 || !Double.isFinite(value)) {
+            return "";
+        }
+        String sign = value > 0.0 ? "+" : "";
+        return " <gray>[" + sign + statValue(value) + "]</gray>";
     }
 
     /**

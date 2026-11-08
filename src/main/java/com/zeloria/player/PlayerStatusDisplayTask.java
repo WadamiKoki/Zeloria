@@ -66,8 +66,11 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 頭上ステータス表示の Y オフセット（ブロック単位）。 */
-    private static final float DISPLAY_Y_OFFSET = 0.65f;
+    /** 頭上表示の縦位置（旧 0.65 から 0.5 ブロック下げる）。 */
+    private static final float DISPLAY_Y_OFFSET = 0.15f;
+
+    /** 頭上表示の拡大率（旧 0.5 の 1.5 倍）。 */
+    private static final float DISPLAY_SCALE = 0.75f;
 
     private final Zeloria plugin;
 
@@ -229,7 +232,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         display.setTransformation(new Transformation(
                 new Vector3f(0.0f, DISPLAY_Y_OFFSET, 0.0f),
                 new Quaternionf(),
-                new Vector3f(0.5f, 0.5f, 0.5f),
+                new Vector3f(DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE),
                 new Quaternionf()));
 
         if (!player.addPassenger(display)) {

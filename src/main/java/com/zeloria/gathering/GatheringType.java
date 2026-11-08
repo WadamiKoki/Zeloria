@@ -11,13 +11,13 @@ import java.util.Locale;
  */
 public enum GatheringType {
 
-    /** 採掘。{@code config/GatheringData/level_settings.yml} の {@code mining}。 */
+    /** 採掘。{@code config/SystemData/gathering_level_settings.yml} の {@code mining}。 */
     MINING("mining", "Mining"),
 
-    /** 伐採。{@code config/GatheringData/level_settings.yml} の {@code woodcutting}。 */
+    /** 伐採。{@code config/SystemData/gathering_level_settings.yml} の {@code woodcutting}。 */
     WOODCUTTING("woodcutting", "Woodcutting"),
 
-    /** 採集（表示名は Farming）。{@code config/GatheringData/level_settings.yml} の {@code farming}。 */
+    /** 採集（表示名は Farming）。{@code config/SystemData/gathering_level_settings.yml} の {@code farming}。 */
     FARMING("farming", "Farming");
 
     private final String key;

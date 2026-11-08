@@ -1,5 +1,5 @@
 id: "archer_skill4"
-icon: "SPECTRAL_ARROW"
+icon: "ARROW"
 displayName: "<green>スキル4</green>"
 description: "ここにスキルの説明を書く"
 cooldown: 5 # 秒

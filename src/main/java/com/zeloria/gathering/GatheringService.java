@@ -13,12 +13,12 @@ import org.bukkit.entity.Player;
  * <p>
  * レベル・経験値はプレイヤー UUID 単位で {@link PlayerData} に保持され、
  * クラスに関係なく共通となる。設定は
- * {@code config/GatheringData/level_settings.yml} から読み込む。
+ * {@code config/SystemData/gathering_level_settings.yml} から読み込む。
  */
 public class GatheringService {
 
     /** ギャザリング設定の YAML キー。 */
-    public static final String SETTINGS_KEY = "GatheringData/level_settings.yml";
+    public static final String SETTINGS_KEY = "SystemData/gathering_level_settings.yml";
 
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
@@ -37,7 +37,7 @@ public class GatheringService {
     public synchronized void reload() {
         FileConfiguration config = yamlLoader.getConfig(SETTINGS_KEY);
         if (config == null) {
-            config = yamlLoader.getConfig("level_settings");
+            config = yamlLoader.getConfig("gathering_level_settings");
         }
         this.settings = GatheringSettings.fromConfig(config);
         StringBuilder detail = new StringBuilder();

@@ -268,13 +268,30 @@ public class MenuService {
     }
 
     /**
+     * プレイヤーがメニュー GUI を開いているか判定する。
+     *
+     * @param player 対象プレイヤー
+     * @return メニュー GUI を開いている場合は {@code true}
+     */
+    public boolean isMenuOpen(Player player) {
+        if (player == null) {
+            return false;
+        }
+        Inventory top = player.getOpenInventory().getTopInventory();
+        return top != null && top.getHolder() instanceof MenuGui;
+    }
+
+    /**
      * プレイヤーがメニュー GUI を開いていれば、現在の {@link PlayerData} で再描画する。
+     * <p>
+     * メニューを開いていない場合は何もしない。装備変更などの再計算から呼ばれるため、
+     * 開いていないプレイヤーへの不要な描画処理を避ける。
      *
      * @param player 対象プレイヤー
      * @param data   再描画に使用するプレイヤーデータ
      */
     public void refresh(Player player, PlayerData data) {
-        if (player == null || data == null) {
+        if (player == null || data == null || !isMenuOpen(player)) {
             return;
         }
         Inventory top = player.getOpenInventory().getTopInventory();
@@ -601,6 +618,12 @@ public class MenuService {
                                  EquipSlot equipSlot, ItemStack cursor) {
         ItemStack equipped = cursor.clone();
         EquipmentService equipmentService = plugin.getEquipmentService();
+        if (!equipSlot.isToolSlot() && equipmentService != null
+                && !equipmentService.canEquip(player, equipped)) {
+            playSound(player, SOUND_ERROR);
+            notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
+            return;
+        }
         if (!equipSlot.isToolSlot() && equipmentService != null
                 && !equipmentService.meetsRequiredLevel(player, equipped)) {
             playSound(player, SOUND_ERROR);

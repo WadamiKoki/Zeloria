@@ -9,8 +9,10 @@ gui:
 filler:
   equipment: "LIGHT"
 equipment_slots:
-  tool_1: 6
-  tool_2: 7
+  # 下段のコンパス（close_slot: 53）の左隣 2 枠を道具 1・2 に割り当てる。
+  # ここで装備した内容がホットバー slot 6 / 7 にそのまま表示される。
+  tool_1: 51
+  tool_2: 52
   helmet: 16
   offhand: 24
   chestplate: 25

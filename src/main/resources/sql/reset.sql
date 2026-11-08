@@ -36,6 +36,7 @@ CREATE TABLE players (
     virtual_inventory_json LONGTEXT NULL,
     virtual_equipment_json LONGTEXT NULL,
     player_settings_json LONGTEXT NULL,
+    admin_bonuses_json LONGTEXT NULL,
     max_health DOUBLE NULL,
     current_health DOUBLE NULL,
     max_mana DOUBLE NULL,

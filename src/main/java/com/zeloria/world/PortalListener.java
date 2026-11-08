@@ -220,11 +220,11 @@ public class PortalListener implements Listener {
                                      String targetTemplate, String targetName,
                                      World targetWorld, World sourceWorld, String sourceLayer,
                                      Location destination, Boolean success, Throwable throwable) {
-        plugin.getLogger().info("[TransferDebug] player=" + player.getName()
+        plugin.getLogger().fine("[TransferDebug] player=" + player.getName()
                 + ", destination=" + destination
                 + ", world=" + (destination != null && destination.getWorld() != null
                         ? destination.getWorld().getName() : "null"));
-        plugin.getLogger().info("[TransferDebug] teleport result: success=" + success
+        plugin.getLogger().fine("[TransferDebug] teleport result: success=" + success
                 + ", player=" + player.getName()
                 + ", throwable=" + (throwable != null ? throwable.getMessage() : "none")
                 + ", to=" + (destination != null && destination.getWorld() != null
@@ -253,7 +253,7 @@ public class PortalListener implements Listener {
                 logWarning("ポータル転送失敗（同期テレポートへフォールバック）: player=" + player.getName()
                         + ", portal=" + portal.id() + ", target=" + targetTemplate);
             }
-            plugin.getLogger().info(
+            plugin.getLogger().fine(
                     "[TransferDebug] teleportAsync failed, fallback to teleport: " + destination);
             // 同期テレポートのフォールバック前にもチャンクをロードしておく。
             loadDestinationChunk(destination);
@@ -277,13 +277,7 @@ public class PortalListener implements Listener {
         LoggerService logger = plugin.getLoggerService();
         if (logger != null) {
             logger.log(LoggerService.Category.PORTAL,
-                    "ポータル使用: player=" + player.getName()
-                            + ", portal=" + portal.id()
-                            + ", source_layer=" + sourceLayer
-                            + ", source_world=" + (sourceWorld == null ? "-" : sourceWorld.getName())
-                            + ", target_template=" + targetTemplate
-                            + ", target_world=" + targetWorld.getName()
-                            + ", destination=" + formatLocation(destination));
+                    "ポータル使用: " + player.getName() + " " + targetTemplate + " " + sourceLayer);
         }
 
         // 同一ワールド内の移動では PlayerChangedWorldEvent が発火しないため、明示的に演出を再生する。

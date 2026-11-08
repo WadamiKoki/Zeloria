@@ -34,14 +34,14 @@ info:
   level: "<gray>Level:</gray> <yellow>{level}</yellow> <dark_gray>|</dark_gray> <gray>EXP:</gray> <white>{exp}</white><gray>/</gray><white>{required}</white>"
   vitals: "<gray>HP:</gray> <red>{health}</red><gray>/</gray><white>{max_health}</white> <dark_gray>|</dark_gray> <gray>MP:</gray> <blue>{mana}</blue><gray>/</gray><white>{max_mana}</white> <dark_gray>|</dark_gray> <gray>Money:</gray> <gold>{money}</gold>"
   combat: "<gray>ATK:</gray> <white>{attack}</white> <dark_gray>|</dark_gray> <gray>DEF1:</gray> <white>{defense1}</white> <dark_gray>/</dark_gray> <gray>DEF2:</gray> <white>{defense2}</white> <dark_gray>|</dark_gray> <gray>CRIT:</gray> <white>{crit_rate}%</white> <dark_gray>|</dark_gray> <gray>CRIT DMG:</gray> <white>{crit_damage}%</white> <dark_gray>|</dark_gray> <gray>ACC:</gray> <white>{accuracy}%</white> <dark_gray>|</dark_gray> <gray>EVA:</gray> <white>{evasion}%</white> <dark_gray>|</dark_gray> <gray>CDR:</gray> <white>{cdr}%</white> <dark_gray>|</dark_gray> <gray>Speed:</gray> <white>{move_speed}%</white>"
-  regen: "<gray>Regen:</gray> HP <white>{hp_flat}</white> + <white>{hp_percent}%</white> <dark_gray>|</dark_gray> MP <white>{mp_flat}</white> + <white>{mp_percent}%</white>"
+  regen: "<gray>Regen:</gray> HP <white>{hp_flat}</white> + <white>{hp_percent}%</white> <dark_gray>|</dark_gray> MP <white>{mp_flat}</white> + <white>{mp_percent}%</white> <dark_gray>|</dark_gray> <gray>Pen:</gray> <white>{armor_pen}%</white> <dark_gray>|</dark_gray> <gray>Lifesteal:</gray> <white>{lifesteal}%</white>"
   connection: "<gray>Last instance:</gray> <white>{instance}</white> <dark_gray>|</dark_gray> <gray>Login:</gray> <white>{last_login}</white> <dark_gray>|</dark_gray> <gray>Saved:</gray> <white>{last_updated}</white>"
   equipment_entry: "<gray>└ {slot}: <white>{item}</white></gray>"
   not_found: "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"
   error: "<red>プレイヤー情報の取得に失敗しました: <gray>{error}</gray></red>"
 
 stats:
-  usage: "<gray>使い方:</gray> <white>/admin stats \\<player></white> <dark_gray>|</dark_gray> <white>/admin stats \\<player> \\<type> \\<value></white>"
+  usage: "<gray>使い方:</gray> <white>/admin stats \\<player> \\<type> \\<value></white>"
   not_found: "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"
   error: "<red>ステータスの取得に失敗しました: <gray>{error}</gray></red>"
   invalid_type: "<red>不明なステータス種別です: <white>{type}</white></red> <gray>指定可能: {types}</gray>"

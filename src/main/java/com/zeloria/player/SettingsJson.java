@@ -7,8 +7,10 @@ import java.util.regex.Pattern;
  * {@link PlayerSettings} と JSON 文字列の相互変換ユーティリティ。
  * <p>
  * DB の {@code player_settings_json} に 1 カラムの JSON として保存する。
- * 外部ライブラリを追加せず、boolean のキーだけを読み書きする。
- * 壊れた値や未定義のキーは既定値（ON）として扱う。
+ * 外部ライブラリを追加せず、boolean だけを読み書きする。
+ * 壊れた値や未定義のキーは既定値として扱う。
+ * <p>
+ * 管理者補正は {@link AdminBonusesJson}（{@code admin_bonuses_json}）へ分離している。
  */
 public final class SettingsJson {
 

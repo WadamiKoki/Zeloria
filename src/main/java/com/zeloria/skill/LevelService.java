@@ -15,13 +15,13 @@ import java.util.Objects;
  * レベル・経験値の進行を管理するサービス。
  * <p>
  * 必要経験値の算出とレベルアップ処理を担当し、値の保持は {@link PlayerStats} に委譲する。
- * 設定は {@code config/LevelData/level_settings.yml} から読み込み、
+ * 設定は {@code config/SystemData/level_settings.yml} から読み込み、
  * {@code /admin reload} 時に {@link #reload()} を呼ぶことで反映できる。
  */
 public class LevelService {
 
     /** レベル設定の YAML キー。 */
-    public static final String SETTINGS_KEY = "LevelData/level_settings.yml";
+    public static final String SETTINGS_KEY = "SystemData/level_settings.yml";
 
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;

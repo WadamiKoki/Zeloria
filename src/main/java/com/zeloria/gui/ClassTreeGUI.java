@@ -394,8 +394,7 @@ public final class ClassTreeGUI implements Listener {
 
     private ItemStack createScrollButton(boolean up, int offset, int maxOffset) {
         String label = up ? "上へスクロール" : "下へスクロール";
-        String materialName = up ? "ARROW" : "SPECTRAL_ARROW";
-        Material material = Material.matchMaterial(materialName);
+        Material material = Material.ARROW;
 
         boolean enabled = up ? offset > 0 : offset < maxOffset;
         List<String> lore = new ArrayList<>();

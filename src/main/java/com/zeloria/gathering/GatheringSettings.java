@@ -6,7 +6,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
 /**
- * ギャザリングのレベル設定（{@code config/GatheringData/level_settings.yml}）。
+ * ギャザリングのレベル設定（{@code config/SystemData/gathering_level_settings.yml}）。
  * <p>
  * 必要経験値は Wynncraft 方式の二次関数で算出する。
  * <ul>
@@ -65,7 +65,7 @@ public final class GatheringSettings {
     /**
      * YAML から設定を読み込む。
      *
-     * @param config 読み込み元（{@code level_settings.yml}）
+     * @param config 読み込み元（{@code gathering_level_settings.yml}）
      * @return 読み込んだ設定
      */
     public static GatheringSettings fromConfig(FileConfiguration config) {

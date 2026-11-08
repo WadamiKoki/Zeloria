@@ -2,8 +2,11 @@ package com.zeloria.mob;
 
 import com.zeloria.core.Zeloria;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Ageable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
+import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Map;
@@ -64,7 +67,40 @@ public final class MobStatsService {
         if (entity == null || data == null) {
             return;
         }
+        // プラグインがスポーンするモブは、子供・装備持ち・アイテム拾得などの
+        // 偶発的な例外状態を持たせない。
+        sanitize(entity);
         stats.put(entity.getUniqueId(), MobStats.from(data, level));
+    }
+
+    /**
+     * スポーン直後のモブから例外状態を取り除く。
+     * <p>
+     * 子供（Baby）状態を解除し、アイテム拾得を無効化したうえで、装備
+     * （メインハンド／オフハンド／防具 4 部位）をすべて空にする。対象は
+     * {@link Ageable} / {@link Mob} に該当するモブのみで、それ以外の
+     * エンティティには干渉しない。
+     *
+     * @param entity 対象エンティティ
+     */
+    public void sanitize(LivingEntity entity) {
+        if (entity == null) {
+            return;
+        }
+
+        // 子供状態を解除する（大人として扱う）。
+        if (entity instanceof Ageable ageable) {
+            ageable.setAdult();
+        }
+        // アイテム拾得を無効化する（LivingEntity#setCanPickupItems）。
+        if (entity instanceof Mob mob) {
+            mob.setCanPickupItems(false);
+        }
+
+        EntityEquipment equipment = entity.getEquipment();
+        if (equipment != null) {
+            equipment.clear();
+        }
     }
 
     /**

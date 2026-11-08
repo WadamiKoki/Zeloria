@@ -3,6 +3,7 @@ package com.zeloria.combat;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.WeaponData;
 import com.zeloria.item.WeaponType;
+import com.zeloria.mob.MobRewardListener;
 import com.zeloria.mob.MobStats;
 import com.zeloria.mob.MobStatsService;
 import com.zeloria.player.PlayerData;
@@ -54,6 +55,31 @@ public final class CombatService {
     /** バニラの体力バーの最大値（ハート 10 個分）。 */
     private static final double VANILLA_MAX_HEALTH = 20.0;
 
+    /**
+     * 同じモブから同一プレイヤーへのダメージ受付間隔（ミリ秒）。
+     * <p>
+     * 1 回の攻撃で {@code EntityDamageByEntityEvent} が複数回発火する環境でも
+     * 二段ヒットにならないよう、モブごとに短いクールダウンを設ける。
+     * プレイヤーの {@code noDamageTicks} には依存しない。
+     */
+    private static final long MOB_ATTACK_COOLDOWN_MILLIS = 500L;
+
+    /**
+     * 被ダメージ音のサウンド ID（レジストリキー形式）。
+     * <p>
+     * プレイヤー・モブの区別なく、すべての被ダメージで本サウンドを共通使用する。
+     */
+    private static final String HURT_SOUND = "entity.player.hurt";
+
+    /** 被ダメージ音の再生音量。 */
+    private static final float HURT_SOUND_VOLUME = 0.5f;
+
+    /** 被ダメージ音の再生ピッチ。 */
+    private static final float HURT_SOUND_PITCH = 1.0f;
+
+    /** 被ダメージ時の赤色化アニメーションへ渡す向き（0 で正面扱い）。 */
+    private static final float HURT_ANIMATION_YAW = 0.0f;
+
     private final Zeloria plugin;
 
     /** プラグインが発射した通常攻撃の投射物（投射物 UUID → 追跡情報）。 */
@@ -61,6 +87,14 @@ public final class CombatService {
 
     /** 投射物ごとの壁判定タスク（投射物 UUID → タスク）。 */
     private final Map<UUID, BukkitTask> projectileTasks = new HashMap<>();
+
+    /**
+     * モブ攻撃の最終受付時刻。
+     * <p>
+     * キーは「モブの UUID + ':' + プレイヤーの UUID」。モブごとに独立して
+     * クールダウンを持つため、別々のモブからの攻撃は相互に制限されない。
+     */
+    private final Map<String, Long> mobAttackCooldowns = new HashMap<>();
 
     public CombatService(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -137,6 +171,18 @@ public final class CombatService {
         if (attackerStats == null || victim.isDead() || isPendingDeath(victim)) {
             return null;
         }
+
+        // 同じモブから同一プレイヤーへの連続ヒットを 0.5 秒間隔で遮断する。
+        // 2 回目以降もイベント自体は「処理済み」としてキャンセルさせるため、
+        // 0 ダメージの結果を返す（フォールバックの環境ダメージへ流さない）。
+        String cooldownKey = attacker.getUniqueId() + ":" + victim.getUniqueId();
+        long now = System.currentTimeMillis();
+        Long lastHitAt = mobAttackCooldowns.get(cooldownKey);
+        if (lastHitAt != null && now - lastHitAt < MOB_ATTACK_COOLDOWN_MILLIS) {
+            return DamageResult.NONE;
+        }
+        mobAttackCooldowns.put(cooldownKey, now);
+        pruneMobAttackCooldowns(now);
 
         DamageResult result = DamageCalculator.calculate(
                 attackerStats.attackPower(),
@@ -223,9 +269,9 @@ public final class CombatService {
     /**
      * 通常攻撃の投射物が着弾したときの処理。
      * <p>
-     * 着弾地点でパーティクルとサウンドを再生し、カスタムMOBへ
-     * {@link #playerAttack} 経由のダメージを適用する。バニラの投射物ダメージは
-     * {@code CombatListener} 側でキャンセルされる。
+     * 着弾地点でパーティクルを再生し（弓の矢は着弾音を再生しない）、
+     * カスタムMOBへ {@link #playerAttack} 経由のダメージを適用する。
+     * バニラの投射物ダメージは {@code CombatListener} 側でキャンセルされる。
      *
      * @param event 投射物の着弾イベント
      */
@@ -363,11 +409,9 @@ public final class CombatService {
 
     private void applyDamage(LivingEntity victim, double damage, Player attacker, boolean critical) {
         // 0 以下のダメージは無効。被弾音・HP 減少・キラー設定のいずれも行わない。
-        if (victim == null || damage <= 0.0) {
+        if (victim == null || damage <= 0.0 || victim.isDead()) {
             return;
         }
-
-        double remaining = Math.max(0.0, victim.getHealth() - damage);
 
         if (attacker != null) {
             // 撃破経験値（MobRewardListener#getKiller）が正しく解決されるようにする。
@@ -375,21 +419,42 @@ public final class CombatService {
         }
 
         if (victim instanceof Player player) {
+            // プレイヤーの真の HP 減算・体力バー同期・赤色化は damagePlayer が一括して行う。
             damagePlayer(player, damage);
             showDamageIndicator(victim, damage, critical);
             return;
         }
 
-        // バニラと同様に被弾音を周囲へ再生する（カスタムモブは汎用の被弾音）。
+        // モブの HP はバニラ体力が正のため直接減算する。entity.damage() は
+        // 無敵時間やイベント再入（二重ヒット）を招くため使用しない。
+        // 直接減算ではダメージイベントが発生しないため、経験値分配用の
+        // 攻撃者記録を明示的に行ってから HP を減らす（HP 0 の場合は
+        // setHealth の中で EntityDeathEvent が同期的に発火する）。
+        MobRewardListener rewardListener = plugin.getMobRewardListener();
+        if (rewardListener != null) {
+            rewardListener.recordAttacker(victim, attacker);
+        }
+        double remainingHealth = Math.max(0.0, victim.getHealth() - damage);
+        victim.setHealth(remainingHealth);
+        // HP 0（死亡）の場合は死亡演出と競合するため Hurt アニメーションを再生しない。
+        if (remainingHealth > 0.0) {
+            victim.playHurtAnimation(HURT_ANIMATION_YAW);
+        }
         playHurtSound(victim);
+        showDamageIndicator(victim, damage, critical);
+    }
 
-        if (remaining <= 0.0) {
-            victim.setHealth(0.0);
-            showDamageIndicator(victim, damage, critical);
+    /**
+     * 古いモブ攻撃クールダウンの記録を間引く。
+     *
+     * @param now 現在時刻（ミリ秒）
+     */
+    private void pruneMobAttackCooldowns(long now) {
+        if (mobAttackCooldowns.size() < 1024) {
             return;
         }
-        victim.setHealth(remaining);
-        showDamageIndicator(victim, damage, critical);
+        mobAttackCooldowns.entrySet().removeIf(
+                entry -> now - entry.getValue() > MOB_ATTACK_COOLDOWN_MILLIS * 10L);
     }
 
     /**
@@ -407,19 +472,18 @@ public final class CombatService {
     }
 
     /**
-     * バニラと同等の被弾音を周囲へ再生する。
+     * 被ダメージ音を再生する。
      * <p>
-     * プレイヤーは {@code entity.player.hurt}、それ以外（カスタムモブ）は
-     * {@code entity.generic.hurt} を使用し、音量・ピッチはバニラ既定値（1.0）に揃える。
+     * プレイヤー・モブの区別なく {@value #HURT_SOUND} を共通で使用する。
      *
      * @param victim 被弾したエンティティ
      */
-    private static void playHurtSound(LivingEntity victim) {
-        if (victim == null || !victim.isValid()) {
+    private void playHurtSound(LivingEntity victim) {
+        if (victim == null || !victim.isValid() || victim.getWorld() == null) {
             return;
         }
-        String sound = victim instanceof Player ? "entity.player.hurt" : "entity.generic.hurt";
-        victim.getWorld().playSound(victim.getLocation(), sound, 1.0f, 1.0f);
+        victim.getWorld().playSound(
+                victim.getLocation(), HURT_SOUND, HURT_SOUND_VOLUME, HURT_SOUND_PITCH);
     }
 
     /**
@@ -438,11 +502,17 @@ public final class CombatService {
             return;
         }
 
-        double nextHealth = stats.getCurrentHealth() - damage;
-        playHurtSound(player);
-        stats.setCurrentHealth(Math.max(0.0, nextHealth));
-        // バニラ体力バーと頭上 HP ゲージを被弾と同時に更新する。
+        // 真の HP を直接減算し、バニラ体力バーへ同期する。赤色化は syncPlayerHealth の
+        // 体力減少と playHurtAnimation の両方で表現する。HP 0（死亡）の場合は
+        // スペクテイター移行の演出と競合するため Hurt アニメーションを再生しない。
+        double nextHealth = Math.max(0.0, stats.getCurrentHealth() - damage);
+        stats.setCurrentHealth(nextHealth);
         syncPlayerHealth(player);
+        if (nextHealth > 0.0) {
+            player.playHurtAnimation(HURT_ANIMATION_YAW);
+        }
+        playHurtSound(player);
+        // 頭上 HP ゲージを被弾と同時に更新する。
         PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
         if (statusDisplayTask != null) {
             statusDisplayTask.refresh(player);
@@ -728,13 +798,19 @@ public final class CombatService {
     }
 
     /**
-     * 着弾地点でパーティクルを拡散させ、武器の攻撃音を再生する。
+     * 着弾地点でパーティクルを拡散させ、弓以外の武器の攻撃音を再生する。
+     * <p>
+     * 弓の矢はブロック・エンティティのどちらに当たっても着弾音を再生しない。
+     * エンティティへ当たった際の被ダメージ音は {@link #applyDamage} 側で共通再生する。
      */
     private void playImpactEffects(WeaponData weapon, Location impact) {
         Particle particle = parseParticle(weapon.attackParticle());
         if (particle != null && impact.getWorld() != null) {
             impact.getWorld().spawnParticle(
                     particle, impact, 8, 0.25, 0.25, 0.25, 0.02);
+        }
+        if (WeaponType.primary(weapon.weaponTypes()) == WeaponType.BOW) {
+            return;
         }
         playWeaponSound(weapon, impact);
     }

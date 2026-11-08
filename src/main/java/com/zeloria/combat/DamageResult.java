@@ -13,4 +13,7 @@ public record DamageResult(double damage, boolean critical, boolean evaded) {
 
     /** 回避結果。 */
     public static final DamageResult EVADED = new DamageResult(0.0, false, true);
+
+    /** ダメージなし（クールダウン等で処理のみ行う場合）。 */
+    public static final DamageResult NONE = new DamageResult(0.0, false, false);
 }

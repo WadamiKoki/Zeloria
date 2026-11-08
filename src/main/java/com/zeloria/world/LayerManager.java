@@ -1702,11 +1702,19 @@ public class LayerManager {
      * <p>
      * {@code World#setKeepSpawnInMemory(boolean)} は Paper 26.3 で非推奨かつ無効化されたため使用しない。
      * ゲームルールは 26.3 で推奨される {@link GameRules} の定数を使用する。
+     * <p>
+     * 本メソッドはレイヤーインスタンス（Hub・フィールド）のロード時のみ呼ばれ、
+     * 建築ワールド（{@code <templateId>_build}、{@code BuildManager} が生成）には
+     * 適用されない。
      */
     private void applySafetySettings(World world) {
         world.setGameRule(GameRules.SPAWN_MOBS, false);
         world.setGameRule(GameRules.ADVANCE_TIME, false);
         world.setGameRule(GameRules.ADVANCE_WEATHER, false);
+        // バニラのモブドロップ抽選自体をスキップする（ドロップは
+        // VirtualInventoryService が仮想インベントリで管理する）。
+        // DO_TILE_DROPS 相当（採掘・建築）には影響させない。
+        world.setGameRule(GameRules.MOB_DROPS, false);
     }
 
     /**

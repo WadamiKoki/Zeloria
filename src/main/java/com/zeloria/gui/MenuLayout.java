@@ -88,8 +88,9 @@ public record MenuLayout(
      */
     public static MenuLayout defaults() {
         Map<EquipSlot, Integer> equipment = new EnumMap<>(EquipSlot.class);
-        equipment.put(EquipSlot.TOOL_1, 6);
-        equipment.put(EquipSlot.TOOL_2, 7);
+        // 下段のコンパス（閉じるボタン）の左隣 2 枠を道具 1・2 に割り当てる。
+        equipment.put(EquipSlot.TOOL_1, 51);
+        equipment.put(EquipSlot.TOOL_2, 52);
         equipment.put(EquipSlot.HELMET, 16);
         equipment.put(EquipSlot.OFFHAND, 24);
         equipment.put(EquipSlot.CHESTPLATE, 25);

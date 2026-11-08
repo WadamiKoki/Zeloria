@@ -22,7 +22,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
-import org.bukkit.NamespacedKey;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -35,7 +34,6 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 
 import java.util.EnumSet;
 import java.util.Objects;
@@ -109,50 +107,10 @@ public final class CombatListener implements Listener {
             DamageCause.LIGHTNING
     );
 
-    /**
-     * バニラダメージイベント経由のスキルダメージを示す PDC キー。
-     * <p>
-     * カスタムMOBの環境ダメージ無効化と区別するためのワンショットフラグ。
-     * スキルが {@link LivingEntity#damage(double)} を使う場合、呼び出し直前に
-     * {@link #markSkillDamage(LivingEntity)} を実行すると、そのダメージは
-     * 環境ダメージ判定を素通りする（判定時に自動で解除される）。
-     * <p>
-     * なお、現在のスキルは {@link CombatService} が HP を直接減算するため
-     * このイベントを経由せず、フラグ無しでもダメージは通る。
-     */
-    public static final String SKILL_DAMAGE_KEY = "skill_damage";
-
     private final Zeloria plugin;
-    private final NamespacedKey skillDamageKey;
 
     public CombatListener(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.skillDamageKey = new NamespacedKey(plugin, SKILL_DAMAGE_KEY);
-    }
-
-    /**
-     * バニラダメージイベント経由で与えるスキルダメージを、環境ダメージ無効化の
-     * 対象外にするためのフラグを立てる。
-     * <p>
-     * フラグは次のダメージ判定で 1 回だけ消費される。
-     *
-     * @param entity 対象エンティティ
-     */
-    public void markSkillDamage(LivingEntity entity) {
-        if (entity != null) {
-            entity.getPersistentDataContainer().set(skillDamageKey, PersistentDataType.BYTE, (byte) 1);
-        }
-    }
-
-    /**
-     * スキルダメージ用フラグを解除する。
-     *
-     * @param entity 対象エンティティ
-     */
-    public void clearSkillDamage(LivingEntity entity) {
-        if (entity != null) {
-            entity.getPersistentDataContainer().remove(skillDamageKey);
-        }
     }
 
     /**
@@ -362,7 +320,7 @@ public final class CombatListener implements Listener {
      * <p>
      * 対象は {@link MobStatsService#get(Entity)} が {@code null} を返さない
      * カスタムMOBのみ。バニラMOBや他プラグインのMOBには干渉しない。
-     * プレイヤーのスキル／攻撃由来のダメージは {@link #isSkillDamage} で除外する。
+     * プレイヤー（またはプレイヤーの投射物）由来のダメージは環境ダメージとして扱わない。
      *
      * @param event  ダメージイベント
      * @param victim ダメージを受けたエンティティ
@@ -378,8 +336,9 @@ public final class CombatListener implements Listener {
             return false;
         }
 
-        // スキル／プレイヤー攻撃由来のダメージは通す。
-        if (isSkillDamage(event, victim)) {
+        // プレイヤー（またはプレイヤーの投射物）由来のダメージは環境ダメージではないため通す。
+        if (event instanceof EntityDamageByEntityEvent byEntity
+                && CombatService.resolvePlayer(byEntity.getDamager()) != null) {
             return false;
         }
 
@@ -390,23 +349,6 @@ public final class CombatListener implements Listener {
             victim.setFireTicks(0);
         }
         return true;
-    }
-
-    /**
-     * 環境ダメージではなくスキル／プレイヤー攻撃由来のダメージか判定する。
-     * <p>
-     * {@link #SKILL_DAMAGE_KEY} の PDC フラグはワンショットで、判定時に解除する。
-     * プレイヤー（またはプレイヤーの投射物）をダメージ源とするイベントも
-     * スキル相当として扱う。
-     */
-    private boolean isSkillDamage(EntityDamageEvent event, LivingEntity victim) {
-        if (victim.getPersistentDataContainer().has(skillDamageKey, PersistentDataType.BYTE)) {
-            victim.getPersistentDataContainer().remove(skillDamageKey);
-            return true;
-        }
-
-        return event instanceof EntityDamageByEntityEvent byEntity
-                && CombatService.resolvePlayer(byEntity.getDamager()) != null;
     }
 
     /**
@@ -422,7 +364,8 @@ public final class CombatListener implements Listener {
         Player playerAttacker = CombatService.resolvePlayer(damager);
         if (playerAttacker != null) {
             // バニラの近接攻撃は常にキャンセルし、通常攻撃は PlayerArmSwingEvent に
-            // よるプラグイン側のダメージ計算へ一本化する。
+            // よるプラグイン側のダメージ計算へ一本化する。バニラ通常攻撃は廃止済みの
+            // ため、薙ぎ払い（SWEEP）は発生しない。
             if (event.getCause() == DamageCause.ENTITY_ATTACK) {
                 event.setCancelled(true);
                 return true;

@@ -18,6 +18,8 @@ import org.bukkit.entity.Player;
  * 通知先は各プレイヤーの {@link PlayerSettings} に従う。
  * 自分自身への通知は {@link PlayerSettings#chatLogSelf()}、
  * 他プレイヤーへの通知は {@link PlayerSettings#chatLogOthers()} で制御する。
+ * これらのトグルは<b>チャットメッセージのみ</b>を制御し、パーティクルと効果音は
+ * トグルの状態に関わらず常に発生させる。
  * 効果音はレジストリキー（{@code entity.player.levelup}）で再生する。
  * 通知範囲は同じレイヤーインスタンス内に限定し、別レイヤーのプレイヤーには送らない。
  */
@@ -69,15 +71,15 @@ public final class LevelUpNotifier {
         if (source == null) {
             return;
         }
-        // 自分宛てと他人宛ては独立して判定する。他人の通知設定が自分の通知を
-        // 巻き込んでスキップしないよう、自分宛てを先に単独で処理する。
+
+        // チャットのみトグルで制御する。パーティクルと効果音は常に発生させる。
         boolean selfEnabled = data.getSettings().chatLogSelf();
-        boolean selfNotified = false;
         if (selfEnabled && source.isOnline()) {
             source.sendMessage(message);
+        }
+        if (source.isOnline()) {
             source.playSound(Sound.sound(
                     LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
-            selfNotified = true;
         }
 
         for (Player recipient : Bukkit.getOnlinePlayers()) {
@@ -89,17 +91,16 @@ public final class LevelUpNotifier {
             }
 
             PlayerSettings settings = settingsOf(recipient);
-            if (!settings.chatLogOthers()) {
-                continue;
+            if (settings.chatLogOthers()) {
+                recipient.sendMessage(message);
             }
-
-            recipient.sendMessage(message);
+            // 他人用トグルはチャットのみを制御し、効果音は常に再生する。
             recipient.playSound(Sound.sound(
                     LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
         }
 
-        // 自分の通知を OFF にしている場合は、自分向けのパーティクルも出さない。
-        if (selfNotified && source.isOnline()) {
+        // 自分用トグルの状態に関わらず、レベルアップのパーティクルは常に表示する。
+        if (source.isOnline()) {
             source.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                     source.getLocation().add(0.0, 1.0, 0.0),
                     30, 0.5, 0.8, 0.5, 0.0);

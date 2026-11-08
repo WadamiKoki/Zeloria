@@ -36,14 +36,15 @@ import java.util.UUID;
 /**
  * 装備中の武器・防具と、タブ切り替え式の仮想インベントリをプレイヤーへ表示するサービス。
  * <p>
- * 装備表示は次の 5 スロットに限定する。
+ * 装備表示は次のスロットに限定する。
  * <ul>
  *     <li>ホットバー slot 0: メイン武器の仮想スロット（プレイヤー操作不可）</li>
+ *     <li>ホットバー slot 6〜7: 採取ツール 1・2 の仮想スロット（プレイヤー操作不可）</li>
  *     <li>バニラ防具 4 枠: 装備中の防具の仮想スロット（プレイヤー操作不可）</li>
  * </ul>
- * ホットバー slot 1〜8 は装備表示の対象外。slot 1〜5 は戦闘モードのスキル枠で、
- * OFF 時は {@link com.zeloria.skill.SkillSlotService#showIdle(Player)} が
- * 灰色ガラス板を配置する。
+ * ホットバー slot 1〜5 は戦闘モードのスキル枠で、OFF 時は
+ * {@link com.zeloria.skill.SkillSlotService#showIdle(Player)} が灰色ガラス板を配置する。
+ * slot 8 はメニュー本を配置する。
  * <p>
  * メインインベントリ（slot 9〜35）は、保管庫・装備保管庫の 2 タブを切り替えて表示する。
  * 1 タブ 100 枠を 24 枠ずつ表示し、slot 17 / 35 の矢印で 8 枠ずつスクロール、
@@ -68,11 +69,11 @@ public class VirtualInventoryService {
     /** オフハンドスロット（{@link PlayerInventory} のインデックス）。 */
     public static final int OFFHAND_SLOT = 40;
 
-    /** 右端のスキル表示パネル開始スロット（6〜7 は操作不可）。 */
-    public static final int HOTBAR_PANEL_FIRST_SLOT = 6;
+    /** 採取ツール 1 を表示するホットバーのスロット番号（プレイヤー操作不可）。 */
+    public static final int TOOL_1_HOTBAR_SLOT = 6;
 
-    /** 右端のうち、ガラスパネルを配置する終了スロット。 */
-    public static final int HOTBAR_PANEL_LAST_SLOT = 7;
+    /** 採取ツール 2 を表示するホットバーのスロット番号（プレイヤー操作不可）。 */
+    public static final int TOOL_2_HOTBAR_SLOT = 7;
 
     /** メニュー本を配置するホットバーのスロット番号。 */
     public static final int MENU_BUTTON_SLOT = 8;
@@ -332,8 +333,8 @@ public class VirtualInventoryService {
             returnDisplacedItem(player, inventory, item);
         }
 
-        // 右端 3 枠は仮想ストレージ化に伴い、常時ガラスパネルで埋める。
-        applyHotbarPanels(inventory);
+        // 右端のツール表示枠とメニュー本を更新する。
+        applyHotbarPanels(inventory, data);
 
         // 戦闘モード OFF 時はホットバー slot 1〜5 を灰色ガラスで埋める。
         // 戦闘モード中はスキルアイコンを維持するため、呼び出し側で判定する。
@@ -354,7 +355,7 @@ public class VirtualInventoryService {
     private void absorbHotbarPanelItems(PlayerData data, PlayerInventory inventory,
                                         List<ItemStack> displaced) {
         ItemService itemService = plugin.getItemService();
-        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= MENU_BUTTON_SLOT; slot++) {
+        for (int slot = TOOL_1_HOTBAR_SLOT; slot <= MENU_BUTTON_SLOT; slot++) {
             ItemStack current = inventory.getItem(slot);
             if (current == null || current.getType().isAir() || VirtualItem.isVirtual(current)) {
                 continue;
@@ -374,27 +375,40 @@ public class VirtualInventoryService {
     }
 
     /**
-     * ホットバー右端のスキル表示 2 枠を操作不可のガラスパネルで埋める。
+     * ホットバー右端のツール表示 2 枠とメニュー本を配置する。
      * <p>
-     * 仮想表示アイテムとしてマーカーを付与するため、ドロップ・移動・拾得の
-     * 対象にはならない。既に同じパネルがある場合は再生成しない。
+     * slot 6 / 7 には装備中の採取ツールを表示し、未装備の場合は操作不可の
+     * ガラスパネルを表示する。仮想表示アイテムとしてマーカーを付与するため、
+     * ドロップ・移動・拾得の対象にはならない。既に同じ表示がある場合は再生成しない。
      */
-    private void applyHotbarPanels(PlayerInventory inventory) {
-        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= HOTBAR_PANEL_LAST_SLOT; slot++) {
-            ItemStack current = inventory.getItem(slot);
-            if (VirtualItem.isPlaceholder(current)
-                    && current.getType() == Material.GRAY_STAINED_GLASS_PANE) {
-                continue;
-            }
-            ItemStack panel = VirtualItem.markPlaceholder(
-                    new ItemStack(Material.GRAY_STAINED_GLASS_PANE));
-            inventory.setItem(slot, panel);
-        }
+    private void applyHotbarPanels(PlayerInventory inventory, PlayerData data) {
+        applyToolSlot(inventory, TOOL_1_HOTBAR_SLOT, data.getEquipment(EquipSlot.TOOL_1));
+        applyToolSlot(inventory, TOOL_2_HOTBAR_SLOT, data.getEquipment(EquipSlot.TOOL_2));
 
         ItemStack menuButton = createMenuButton();
         if (!menuButton.isSimilar(inventory.getItem(MENU_BUTTON_SLOT))) {
             inventory.setItem(MENU_BUTTON_SLOT, menuButton);
         }
+    }
+
+    /**
+     * ホットバーのツール表示枠へ、装備中のツールまたは空きスロット表示を配置する。
+     */
+    private void applyToolSlot(PlayerInventory inventory, int slot, ItemStack equipped) {
+        ItemStack current = inventory.getItem(slot);
+        ItemStack display = displayOrEmpty(equipped, null);
+        if (display != null) {
+            if (!matchesDisplay(current, display)) {
+                inventory.setItem(slot, display);
+            }
+            return;
+        }
+        if (VirtualItem.isPlaceholder(current)
+                && current.getType() == Material.GRAY_STAINED_GLASS_PANE) {
+            return;
+        }
+        inventory.setItem(slot, VirtualItem.markPlaceholder(
+                new ItemStack(Material.GRAY_STAINED_GLASS_PANE)));
     }
 
     /**
@@ -1079,7 +1093,7 @@ public class VirtualInventoryService {
 
     private static ItemStack scrollButton(String direction, String label,
                                           int offset, int maxScroll) {
-        ItemStack item = new ItemStack(Material.SPECTRAL_ARROW);
+        ItemStack item = new ItemStack(Material.ARROW);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             int page = offset / BAG_SCROLL_STEP + 1;
@@ -1307,7 +1321,8 @@ public class VirtualInventoryService {
      */
     public static boolean isLockedSlot(int slot) {
         return slot == WEAPON_HOTBAR_SLOT
-                || (slot >= HOTBAR_PANEL_FIRST_SLOT && slot <= HOTBAR_PANEL_LAST_SLOT)
+                || slot == TOOL_1_HOTBAR_SLOT
+                || slot == TOOL_2_HOTBAR_SLOT
                 || slot == MENU_BUTTON_SLOT
                 || slot == BOOTS_SLOT
                 || slot == LEGGINGS_SLOT

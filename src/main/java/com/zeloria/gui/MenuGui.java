@@ -520,10 +520,10 @@ public final class MenuGui implements InventoryHolder {
             }
         }
 
-        // 旧 config に道具枠の定義が無い場合でも、プレイヤーヘッドの左隣 2 枠を
-        // 採取ツール専用枠として確保する（既存の装備枠とは重複させない）。
-        int headSlot = layout.playerHeadSlot();
-        int toolBase = headSlot > 1 ? headSlot - 2 : 6;
+        // 旧 config に道具枠の定義が無い場合でも、下段のコンパス（閉じるボタン）の
+        // 左隣 2 枠を採取ツール専用枠として確保する（既存の装備枠とは重複させない）。
+        int closeSlot = layout.closeSlot();
+        int toolBase = closeSlot > 1 ? closeSlot - 2 : 51;
         EquipSlot[] toolSlots = {EquipSlot.TOOL_1, EquipSlot.TOOL_2};
         for (int index = 0; index < toolSlots.length; index++) {
             EquipSlot toolSlot = toolSlots[index];

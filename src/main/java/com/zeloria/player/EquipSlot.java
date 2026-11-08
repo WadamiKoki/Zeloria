@@ -14,6 +14,8 @@ import java.util.Locale;
  * {@link #match(ItemStack)} で装着先を自動判定する。
  * プレイヤーヘッド左隣の 2 枠（{@link #TOOL_1} / {@link #TOOL_2}）は
  * 採取ツール（{@code ItemCategory.TOOL}）専用の装備枠として扱う。
+ * メニュー GUI では下段のコンパス（閉じるボタン）の左隣 2 枠に配置し、
+ * 装備内容はホットバー slot 6 / 7 に表示する。
  */
 public enum EquipSlot {
 
@@ -127,6 +129,9 @@ public enum EquipSlot {
         }
 
         // メイン武器（"PICKAXE" は "_AXE" で終わらないため誤検知しない）。
+        // プラグイン製の短剣（HOE）・杖（STICK）は ItemData の WeaponData として
+        // 装着先を解決するため、ここではバニラ素材から武器判定しない。
+        // ツルハシ・クワ・棒は道具スロット専用とする。
         if (name.endsWith("_SWORD")
                 || name.endsWith("_AXE")
                 || type == Material.TRIDENT
@@ -140,7 +145,6 @@ public enum EquipSlot {
         if (type == Material.SHIELD
                 || type == Material.TOTEM_OF_UNDYING
                 || type == Material.ARROW
-                || type == Material.SPECTRAL_ARROW
                 || type == Material.TIPPED_ARROW
                 || type == Material.FIREWORK_ROCKET) {
             return OFFHAND;

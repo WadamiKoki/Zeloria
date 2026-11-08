@@ -32,6 +32,7 @@ public class PlayerRepository {
             gathering_levels_json, gathering_exps_json,
             virtual_equipment_base64,
             virtual_inventory_json, virtual_equipment_json, player_settings_json,
+            admin_bonuses_json,
             max_health, current_health, max_mana, current_mana,
             attack_power, defense1, defense2, critical_rate, critical_damage,
             accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -64,6 +65,7 @@ public class PlayerRepository {
                 gathering_levels_json, gathering_exps_json,
                 virtual_equipment_base64,
                 virtual_inventory_json, virtual_equipment_json, player_settings_json,
+                admin_bonuses_json,
                 max_health, current_health, max_mana, current_mana,
                 attack_power, defense1, defense2, critical_rate, critical_damage,
                 accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
@@ -75,7 +77,7 @@ public class PlayerRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      CURRENT_TIMESTAMP)
+                      ?, CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
                 money = VALUES(money),
@@ -91,6 +93,7 @@ public class PlayerRepository {
                 virtual_inventory_json = VALUES(virtual_inventory_json),
                 virtual_equipment_json = VALUES(virtual_equipment_json),
                 player_settings_json = VALUES(player_settings_json),
+                admin_bonuses_json = VALUES(admin_bonuses_json),
                 max_health = VALUES(max_health),
                 current_health = VALUES(current_health),
                 max_mana = VALUES(max_mana),
@@ -298,8 +301,8 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 36 columns（last_updated を除く）, 36 placeholders,
-            // max bind index 36。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 37 columns（last_updated を除く）, 37 placeholders,
+            // max bind index 37。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
@@ -316,6 +319,7 @@ public class PlayerRepository {
             statement.setString(index++, snapshot.virtualInventoryJson());
             statement.setString(index++, snapshot.virtualEquipmentJson());
             statement.setString(index++, snapshot.playerSettingsJson());
+            statement.setString(index++, snapshot.adminBonusesJson());
             statement.setDouble(index++, snapshot.maxHealth());
             statement.setDouble(index++, snapshot.currentHealth());
             statement.setDouble(index++, snapshot.maxMana());
@@ -359,6 +363,7 @@ public class PlayerRepository {
                 rs.getString("virtual_inventory_json"),
                 rs.getString("virtual_equipment_json"),
                 rs.getString("player_settings_json"),
+                rs.getString("admin_bonuses_json"),
                 statOr(rs, "max_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "current_health", PlayerStats.DEFAULT_MAX_HEALTH),
                 statOr(rs, "max_mana", PlayerStats.DEFAULT_MAX_MANA),

@@ -1,6 +1,7 @@
 package com.zeloria.item;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.gui.MenuService;
 import com.zeloria.item.ArmorData;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
@@ -120,9 +121,10 @@ public class EquipmentService {
     }
 
     /**
-     * 仮想装備枠（メイン武器・オフハンド・兜～靴）に 1 つでも装備しているか判定する。
+     * 仮想装備枠（メイン武器・オフハンド・兜～靴・採取ツール 2 枠）に
+     * 1 つでも装備しているか判定する。
      * <p>
-     * クラス変更時に装備品のクラス制限が破綻しないよう、変更前のチェックに使用する。
+     * クラス変更やビルドモード開始時に、装備品の付け替えが必要か確認するために使用する。
      *
      * @param data 対象プレイヤーデータ
      * @return いずれかのスロットに装備がある場合は {@code true}
@@ -132,7 +134,7 @@ public class EquipmentService {
             return false;
         }
         for (EquipSlot slot : EquipSlot.values()) {
-            // 採取ツールはクラス制限を持たないため、クラス変更の判定対象外とする。
+            // 採取ツールはクラス武器種の制限を持たないため、クラス変更の判定対象外とする。
             if (slot.isToolSlot()) {
                 continue;
             }
@@ -203,10 +205,16 @@ public class EquipmentService {
             statsService.apply(player, data);
         }
 
-        // 装備の着脱結果をインベントリの仮想表示（ホットバー slot 0・防具 4 枠）へ反映する。
+        // 装備の着脱結果をインベントリの仮想表示（ホットバー・防具 4 枠）へ反映する。
         VirtualInventoryService virtualInventory = plugin.getVirtualInventoryService();
         if (virtualInventory != null) {
             virtualInventory.refresh(player);
+        }
+
+        // メニューを開いている場合のみ、装備枠の表示も即座に更新する。
+        MenuService menuService = plugin.getMenuService();
+        if (menuService != null && menuService.isMenuOpen(player)) {
+            menuService.refresh(player, data);
         }
     }
 

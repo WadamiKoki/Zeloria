@@ -5,8 +5,14 @@ import com.zeloria.core.YamlLoader;
 import com.zeloria.player.EquipSlot;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,6 +33,21 @@ public class GuiConfigService {
     /** {@code config/} からの相対キー。 */
     private static final String MENU_KEY = "gui/menu.yml";
     private static final String INVENTORY_KEY = "gui/inventory.yml";
+
+    /** 同梱テンプレート（jar 内）の {@code menu.yml} パス。 */
+    private static final String MENU_RESOURCE = "config/" + MENU_KEY;
+
+    /**
+     * 同梱テンプレートとサーバー設定の差分を確認するキー。
+     * <p>
+     * ここに挙げたキーがずれていると、ツール枠の位置がサーバーごとに食い違う。
+     * 起動時に同梱テンプレートの値へ書き換えて保存する。
+     */
+    private static final List<String> MENU_DRIFT_KEYS = List.of(
+            "equipment_slots.tool_1", "equipment_slots.tool_2");
+
+    /** 差分チェック時に「未設定」を表す番兵値。 */
+    private static final int MISSING_SLOT = Integer.MIN_VALUE;
 
     /** {@code inventory.yml} 内の効果音パス。 */
     private static final String INVENTORY_SOUNDS_PATH = "sounds";
@@ -52,16 +73,87 @@ public class GuiConfigService {
         MenuLayout fallbackMenu = MenuLayout.defaults();
         InventorySettings fallbackInventory = InventorySettings.defaults();
 
-        MenuLayout parsedMenu = parseMenu(yamlLoader.getConfig(MENU_KEY), fallbackMenu);
+        FileConfiguration menuConfig = yamlLoader.getConfig(MENU_KEY);
+        // サーバー側のツール枠が同梱テンプレートとずれている場合は、解析前に同梱値へ同期する。
+        syncMenuToolSlots(menuConfig);
+
+        MenuLayout parsedMenu = parseMenu(menuConfig, fallbackMenu);
         InventorySettings parsedInventory =
                 parseInventory(yamlLoader.getConfig(INVENTORY_KEY), fallbackInventory);
         this.menuLayout = parsedMenu;
         this.inventorySettings = parsedInventory;
 
         plugin.getLogger().info("GUI 設定を読み込みました (menu: "
-                + (yamlLoader.getConfig(MENU_KEY) == null ? "default" : "custom")
+                + (menuConfig == null ? "default" : "custom")
                 + ", inventory: " + (yamlLoader.getConfig(INVENTORY_KEY) == null ? "default" : "custom")
                 + ").");
+    }
+
+    /**
+     * サーバー側 {@code menu.yml} のツール枠（{@code equipment_slots.tool_1 / tool_2}）を
+     * 同梱テンプレートの値へ同期する。
+     * <p>
+     * 値が異なる場合のみ、同梱テンプレートの値（51 / 52）を書き込んで保存する。
+     * 他のキーには触れないため、サーバー側のカスタマイズは保持される。
+     *
+     * @param serverConfig サーバー側の {@code menu.yml}（未配置の場合は {@code null}）
+     */
+    private void syncMenuToolSlots(FileConfiguration serverConfig) {
+        if (serverConfig == null) {
+            return;
+        }
+        FileConfiguration bundled = loadBundledMenu();
+        if (bundled == null) {
+            return;
+        }
+
+        List<String> applied = new ArrayList<>();
+        for (String path : MENU_DRIFT_KEYS) {
+            int expected = bundled.getInt(path, MISSING_SLOT);
+            if (expected == MISSING_SLOT) {
+                continue;
+            }
+            int actual = serverConfig.getInt(path, MISSING_SLOT);
+            if (expected == actual) {
+                continue;
+            }
+            serverConfig.set(path, expected);
+            applied.add(path + " (" + describeSlot(actual) + " → " + expected + ")");
+        }
+        if (applied.isEmpty()) {
+            return;
+        }
+
+        Path file = yamlLoader.getConfigFolder().resolve(MENU_KEY);
+        try {
+            serverConfig.save(file.toFile());
+            plugin.getLogger().info("config/gui/menu.yml のツール枠を同梱テンプレートの値へ更新しました: "
+                    + String.join(", ", applied));
+        } catch (IOException e) {
+            plugin.getLogger().warning("config/gui/menu.yml の保存に失敗しました: " + e.getMessage());
+        }
+    }
+
+    /**
+     * jar に同梱された {@code menu.yml} を読み込む。
+     *
+     * @return 同梱設定。リソースが無い・読み込みに失敗した場合は {@code null}
+     */
+    private FileConfiguration loadBundledMenu() {
+        try (InputStream stream = plugin.getResource(MENU_RESOURCE)) {
+            if (stream == null) {
+                return null;
+            }
+            return YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(stream, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            plugin.getLogger().warning("同梱の menu.yml を読み込めませんでした: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static String describeSlot(int slot) {
+        return slot == MISSING_SLOT ? "(未設定)" : String.valueOf(slot);
     }
 
     /**

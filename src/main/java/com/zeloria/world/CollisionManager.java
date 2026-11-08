@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 壁として扱うブロック（{@code config/CollisionData/solid_blocks.yml}）を管理する。
+ * 壁として扱うブロック（{@code config/SystemData/solid_blocks.yml}）を管理する。
  * <p>
  * モブの壁中判定などで「固体ブロックか」を判定するためのホワイトリスト方式の
  * コリジョン判定を提供する。{@link Material#isSolid()} ではなく YAML に列挙された
@@ -24,7 +24,7 @@ import java.util.Set;
 public class CollisionManager {
 
     /** 衝突判定設定の格納ディレクトリ（{@code config/} からの相対パス）。 */
-    private static final String COLLISION_DIRECTORY = "CollisionData/";
+    private static final String COLLISION_DIRECTORY = "SystemData/";
 
     /** 壁ブロックの設定ファイル（{@code config/} からの相対パス）。 */
     private static final String SOLID_BLOCKS_FILE = COLLISION_DIRECTORY + "solid_blocks.yml";
@@ -67,7 +67,7 @@ public class CollisionManager {
     }
 
     /**
-     * {@code CollisionData/solid_blocks.yml} を読み直して壁ブロック一覧を再構築する。
+     * {@code SystemData/solid_blocks.yml} を読み直して壁ブロック一覧を再構築する。
      */
     public synchronized void reload() {
         Set<Material> parsed = EnumSet.noneOf(Material.class);

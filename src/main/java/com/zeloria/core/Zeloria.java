@@ -106,8 +106,7 @@ public final class Zeloria extends JavaPlugin {
             "EntityData",
             "SpawnerData",
             "LayerData",
-            "LevelData",
-            "GatheringData",
+            "SystemData",
             "MessageData",
             "gui"
     );
@@ -166,7 +165,7 @@ public final class Zeloria extends JavaPlugin {
 
     private MobConfigService mobConfigService;
 
-    /** 壁として扱うブロック（{@code config/CollisionData/solid_blocks.yml}）の判定。 */
+    /** 壁として扱うブロック（{@code config/SystemData/solid_blocks.yml}）の判定。 */
     private CollisionManager collisionManager;
 
     /** スポーン済みカスタムモブの実行時ステータス管理。 */
@@ -180,6 +179,9 @@ public final class Zeloria extends JavaPlugin {
 
     /** 被弾時に頭上へフローティングダメージテキストを表示するサービス。 */
     private DamageIndicatorService damageIndicatorService;
+
+    /** モブ撃破報酬（経験値分配・ドロップ付与）のリスナー。 */
+    private MobRewardListener mobRewardListener;
 
     /** スキル発動の検証・コスト消費・効果適用。 */
     private SkillCastService skillCastService;
@@ -714,7 +716,8 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new VirtualInventoryListener(this));
         this.listenerRegistrar.register(new SkillSlotListener(this));
         this.listenerRegistrar.register(new CombatModeListener(this));
-        this.listenerRegistrar.register(new MobRewardListener(this));
+        this.mobRewardListener = new MobRewardListener(this);
+        this.listenerRegistrar.register(this.mobRewardListener);
         this.playerStatusDisplayTask = new PlayerStatusDisplayTask(this);
         this.listenerRegistrar.register(this.playerStatusDisplayTask);
         if (this.classSelectGUI != null) {
@@ -1108,6 +1111,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public MobStatsService getMobStatsService() {
         return mobStatsService;
+    }
+
+    /**
+     * モブ撃破報酬のリスナーを取得する。
+     *
+     * @return プラグインの MobRewardListener（onEnable 前は null）
+     */
+    public MobRewardListener getMobRewardListener() {
+        return mobRewardListener;
     }
 
     /**

@@ -207,6 +207,18 @@ public class YamlLoader {
      * @param key キー
      * @return メッセージ設定。見つからない場合は {@code null}
      */
+    /**
+     * 共有設定フォルダ（{@code config/} のルート）を取得する。
+     * <p>
+     * 設定の読み込みは本クラスが担うが、同梱テンプレートとの同期など
+     * 限定的な書き込みのために参照する。
+     *
+     * @return 共有設定フォルダ
+     */
+    public Path getConfigFolder() {
+        return configFolder;
+    }
+
     public FileConfiguration getMessageConfig(String key) {
         if (key == null || key.isBlank()) {
             return null;

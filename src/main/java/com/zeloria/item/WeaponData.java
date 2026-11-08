@@ -68,7 +68,7 @@ public final class WeaponData extends ItemData {
         String id = text(config.getString("id"), fallback);
         String name = text(config.getString("name"), id);
 
-        List<String> weaponTypes = config.getStringList("weaponTypes");
+        List<String> weaponTypes = readWeaponTypes(sourceKey, config);
 
         // 武器種共通の既定値。個別の武器 YAML で未指定の場合はここで補完する。
         WeaponType primaryType = WeaponType.primary(weaponTypes);
@@ -88,6 +88,101 @@ public final class WeaponData extends ItemData {
                 config.getString("attackSound", primaryType.attackSound()),
                 ItemStatBonus.fromConfig(config)
         );
+    }
+
+    /**
+     * YAML から武器種を読み取る。
+     * <p>
+     * 標準の {@code weaponTypes} に加えて、別名の {@code weapon_types} /
+     * {@code weaponType} / {@code weapon_type} / {@code type} も受理する。
+     * いずれも未指定の場合は読み込み元のパス
+     * （{@code ItemData/weapon/<武器種>/...}）から武器種を推定する。
+     * {@code type} に {@code weapon} などのカテゴリ名が書かれている場合は
+     * 武器種として扱わない。
+     *
+     * @param sourceKey YAML のキャッシュキー
+     * @param config    読み込み済み設定
+     * @return 武器種リスト（未指定の場合は空）
+     */
+    private static List<String> readWeaponTypes(String sourceKey, FileConfiguration config) {
+        List<String> configured = validWeaponTypes(config.getStringList("weaponTypes"));
+        if (configured.isEmpty()) {
+            configured = validWeaponTypes(config.getStringList("weapon_types"));
+        }
+        if (configured.isEmpty()) {
+            String single = null;
+            for (String candidate : new String[]{
+                    config.getString("weaponTypes"),
+                    config.getString("weapon_types"),
+                    config.getString("weaponType"),
+                    config.getString("weapon_type"),
+                    config.getString("type")}) {
+                if (candidate != null && !candidate.isBlank()
+                        && WeaponType.from(candidate) != WeaponType.UNKNOWN) {
+                    single = candidate.trim();
+                    break;
+                }
+            }
+            if (single != null) {
+                configured = List.of(single);
+            }
+        }
+        if (configured.isEmpty()) {
+            String inferred = inferWeaponType(sourceKey);
+            if (inferred != null) {
+                configured = List.of(inferred);
+            }
+        }
+        return configured;
+    }
+
+    /**
+     * 既知の武器種だけを残す。
+     *
+     * @param raw YAML に記載された値
+     * @return 正規化済みの武器種リスト（未知の値は除外）
+     */
+    private static List<String> validWeaponTypes(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        return raw.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty() && WeaponType.from(value) != WeaponType.UNKNOWN)
+                .toList();
+    }
+
+    /**
+     * 読み込み元パスの {@code weapon/<武器種>/} から武器種を推定する。
+     *
+     * @param sourceKey YAML のキャッシュキー
+     * @return 推定した武器種。推定できない場合は {@code null}
+     */
+    private static String inferWeaponType(String sourceKey) {
+        if (sourceKey == null || sourceKey.isBlank()) {
+            return null;
+        }
+        String normalized = sourceKey.replace('\\', '/');
+        int start;
+        if (normalized.startsWith("weapon/")) {
+            start = "weapon/".length();
+        } else {
+            int marker = normalized.indexOf("/weapon/");
+            if (marker < 0) {
+                return null;
+            }
+            start = marker + "/weapon/".length();
+        }
+        int end = normalized.indexOf('/', start);
+        if (end <= start) {
+            return null;
+        }
+        String segment = normalized.substring(start, end);
+        if (WeaponType.from(segment) == WeaponType.UNKNOWN) {
+            return null;
+        }
+        return segment.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     /**

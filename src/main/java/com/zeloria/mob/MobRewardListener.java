@@ -13,6 +13,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -20,6 +21,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -43,6 +45,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * </ul>
  * 分配は「LA: 75% + (25% ÷ N)、その他: 25% ÷ N」とし、切り捨てた端数は LA へ寄せる。
  * ドロップは分配せず、LA 取得者の仮想インベントリへ 100% 付与する。
+ * <p>
+ * バニラの EXP・アイテムドロップは使用しない。レイヤーワールドでは
+ * {@code doMobLoot=false} によりドロップ抽選を抑止し、{@link EntityDeathEvent} でも
+ * EXP とドロップを空にして二重に保証する。
  */
 public class MobRewardListener implements Listener {
 
@@ -74,13 +80,25 @@ public class MobRewardListener implements Listener {
         if (!(event.getEntity() instanceof LivingEntity mob)) {
             return;
         }
-        String mobId = mob.getPersistentDataContainer().get(mobIdKey, PersistentDataType.STRING);
-        if (mobId == null || mobId.isBlank()) {
+        recordAttacker(mob, CombatService.resolvePlayer(event.getDamager()));
+    }
+
+    /**
+     * モブへダメージを与えたプレイヤーを記録する。
+     * <p>
+     * カスタムダメージは HP を直接減算するためバニラのダメージイベントが発生しない。
+     * その場合は {@code CombatService} から本メソッドを呼び出し、
+     * 経験値分配の対象者を記録する。
+     *
+     * @param mob      ダメージを受けたモブ
+     * @param attacker ダメージを与えたプレイヤー（{@code null} は無視）
+     */
+    public void recordAttacker(LivingEntity mob, Player attacker) {
+        if (mob == null || attacker == null) {
             return;
         }
-
-        Player attacker = CombatService.resolvePlayer(event.getDamager());
-        if (attacker == null) {
+        String mobId = mob.getPersistentDataContainer().get(mobIdKey, PersistentDataType.STRING);
+        if (mobId == null || mobId.isBlank()) {
             return;
         }
 
@@ -95,11 +113,21 @@ public class MobRewardListener implements Listener {
 
     /**
      * モブ撃破時に経験値を分配し、LA 取得者へドロップを付与する。
+     * <p>
+     * バニラの EXP・ドロップはプラグイン側（{@link LevelService} /
+     * {@link VirtualInventoryService}）が完全に管理するため、ここで必ず空にする。
+     * キラー未確定（環境ダメージ等）の死亡にも適用するため、早期 return より前に
+     * 実行する。ドロップ抽選自体はワールドの {@code doMobLoot=false} で抑止済みで、
+     * 本処理は他プラグインによる追加分への保険となる。
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity mob = event.getEntity();
         Set<UUID> recorded = attackers.remove(mob.getEntityId());
+
+        // バニラの経験値オーブとアイテムドロップを排除する。
+        event.setDroppedExp(0);
+        event.getDrops().clear();
 
         Player killer = mob.getKiller();
         if (killer == null) {
@@ -123,6 +151,25 @@ public class MobRewardListener implements Listener {
         List<Player> recipients = resolveRecipients(killer, mob.getWorld(), recorded);
         grantExp(data.expReward(), killer, recipients);
         grantDrops(data, killer);
+    }
+
+    /**
+     * チャンクアンロードでデスポーンするモブの攻撃者記録を破棄する。
+     * <p>
+     * モブは死亡時に {@link #onEntityDeath(EntityDeathEvent)} で記録を削除するが、
+     * 死亡せずにアンロードされた場合はエンティティ ID キーが残り続けるため、
+     * アンロード対象のエンティティから明示的に削除する。
+     *
+     * @param event エンティティアンロードイベント
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntitiesUnload(EntitiesUnloadEvent event) {
+        if (attackers.isEmpty()) {
+            return;
+        }
+        for (Entity entity : event.getEntities()) {
+            attackers.remove(entity.getEntityId());
+        }
     }
 
     /**

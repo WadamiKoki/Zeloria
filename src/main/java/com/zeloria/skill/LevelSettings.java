@@ -3,7 +3,7 @@ package com.zeloria.skill;
 import org.bukkit.configuration.file.FileConfiguration;
 
 /**
- * {@code config/LevelData/level_settings.yml} から読み込んだレベル・経験値の設定。
+ * {@code config/SystemData/level_settings.yml} から読み込んだレベル・経験値の設定。
  * <p>
  * 必要経験値は Wynncraft 方式の二次関数で算出する。
  * <ul>

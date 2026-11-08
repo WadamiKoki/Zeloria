@@ -116,6 +116,18 @@ public class PlayerStats {
      */
     private Bonuses treeBonuses = Bonuses.NONE;
 
+    /**
+     * 管理者コマンドで付与された補正値（<b>基礎値とは別枠</b>）。
+     * <p>
+     * {@code /admin stats <player> <type> <value>} の増減は基礎値へ直接書き込まず、
+     * ここへ加算する。取得メソッドは「基礎値 → 管理者補正 → ツリー補正 → 装備補正」の
+     * 順で合算するため、クラス基礎値の再計算（{@code refreshClassStats}）が走っても
+     * 管理者補正は消えない。
+     * <p>
+     * 永続化は {@code players.admin_bonuses_json} に専用カラムとして格納する。
+     */
+    private Bonuses adminBonuses = Bonuses.NONE;
+
     private double maxHealth = DEFAULT_MAX_HEALTH;
     private double currentHealth = DEFAULT_MAX_HEALTH;
 
@@ -229,12 +241,41 @@ public class PlayerStats {
         this.treeBonuses = Bonuses.NONE;
     }
 
+    /**
+     * 管理者コマンドによる補正値を取得する。
+     *
+     * @return 現在適用中の管理者補正（未適用の場合は {@link Bonuses#NONE}）
+     */
+    public synchronized Bonuses getAdminBonuses() {
+        return adminBonuses;
+    }
+
+    /**
+     * 管理者コマンドによる補正値を適用する。
+     * <p>
+     * 基礎値・ツリー補正・装備補正とは独立して保持し、各取得メソッドで
+     * 基礎値の直後に加算する。
+     *
+     * @param adminBonuses 管理者補正（{@code null} は補正なし）
+     */
+    public synchronized void applyAdminBonuses(Bonuses adminBonuses) {
+        this.adminBonuses = adminBonuses == null ? Bonuses.NONE : adminBonuses;
+    }
+
+    /**
+     * 管理者補正を解除する。
+     */
+    public synchronized void clearAdminBonuses() {
+        this.adminBonuses = Bonuses.NONE;
+    }
+
     /* ------------------------------------------------------------------
      * 基本ステータス（取得値は最終値 = 基礎値 + ツリー補正 + 装備補正）
      * ------------------------------------------------------------------ */
 
     public synchronized double getMaxHealth() {
-        return Math.max(MIN_MAX_HEALTH, maxHealth + treeBonuses.maxHealth() + bonuses.maxHealth());
+        return Math.max(MIN_MAX_HEALTH, maxHealth + adminBonuses.maxHealth()
+                + treeBonuses.maxHealth() + bonuses.maxHealth());
     }
 
     /**
@@ -283,7 +324,8 @@ public class PlayerStats {
     }
 
     public synchronized double getMaxMana() {
-        return Math.max(0.0, maxMana + treeBonuses.maxMana() + bonuses.maxMana());
+        return Math.max(0.0, maxMana + adminBonuses.maxMana()
+                + treeBonuses.maxMana() + bonuses.maxMana());
     }
 
     /**
@@ -330,7 +372,8 @@ public class PlayerStats {
     }
 
     public synchronized double getAttackPower() {
-        return attackPower + treeBonuses.attackPower() + bonuses.attackPower();
+        return attackPower + adminBonuses.attackPower()
+                + treeBonuses.attackPower() + bonuses.attackPower();
     }
 
     /**
@@ -354,7 +397,8 @@ public class PlayerStats {
      * @return 第 1 段階の防御力（装備補正込み）
      */
     public synchronized double getDefense1() {
-        return Math.max(0.0, defense1 + treeBonuses.defense1() + bonuses.defense1());
+        return Math.max(0.0, defense1 + adminBonuses.defense1()
+                + treeBonuses.defense1() + bonuses.defense1());
     }
 
     /**
@@ -379,7 +423,8 @@ public class PlayerStats {
      * @return 第 2 段階の防御力（装備補正込み）
      */
     public synchronized double getDefense2() {
-        return Math.max(0.0, defense2 + treeBonuses.defense2() + bonuses.defense2());
+        return Math.max(0.0, defense2 + adminBonuses.defense2()
+                + treeBonuses.defense2() + bonuses.defense2());
     }
 
     /**
@@ -409,7 +454,8 @@ public class PlayerStats {
      * @return 防御貫通率
      */
     public synchronized double getArmorPenetration() {
-        return clamp(armorPenetration + treeBonuses.armorPenetration() + bonuses.armorPenetration(),
+        return clamp(armorPenetration + adminBonuses.armorPenetration()
+                        + treeBonuses.armorPenetration() + bonuses.armorPenetration(),
                 0.0, 1.0);
     }
 
@@ -440,7 +486,8 @@ public class PlayerStats {
      * @return 吸血率
      */
     public synchronized double getLifesteal() {
-        return clamp(lifesteal + treeBonuses.lifesteal() + bonuses.lifesteal(), 0.0, 1.0);
+        return clamp(lifesteal + adminBonuses.lifesteal()
+                + treeBonuses.lifesteal() + bonuses.lifesteal(), 0.0, 1.0);
     }
 
     /**
@@ -467,7 +514,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getCriticalRate() {
-        return clamp(criticalRate + treeBonuses.criticalRate() + bonuses.criticalRate(),
+        return clamp(criticalRate + adminBonuses.criticalRate()
+                        + treeBonuses.criticalRate() + bonuses.criticalRate(),
                 MIN_PERCENT, MAX_PERCENT);
     }
 
@@ -490,7 +538,8 @@ public class PlayerStats {
     }
 
     public synchronized double getCriticalDamage() {
-        return criticalDamage + treeBonuses.criticalDamage() + bonuses.criticalDamage();
+        return criticalDamage + adminBonuses.criticalDamage()
+                + treeBonuses.criticalDamage() + bonuses.criticalDamage();
     }
 
     /**
@@ -516,7 +565,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getAccuracy() {
-        return clamp(accuracy + treeBonuses.accuracy() + bonuses.accuracy(),
+        return clamp(accuracy + adminBonuses.accuracy()
+                        + treeBonuses.accuracy() + bonuses.accuracy(),
                 MIN_PERCENT, MAX_PERCENT);
     }
 
@@ -539,7 +589,8 @@ public class PlayerStats {
     }
 
     public synchronized double getEvasion() {
-        return clamp(evasion + treeBonuses.evasion() + bonuses.evasion(),
+        return clamp(evasion + adminBonuses.evasion()
+                        + treeBonuses.evasion() + bonuses.evasion(),
                 MIN_PERCENT, MAX_PERCENT);
     }
 
@@ -562,7 +613,8 @@ public class PlayerStats {
     }
 
     public synchronized double getDodgeCooldownReduction() {
-        return clamp(dodgeCooldownReduction + treeBonuses.dodgeCooldownReduction()
+        return clamp(dodgeCooldownReduction + adminBonuses.dodgeCooldownReduction()
+                        + treeBonuses.dodgeCooldownReduction()
                         + bonuses.dodgeCooldownReduction(),
                 MIN_REDUCTION, MAX_REDUCTION);
     }
@@ -591,7 +643,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getCooldownReduction() {
-        return clamp(cooldownReduction + treeBonuses.cooldownReduction()
+        return clamp(cooldownReduction + adminBonuses.cooldownReduction()
+                        + treeBonuses.cooldownReduction()
                         + bonuses.cooldownReduction(),
                 MIN_REDUCTION, MAX_REDUCTION);
     }
@@ -620,7 +673,8 @@ public class PlayerStats {
      * ------------------------------------------------------------------ */
 
     public synchronized double getMoveSpeed() {
-        return Math.max(0.0, moveSpeed + treeBonuses.moveSpeed() + bonuses.moveSpeed());
+        return Math.max(0.0, moveSpeed + adminBonuses.moveSpeed()
+                + treeBonuses.moveSpeed() + bonuses.moveSpeed());
     }
 
     /**
@@ -645,7 +699,8 @@ public class PlayerStats {
     }
 
     public synchronized double getHealthRegenFlat() {
-        return healthRegenFlat + treeBonuses.healthRegenFlat() + bonuses.healthRegenFlat();
+        return healthRegenFlat + adminBonuses.healthRegenFlat()
+                + treeBonuses.healthRegenFlat() + bonuses.healthRegenFlat();
     }
 
     /**
@@ -667,7 +722,8 @@ public class PlayerStats {
     }
 
     public synchronized double getHealthRegenPercent() {
-        return healthRegenPercent + treeBonuses.healthRegenPercent() + bonuses.healthRegenPercent();
+        return healthRegenPercent + adminBonuses.healthRegenPercent()
+                + treeBonuses.healthRegenPercent() + bonuses.healthRegenPercent();
     }
 
     /**
@@ -691,7 +747,8 @@ public class PlayerStats {
     }
 
     public synchronized double getManaRegenFlat() {
-        return manaRegenFlat + treeBonuses.manaRegenFlat() + bonuses.manaRegenFlat();
+        return manaRegenFlat + adminBonuses.manaRegenFlat()
+                + treeBonuses.manaRegenFlat() + bonuses.manaRegenFlat();
     }
 
     /**
@@ -713,7 +770,8 @@ public class PlayerStats {
     }
 
     public synchronized double getManaRegenPercent() {
-        return manaRegenPercent + treeBonuses.manaRegenPercent() + bonuses.manaRegenPercent();
+        return manaRegenPercent + adminBonuses.manaRegenPercent()
+                + treeBonuses.manaRegenPercent() + bonuses.manaRegenPercent();
     }
 
     /**
@@ -820,6 +878,42 @@ public class PlayerStats {
                     manaRegenPercent + other.manaRegenPercent,
                     armorPenetration + other.armorPenetration,
                     lifesteal + other.lifesteal
+            );
+        }
+
+        /**
+         * 指定フィールドだけを加算した補正値を返す。
+         * <p>
+         * 管理者コマンドのステータス変更で使用する。フィールド名はこの record の
+         * コンポーネント名（{@code maxHealth} など）と一致させる。
+         *
+         * @param field  加算対象のフィールド名
+         * @param amount 加算値（負の値で減算）
+         * @return 加算後の補正値。未知のフィールドの場合は変更なし
+         */
+        public Bonuses plus(String field, double amount) {
+            if (field == null || amount == 0.0) {
+                return this;
+            }
+            return new Bonuses(
+                    maxHealth + (field.equals("maxHealth") ? amount : 0.0),
+                    maxMana + (field.equals("maxMana") ? amount : 0.0),
+                    attackPower + (field.equals("attackPower") ? amount : 0.0),
+                    defense1 + (field.equals("defense1") ? amount : 0.0),
+                    defense2 + (field.equals("defense2") ? amount : 0.0),
+                    criticalRate + (field.equals("criticalRate") ? amount : 0.0),
+                    criticalDamage + (field.equals("criticalDamage") ? amount : 0.0),
+                    accuracy + (field.equals("accuracy") ? amount : 0.0),
+                    evasion + (field.equals("evasion") ? amount : 0.0),
+                    dodgeCooldownReduction + (field.equals("dodgeCooldownReduction") ? amount : 0.0),
+                    cooldownReduction + (field.equals("cooldownReduction") ? amount : 0.0),
+                    moveSpeed + (field.equals("moveSpeed") ? amount : 0.0),
+                    healthRegenFlat + (field.equals("healthRegenFlat") ? amount : 0.0),
+                    healthRegenPercent + (field.equals("healthRegenPercent") ? amount : 0.0),
+                    manaRegenFlat + (field.equals("manaRegenFlat") ? amount : 0.0),
+                    manaRegenPercent + (field.equals("manaRegenPercent") ? amount : 0.0),
+                    armorPenetration + (field.equals("armorPenetration") ? amount : 0.0),
+                    lifesteal + (field.equals("lifesteal") ? amount : 0.0)
             );
         }
     }
