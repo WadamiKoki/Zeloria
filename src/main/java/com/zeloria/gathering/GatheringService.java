@@ -2,6 +2,7 @@ package com.zeloria.gathering;
 
 import com.zeloria.core.YamlLoader;
 import com.zeloria.core.Zeloria;
+import com.zeloria.player.LevelUpNotifier;
 import com.zeloria.player.PlayerData;
 import java.util.Objects;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -140,8 +141,9 @@ public class GatheringService {
      * ギャザリング経験値を付与し、必要に応じてレベルアップさせる。
      * <p>
      * 1 回の付与で複数レベル上がる場合にも対応する。最大レベル到達時は
-     * 余剰経験値を保持せず 0 にする。負の値が指定された場合は現在の
-     * 経験値のみを減算し、レベルは下げない（0 未満にはしない）。
+     * 余剰経験値を切り捨て、到達時点の満タン値（1 つ前のレベルに必要な経験値）を
+     * 保持する。負の値が指定された場合は現在の経験値のみを減算し、
+     * レベルは下げない（0 未満にはしない）。
      *
      * @param data   対象データ（{@code null} の場合は何もしない）
      * @param type   ギャザリング種別
@@ -168,7 +170,12 @@ public class GatheringService {
         }
 
         if (level >= max) {
-            // カンスト時は加算せず、既存の経験値はそのまま保持する。
+            // カンスト時は加算しない。経験値バーは常に満タン表示に揃える。
+            long maxExp = requiredExp(type, Math.max(1, max - 1));
+            if (exp != maxExp) {
+                exp = maxExp;
+                data.setGatheringExp(type, exp);
+            }
             return new GatheringResult(type, oldLevel, oldLevel, 0, exp, 0L);
         }
 
@@ -189,7 +196,8 @@ public class GatheringService {
             levelsGained++;
         }
         if (level >= max) {
-            exp = 0L;
+            // 上限到達時は余剰分を切り捨て、満タン表示にする。
+            exp = requiredExp(type, Math.max(1, max - 1));
         }
 
         data.setGatheringLevel(type, level);
@@ -198,6 +206,7 @@ public class GatheringService {
         if (levelsGained > 0) {
             plugin.getLogger().info("ギャザリングレベルアップ: " + data.getName()
                     + " " + type.displayName() + " Lv." + oldLevel + " -> Lv." + level);
+            LevelUpNotifier.notifyGathering(plugin, data, type, level);
         }
 
         return new GatheringResult(

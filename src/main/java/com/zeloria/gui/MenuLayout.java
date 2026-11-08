@@ -88,6 +88,8 @@ public record MenuLayout(
      */
     public static MenuLayout defaults() {
         Map<EquipSlot, Integer> equipment = new EnumMap<>(EquipSlot.class);
+        equipment.put(EquipSlot.TOOL_1, 6);
+        equipment.put(EquipSlot.TOOL_2, 7);
         equipment.put(EquipSlot.HELMET, 16);
         equipment.put(EquipSlot.OFFHAND, 24);
         equipment.put(EquipSlot.CHESTPLATE, 25);
@@ -115,8 +117,10 @@ public record MenuLayout(
                         "equip", new GuiSound("item.armor.equip_generic", 0.9f, 1.1f)
                 ),
                 Map.of(),
-                List.of(new MenuFeature("class_select", 0, "class_select",
-                        "class_select", "zeloria.player"))
+                List.of(
+                        new MenuFeature("class_select", 0, "class_select",
+                                "class_select", "zeloria.player")
+                )
         );
     }
 

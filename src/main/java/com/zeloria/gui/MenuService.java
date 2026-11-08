@@ -2,10 +2,15 @@ package com.zeloria.gui;
 
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
+import com.zeloria.item.ArmorData;
 import com.zeloria.item.EquipmentService;
+import com.zeloria.item.ItemCategory;
 import com.zeloria.item.ItemData;
 import com.zeloria.item.ItemService;
 import com.zeloria.item.VirtualInventoryService;
+import com.zeloria.item.VirtualItem;
+import com.zeloria.item.WeaponData;
+import com.zeloria.player.PlayerSettings;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
@@ -350,6 +355,9 @@ public class MenuService {
 
         if (menu.isFeatureSlot(slot)) {
             MenuFeature feature = menu.featureAt(slot);
+            if (toggleChatLogSetting(player, data, menu, feature)) {
+                return;
+            }
             playSound(player, SOUND_CLICK);
             handleFeatureClick(player, feature);
             return;
@@ -357,6 +365,44 @@ public class MenuService {
 
         // 空き枠（持ち出しは行わない）。
         playSound(player, SOUND_CLICK);
+    }
+
+    /**
+     * レベルアップ通知設定のトグルクリックを処理する。
+     *
+     * @return 設定トグルのクリックとして処理した場合は {@code true}
+     */
+    private boolean toggleChatLogSetting(Player player, PlayerData data,
+                                         MenuGui menu, MenuFeature feature) {
+        if (feature == null || !feature.isAvailableTo(player)) {
+            return false;
+        }
+        String action = feature.action().toLowerCase(java.util.Locale.ROOT);
+        boolean self = MenuGui.ACTION_CHAT_LOG_SELF.equals(action);
+        boolean others = MenuGui.ACTION_CHAT_LOG_OTHERS.equals(action);
+        if (!self && !others) {
+            return false;
+        }
+
+        PlayerSettings settings = data.getSettings();
+        PlayerSettings updated = self
+                ? settings.withChatLogSelf(!settings.chatLogSelf())
+                : settings.withChatLogOthers(!settings.chatLogOthers());
+        data.setSettings(updated);
+
+        com.zeloria.player.PlayerService playerService = plugin.getPlayerService();
+        if (playerService != null) {
+            playerService.save(player.getUniqueId(), player.getName());
+        }
+
+        boolean enabled = self ? updated.chatLogSelf() : updated.chatLogOthers();
+        String target = self ? "自分のレベルアップログ" : "他人のレベルアップログ";
+        playSound(player, SOUND_CLICK);
+        notify(player, (enabled ? "<green>" : "<red>") + target
+                + "を " + (enabled ? "ON" : "OFF") + " にしました。</"
+                + (enabled ? "green" : "red") + ">");
+        menu.render(player, data);
+        return true;
     }
 
     /**
@@ -373,16 +419,18 @@ public class MenuService {
 
         ItemStack cursor = event.getCursor();
         if (cursor != null && !cursor.getType().isAir()) {
-            if (!equipSlot.accepts(cursor)) {
+            if (!acceptsSlot(equipSlot, cursor)) {
                 playSound(player, SOUND_ERROR);
                 notify(player, "<red>この枠には " + equipSlot.getDisplayName() + " しか装着できません。</red>");
                 return;
             }
-            EquipmentService equipmentService = plugin.getEquipmentService();
-            if (equipmentService != null && !equipmentService.canEquip(player, cursor)) {
-                playSound(player, SOUND_ERROR);
-                notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
-                return;
+            if (!equipSlot.isToolSlot()) {
+                EquipmentService equipmentService = plugin.getEquipmentService();
+                if (equipmentService != null && !equipmentService.canEquip(player, cursor)) {
+                    playSound(player, SOUND_ERROR);
+                    notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
+                    return;
+                }
             }
             if (!beginEquipmentClick(player)) {
                 return;
@@ -421,13 +469,20 @@ public class MenuService {
             return;
         }
 
+        // 仮想ストレージの表示アイテムは VirtualInventoryListener が
+        // 装備処理まで担当するため、ここでは二重処理しない。
+        if (VirtualInventoryService.isBagSlot(event.getSlot())
+                || VirtualItem.isVirtual(item)) {
+            return;
+        }
+
         // カーソルに別のアイテムを持っている間は、バニラの入れ替え操作を優先する。
         ItemStack cursor = event.getCursor();
         if (cursor != null && !cursor.getType().isAir()) {
             return;
         }
 
-        EquipSlot equipSlot = EquipSlot.match(item);
+        EquipSlot equipSlot = resolveEquipSlot(data, item);
         if (equipSlot == null) {
             return;
         }
@@ -437,6 +492,85 @@ public class MenuService {
             return;
         }
         equipFromPlayerInventory(player, data, menu, event.getSlot(), item, equipSlot);
+    }
+
+    /**
+     * 装備枠が指定アイテムを受け入れられるか判定する。
+     * <p>
+     * 道具枠は {@code ItemCategory.TOOL} のプラグイン製ツールのみを許可する。
+     * それ以外の枠ではアイテム定義（防具の装着位置・武器種別）を優先し、
+     * 定義が無いバニラアイテムは素材から判定する。
+     */
+    private boolean acceptsSlot(EquipSlot equipSlot, ItemStack item) {
+        if (equipSlot == null || item == null || item.getType().isAir()) {
+            return false;
+        }
+        ItemService itemService = plugin.getItemService();
+        ItemData definition = itemService == null
+                ? null
+                : itemService.findItem(item).orElse(null);
+        if (equipSlot.isToolSlot()) {
+            return definition != null && definition.category() == ItemCategory.TOOL;
+        }
+        if (definition != null) {
+            if (definition.category() == ItemCategory.TOOL) {
+                return false;
+            }
+            if (definition instanceof ArmorData armor) {
+                return armor.equipmentSlot() == equipSlot;
+            }
+            if (definition instanceof WeaponData) {
+                return equipSlot == EquipSlot.MAIN_WEAPON;
+            }
+        }
+        return equipSlot.accepts(item);
+    }
+
+    /**
+     * 物理インベントリのアイテムから装着先スロットを解決する。
+     */
+    private EquipSlot resolveEquipSlot(PlayerData data, ItemStack item) {
+        ItemService itemService = plugin.getItemService();
+        ItemData definition = itemService == null
+                ? null
+                : itemService.findItem(item).orElse(null);
+        if (definition == null) {
+            return EquipSlot.match(item);
+        }
+        if (definition.category() == ItemCategory.TOOL) {
+            return resolveToolSlot(data, definition);
+        }
+        if (definition instanceof ArmorData armor) {
+            return armor.equipmentSlot();
+        }
+        if (definition instanceof WeaponData) {
+            return EquipSlot.MAIN_WEAPON;
+        }
+        return EquipSlot.match(item);
+    }
+
+    /**
+     * 採取ツールを配置する道具枠を解決する。
+     */
+    private EquipSlot resolveToolSlot(PlayerData data, ItemData definition) {
+        EquipSlot[] toolSlots = {EquipSlot.TOOL_1, EquipSlot.TOOL_2};
+        ItemService itemService = plugin.getItemService();
+        for (EquipSlot slot : toolSlots) {
+            ItemStack equipped = data.getEquipment(slot);
+            if (equipped == null || itemService == null) {
+                continue;
+            }
+            ItemData equippedDefinition = itemService.findItem(equipped).orElse(null);
+            if (equippedDefinition != null && equippedDefinition.id().equals(definition.id())) {
+                return slot;
+            }
+        }
+        for (EquipSlot slot : toolSlots) {
+            if (data.getEquipment(slot) == null) {
+                return slot;
+            }
+        }
+        return EquipSlot.TOOL_1;
     }
 
     /**
@@ -467,7 +601,8 @@ public class MenuService {
                                  EquipSlot equipSlot, ItemStack cursor) {
         ItemStack equipped = cursor.clone();
         EquipmentService equipmentService = plugin.getEquipmentService();
-        if (equipmentService != null && !equipmentService.meetsRequiredLevel(player, equipped)) {
+        if (!equipSlot.isToolSlot() && equipmentService != null
+                && !equipmentService.meetsRequiredLevel(player, equipped)) {
             playSound(player, SOUND_ERROR);
             MessageService messages = plugin.getMessageService();
             if (messages != null) {
@@ -495,12 +630,14 @@ public class MenuService {
     private void equipFromPlayerInventory(Player player, PlayerData data, MenuGui menu,
                                           int playerSlot, ItemStack item, EquipSlot equipSlot) {
         EquipmentService equipmentService = plugin.getEquipmentService();
-        if (equipmentService != null && !equipmentService.canEquip(player, item)) {
+        boolean toolSlot = equipSlot.isToolSlot();
+        if (!toolSlot && equipmentService != null && !equipmentService.canEquip(player, item)) {
             playSound(player, SOUND_ERROR);
             notify(player, "<red>現在のクラスではこの武器を装着できません。</red>");
             return;
         }
-        if (equipmentService != null && !equipmentService.meetsRequiredLevel(player, item)) {
+        if (!toolSlot && equipmentService != null
+                && !equipmentService.meetsRequiredLevel(player, item)) {
             playSound(player, SOUND_ERROR);
             MessageService messages = plugin.getMessageService();
             if (messages != null) {
@@ -525,6 +662,9 @@ public class MenuService {
      * <p>
      * 物理インベントリには戻さず、必ず {@link VirtualInventoryService#addItem} 経由で
      * 仮想装備ストレージへ格納する。満杯で格納できない場合は装備枠に残す。
+     * <p>
+     * プラグイン製アイテムではない装備（バニラの防具・プレイヤーの頭など）は
+     * 仮想ストレージへ戻せないため、ホットバーの空き枠へ直接返す。
      */
     private void unequip(Player player, PlayerData data, MenuGui menu, EquipSlot equipSlot) {
         if (equipSlot == null) {
@@ -543,11 +683,26 @@ public class MenuService {
         ItemData definition = itemService == null
                 ? null
                 : itemService.findItem(equipped).orElse(null);
-        if (virtualInventory == null || definition == null) {
+        if (virtualInventory == null) {
             playSound(player, SOUND_ERROR);
-            notify(player, "<red>この装備は装備保管庫へ戻せません。運営に報告してください。</red>");
+            notify(player, "<red>この装備は外せません。運営に報告してください。</red>");
             return;
         }
+
+        if (definition == null) {
+            // プラグイン管理外の装備は仮想ストレージへ格納できない。
+            if (!returnToPlayerInventory(player, equipped)) {
+                playSound(player, SOUND_ERROR);
+                notify(player, "<red>ホットバーに空きがありません。装備を外す場所を空けてください。</red>");
+                return;
+            }
+            data.setEquipment(equipSlot, null);
+            playSound(player, SOUND_EQUIP);
+            recompute(player);
+            menu.render(player, data);
+            return;
+        }
+
         if (virtualInventory.addItem(player, definition.id(), 1L) <= 0L) {
             playSound(player, SOUND_ERROR);
             notify(player, "<red>装備保管庫がいっぱいです。不要な装備を捨てるか、保管庫へ移動してから外してください。</red>");
@@ -559,6 +714,29 @@ public class MenuService {
         playSound(player, SOUND_EQUIP);
         recompute(player);
         menu.render(player, data);
+    }
+
+    /**
+     * プラグイン管理外の装備をホットバーの空き枠へ戻す。
+     * <p>
+     * 武器表示枠（0）・パネル枠（6〜8）は操作対象外のため、1〜5 のみを対象とする。
+     *
+     * @return 戻せた場合は {@code true}
+     */
+    private static boolean returnToPlayerInventory(Player player, ItemStack item) {
+        if (player == null || item == null || item.getType().isAir()) {
+            return false;
+        }
+
+        org.bukkit.inventory.PlayerInventory inventory = player.getInventory();
+        for (int slot = 1; slot <= 5; slot++) {
+            ItemStack current = inventory.getItem(slot);
+            if (current == null || current.getType().isAir()) {
+                inventory.setItem(slot, item.clone());
+                return true;
+            }
+        }
+        return false;
     }
 
     /* ------------------------------------------------------------------

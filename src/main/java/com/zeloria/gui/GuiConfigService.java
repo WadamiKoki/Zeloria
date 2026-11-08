@@ -119,7 +119,8 @@ public class GuiConfigService {
         Map<Integer, String> decorations = readDecorations(config, fallback.decorations());
         Map<String, GuiSound> sounds = readSounds(config, "sounds", fallback.sounds());
         Map<String, GuiIcon> icons = readIcons(config, "icons", fallback.icons());
-        List<MenuFeature> features = readFeatures(config, fallback.features());
+        List<MenuFeature> features = new ArrayList<>(readFeatures(config, fallback.features()));
+        features.addAll(readToggleFeatures(config));
 
         return new MenuLayout(title, rows, closeSlot, playerHeadSlot, fillers, equipmentSlots,
                 decorations, sounds, icons, features);
@@ -201,6 +202,35 @@ public class GuiConfigService {
             }
         }
         return result.isEmpty() ? fallback : result;
+    }
+
+    /**
+     * {@code toggles} セクションからレベルアップ通知トグルを生成する。
+     * <p>
+     * {@code self-log-slot} / {@code others-log-slot} が定義されている場合だけ
+     * ボタンを配置する。未定義の場合は空きスロットへの自動配置を行わない。
+     */
+    private static List<MenuFeature> readToggleFeatures(FileConfiguration config) {
+        ConfigurationSection section = config.getConfigurationSection("toggles");
+        if (section == null) {
+            return List.of();
+        }
+
+        List<MenuFeature> result = new ArrayList<>(2);
+        addToggleFeature(result, section, "self-log-slot",
+                "chat_log_self", MenuGui.ACTION_CHAT_LOG_SELF);
+        addToggleFeature(result, section, "others-log-slot",
+                "chat_log_others", MenuGui.ACTION_CHAT_LOG_OTHERS);
+        return result;
+    }
+
+    private static void addToggleFeature(List<MenuFeature> result, ConfigurationSection section,
+                                         String slotKey, String id, String action) {
+        int slot = section.getInt(slotKey, -1);
+        if (slot < 0) {
+            return;
+        }
+        result.add(new MenuFeature(id, slot, id, action, "zeloria.player"));
     }
 
     /* ------------------------------------------------------------------

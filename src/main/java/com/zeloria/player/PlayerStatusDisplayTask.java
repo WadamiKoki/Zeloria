@@ -1,5 +1,6 @@
 package com.zeloria.player;
 
+import com.zeloria.combat.CombatActionBarTask;
 import com.zeloria.combat.CombatService;
 import com.zeloria.core.Zeloria;
 import net.kyori.adventure.text.Component;
@@ -29,9 +30,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * プレイヤーの頭上へ HP / MP を常時表示するタスク。
  * <p>
  * {@link TextDisplay} をプレイヤーの passenger（乗り物扱い）として装着するため、
- * プレイヤーが移動・テレポートしても表示が追従する。1 秒ごとに
- * {@link PlayerStats} の最新値を読み直し、表示内容を更新する。同じ周期で
- * バニラの体力バー・満腹度（MP バー）・レベル・経験値バーも強制的に同期する。
+ * プレイヤーが移動・テレポートしても表示が追従する。{@link PlayerStats} の
+ * 最新値を読み直し、表示内容を更新する。更新周期は非戦闘時が 3 秒、
+ * 戦闘モード中は 1 秒で、戦闘判定は
+ * {@link CombatActionBarTask#isInCombatMode(Zeloria, Player)} と共通である。
+ * 同じ周期でバニラの体力バー・満腹度（MP バー）・レベル・経験値バーも強制的に同期する。
  * <p>
  * 死亡中・独自死亡の待機中・データ未読み込みのプレイヤーは表示を消去し、
  * リスポーン後に自動で再生成する。退出時は {@link PlayerQuitEvent} で表示を破棄する。
@@ -39,8 +42,19 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener {
 
-    /** タスクの実行周期（ティック）。20 ティック = 1 秒。 */
+    /**
+     * タスクの実行周期（ティック）。20 ティック = 1 秒。
+     * <p>
+     * 非戦闘時はこの周期で経過時間を確認し、3 秒ごとに実際の更新を行う。
+     * 戦闘モード中は毎周期（1 秒）更新する。
+     */
     public static final long PERIOD_TICKS = 20L;
+
+    /** 非戦闘時の表示・バニラ同期の間隔（ミリ秒）。 */
+    private static final long OUT_OF_COMBAT_INTERVAL_MILLIS = 3_000L;
+
+    /** 戦闘モード中の表示・バニラ同期の間隔（ミリ秒）。 */
+    private static final long COMBAT_INTERVAL_MILLIS = 1_000L;
 
     /**
      * {@link #suspend(Player)} が解除されない場合に自動復帰するまでの tick（10 秒）。
@@ -60,6 +74,9 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     /** プレイヤー UUID → 頭上表示エンティティ。 */
     private final Map<UUID, TextDisplay> displays = new HashMap<>();
 
+    /** プレイヤー UUID → 最後に表示・バニラ同期を完了した時刻（ミリ秒）。 */
+    private final Map<UUID, Long> lastSyncAt = new HashMap<>();
+
     /**
      * テレポート中など、passenger を外しておくプレイヤーの UUID。
      * <p>
@@ -75,13 +92,41 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     @Override
     public void run() {
+        long now = System.currentTimeMillis();
         for (Player player : Bukkit.getOnlinePlayers()) {
             // テレポート完了待ちの間は passenger を再装着しない。
             if (suspended.contains(player.getUniqueId())) {
                 continue;
             }
+
+            // 戦闘モード中は毎秒、非戦闘時は 3 秒ごとに更新する。
+            long interval = CombatActionBarTask.isInCombatMode(plugin, player)
+                    ? COMBAT_INTERVAL_MILLIS
+                    : OUT_OF_COMBAT_INTERVAL_MILLIS;
+            Long last = lastSyncAt.get(player.getUniqueId());
+            if (last != null && now - last < interval) {
+                continue;
+            }
+
             update(player);
+            lastSyncAt.put(player.getUniqueId(), now);
         }
+    }
+
+    /**
+     * 指定プレイヤーの頭上表示とバニラ status 表示を即時同期する（メインスレッド専用）。
+     * <p>
+     * 被弾時など、次回の定期同期を待たずに HP 表示を反映したい場合に呼び出す。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void refresh(Player player) {
+        if (player == null || !player.isOnline()
+                || suspended.contains(player.getUniqueId())) {
+            return;
+        }
+        update(player);
+        lastSyncAt.put(player.getUniqueId(), System.currentTimeMillis());
     }
 
     /**
@@ -106,7 +151,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         }
 
         // 空腹・自然減少・バニラのレベル操作などでバニラ側の値がずれるため、
-        // 表示更新の有無に関わらず毎秒強制的に同期する。
+        // 戦闘中は毎秒、非戦闘時は 3 秒ごとに強制的に同期する。
         syncVanillaStatus(player, data);
 
         TextDisplay display = displays.get(player.getUniqueId());
@@ -131,10 +176,11 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     }
 
     /**
-     * RPG ステータスをバニラの体力バー・満腹度（MP バー）・レベル・経験値バーへ毎秒反映する。
+     * RPG ステータスをバニラの体力バー・満腹度（MP バー）・レベル・経験値バーへ反映する。
      * <p>
      * バニラの空腹による体力減少や自然回復、レベル操作などでバニラ側の値がずれるため、
-     * ステータス変更の有無に関わらず常に上書きする。
+     * ステータス変更の有無に関わらず常に上書きする。呼び出し周期は
+     * {@link #run()} が決める（戦闘中は 1 秒、非戦闘時は 3 秒）。
      *
      * @param player 対象プレイヤー
      * @param data   反映するプレイヤーデータ
@@ -294,6 +340,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         suspended.remove(playerId);
+        lastSyncAt.remove(playerId);
         remove(playerId);
     }
 
@@ -307,6 +354,7 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
             }
         }
         displays.clear();
+        lastSyncAt.clear();
         suspended.clear();
         cancel();
     }

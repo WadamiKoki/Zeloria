@@ -1,6 +1,7 @@
 package com.zeloria.skill;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.player.LevelUpNotifier;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStatsService;
@@ -98,8 +99,9 @@ public class LevelService {
      * 付与する。クラス未選択の場合は経験値を付与しない。
      * <p>
      * 1 回の付与で複数レベル上がる場合にも対応する。最大レベル到達時は
-     * 余剰経験値を保持せず、必要経験値ちょうどで停止する。既に最大レベルへ
-     * 到達している場合は経験値を一切加算しない。
+     * 余剰経験値を切り捨て、到達時点の満タン値（1 つ前のレベルに必要な経験値）を
+     * 保持する。既に最大レベルへ到達している場合は経験値を加算しないが、
+     * 保存値が 0 の場合は満タン値へ補正する。
      *
      * @param data   対象データ（{@code null} の場合は何もしない）
      * @param amount 付与量
@@ -117,14 +119,22 @@ public class LevelService {
         }
 
         int maxLevel = settings.maxLevel();
+        long maxLevelExp = settings.requiredExp(Math.max(1, maxLevel - 1));
         int oldLevel = data.getClassLevel(classId);
         if (oldLevel >= maxLevel) {
-            // カンスト時はそれ以上経験値を加算せず、既存の経験値は保持する。
-            return new LevelResult(oldLevel, oldLevel, 0, data.getClassExp(classId), 0L);
+            // カンスト時はそれ以上経験値を加算しない。過去に 0 で保存されていた場合は
+            // 経験値バーが空のままにならないよう満タン値へ補正する。
+            long currentExp = data.getClassExp(classId);
+            if (currentExp != maxLevelExp) {
+                currentExp = maxLevelExp;
+                data.setClassExp(classId, currentExp);
+            }
+            return new LevelResult(oldLevel, oldLevel, 0, currentExp, 0L);
         }
 
         int level = oldLevel;
-        long exp = data.getClassExp(classId) + amount;
+        long exp = data.getClassExp(classId);
+        exp = exp > Long.MAX_VALUE - amount ? Long.MAX_VALUE : exp + amount;
         int levelsGained = 0;
 
         while (level < maxLevel) {
@@ -138,9 +148,9 @@ public class LevelService {
         }
 
         if (level >= maxLevel) {
-            // 上限到達時は次レベルが存在しないため、端数を切り捨てる。
+            // 上限到達時は次レベルが存在しないため、余剰分は切り捨てて満タン表示にする。
             level = maxLevel;
-            exp = 0L;
+            exp = maxLevelExp;
         }
 
         data.setClassLevel(classId, level);
@@ -159,6 +169,11 @@ public class LevelService {
         Player player = data.getUuid() == null ? null : Bukkit.getPlayer(data.getUuid());
         if (statsService != null && player != null) {
             statsService.syncVanillaStats(player, data);
+        }
+
+        // レベルアップ通知（チャット・効果音・パーティクル）は各プレイヤーの設定に従う。
+        if (levelsGained > 0) {
+            LevelUpNotifier.notifyClass(plugin, data, level);
         }
 
         return new LevelResult(oldLevel, level, levelsGained, exp, settings.requiredExp(level));

@@ -4,6 +4,7 @@ import com.zeloria.gathering.GatheringService;
 import com.zeloria.gathering.GatheringType;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
+import com.zeloria.player.PlayerSettings;
 import com.zeloria.player.PlayerStats;
 import com.zeloria.skill.ClassManager;
 import com.zeloria.skill.LevelService;
@@ -46,6 +47,12 @@ public final class MenuGui implements InventoryHolder {
 
     /** 機能アイコンのフォールバック Material。 */
     private static final Material FEATURE_FALLBACK_MATERIAL = Material.PAPER;
+
+    /** 自分のレベルアップ通知を切り替えるメニューアクション。 */
+    public static final String ACTION_CHAT_LOG_SELF = "chat_log_self";
+
+    /** 他人のレベルアップ通知を切り替えるメニューアクション。 */
+    public static final String ACTION_CHAT_LOG_OTHERS = "chat_log_others";
 
     private final UUID playerId;
     private final MenuLayout layout;
@@ -148,7 +155,7 @@ public final class MenuGui implements InventoryHolder {
 
         renderDecorations();
         renderEquipment(data);
-        renderFeatures(player);
+        renderFeatures(player, data);
         renderPlayerHead(player, data);
         renderCloseButton();
     }
@@ -183,8 +190,8 @@ public final class MenuGui implements InventoryHolder {
             EquipSlot equipSlot = entry.getValue();
             ItemStack equipped = data.getEquipment(equipSlot);
             if (equipped == null) {
-                // 空き装備枠はバリアで示し、装備すると表示されることを案内する。
-                inventory.setItem(guiSlot, createEmptySlotItem());
+                // 空き枠は枠アイコン（道具枠は額縁、それ以外はバリア）で示す。
+                inventory.setItem(guiSlot, createEmptySlotItem(equipSlot));
             } else {
                 inventory.setItem(guiSlot, decorateEquipped(equipped, equipSlot));
             }
@@ -197,11 +204,16 @@ public final class MenuGui implements InventoryHolder {
      * 権限を持たない機能は表示しない。ここでは表示のみを担当し、
      * クリック時の実処理は {@link MenuService#handleFeatureClick} が担う。
      */
-    private void renderFeatures(Player player) {
+    private void renderFeatures(Player player, PlayerData data) {
         for (Map.Entry<Integer, MenuFeature> entry : featureSlots.entrySet()) {
             int guiSlot = entry.getKey();
             MenuFeature feature = entry.getValue();
             if (!isValidSlot(guiSlot) || !feature.isAvailableTo(player)) {
+                continue;
+            }
+
+            // 設定トグルは ON / OFF に応じてアイコンと Lore を動的に切り替える。
+            if (renderSettingFeature(guiSlot, feature, data)) {
                 continue;
             }
 
@@ -212,6 +224,41 @@ public final class MenuGui implements InventoryHolder {
                     : icon.createItem(Map.of("id", feature.id(), "action", feature.action()));
             inventory.setItem(guiSlot, item);
         }
+    }
+
+    /**
+     * レベルアップ通知設定のトグルボタンを描画する。
+     *
+     * @return 設定トグルとして描画した場合は {@code true}
+     */
+    private boolean renderSettingFeature(int guiSlot, MenuFeature feature, PlayerData data) {
+        String action = feature.action().toLowerCase(Locale.ROOT);
+        boolean self = ACTION_CHAT_LOG_SELF.equals(action);
+        boolean others = ACTION_CHAT_LOG_OTHERS.equals(action);
+        if (!self && !others) {
+            return false;
+        }
+
+        PlayerSettings settings = data.getSettings();
+        boolean enabled = self ? settings.chatLogSelf() : settings.chatLogOthers();
+        ItemStack item = new ItemStack(enabled ? Material.LIME_DYE : Material.GRAY_DYE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            String title = self ? "自分のレベルアップログ" : "他人のレベルアップログ";
+            meta.displayName(MINI.deserialize("<!italic><white>" + title + ": "
+                    + (enabled ? "<green>ON</green>" : "<red>OFF</red>")));
+            meta.lore(List.of(
+                    MINI.deserialize("<!italic><gray>クリックで ON / OFF を切り替えます</gray>"),
+                    MINI.deserialize("<!italic><dark_gray>"
+                            + (self
+                            ? "自分のレベルアップ通知をチャットに表示します"
+                            : "他のプレイヤーのレベルアップ通知をチャットに表示します")
+                            + "</dark_gray>")));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        inventory.setItem(guiSlot, item);
+        return true;
     }
 
     /**
@@ -229,9 +276,14 @@ public final class MenuGui implements InventoryHolder {
         PlayerStats stats = data.getStats();
         int classLevel = data.getCurrentClassLevel();
         long classExp = data.getCurrentClassExp();
-        long requiredExp = classLevel <= 0 || levelService == null
+        boolean maxLevel = levelService != null && classLevel >= levelService.maxLevel();
+        long requiredExp = classLevel <= 0 || levelService == null || maxLevel
                 ? 0L
                 : levelService.requiredExp(classLevel);
+        String expDisplay = maxLevel
+                ? "<gold>MAX</gold>"
+                : "<white>" + formatLong(classExp) + "</white>/<white>"
+                        + formatLong(requiredExp) + "</white>";
 
         ItemStack item = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta meta = item.getItemMeta();
@@ -242,9 +294,14 @@ public final class MenuGui implements InventoryHolder {
             meta.displayName(MINI.deserialize("<!italic><white>" + player.getName() + "</white>"));
             List<Component> lore = new ArrayList<>();
             lore.add(MINI.deserialize("<!italic><gray>レベル: <yellow>" + classLevel
-                    + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: <white>"
-                    + formatLong(classExp) + "</white>/<white>"
-                    + formatLong(requiredExp) + "</white></gray>"));
+                    + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: "
+                    + expDisplay + "</gray>"));
+            Component currentClass = classManager == null
+                    ? MINI.deserialize("<!italic><gray>未選択</gray>")
+                    : classManager.current(data.getClassData())
+                            .map(definition -> definition.displayName())
+                            .orElseGet(() -> MINI.deserialize("<!italic><gray>未選択</gray>"));
+            lore.add(MINI.deserialize("<!italic><gray>クラス: </gray>").append(currentClass));
             lore.add(MINI.deserialize("<!italic><gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
                     + "</red>/<white>" + formatDouble(stats.getMaxHealth()) + "</white>"
                     + " <dark_gray>|</dark_gray> <gray>MP: <blue>"
@@ -354,13 +411,17 @@ public final class MenuGui implements InventoryHolder {
     /**
      * 空の装備枠に表示するダミーアイテムを生成する。
      */
-    private ItemStack createEmptySlotItem() {
-        ItemStack item = new ItemStack(Material.BARRIER);
+    private ItemStack createEmptySlotItem(EquipSlot slot) {
+        boolean toolSlot = slot != null && slot.isToolSlot();
+        ItemStack item = new ItemStack(toolSlot ? Material.ITEM_FRAME : Material.BARRIER);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(MINI.deserialize("<!italic><gray>空きスロット</gray>"));
-            meta.lore(List.of(MINI.deserialize(
-                    "<!italic><dark_gray>装備するとここに表示されます</dark_gray>")));
+            meta.displayName(toolSlot
+                    ? MINI.deserialize("<!italic><gray>" + slot.getDisplayName() + "</gray>")
+                    : MINI.deserialize("<!italic><gray>空きスロット</gray>"));
+            meta.lore(List.of(MINI.deserialize(toolSlot
+                    ? "<!italic><dark_gray>採取ツールを装着できます</dark_gray>"
+                    : "<!italic><dark_gray>装備するとここに表示されます</dark_gray>")));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
@@ -447,12 +508,9 @@ public final class MenuGui implements InventoryHolder {
                 result.putIfAbsent(guiSlot, slot);
             }
         }
-        if (!result.isEmpty()) {
-            return Collections.unmodifiableMap(result);
-        }
 
         // menu.yml に装備枠定義が無い場合は inventory.yml（既定値）を使う。
-        if (settings != null) {
+        if (result.isEmpty() && settings != null) {
             for (EquipSlot slot : EquipSlot.values()) {
                 int guiSlot = settings.equipmentSlot(slot);
                 if (guiSlot >= 0) {
@@ -460,6 +518,26 @@ public final class MenuGui implements InventoryHolder {
                 }
             }
         }
+
+        // 旧 config に道具枠の定義が無い場合でも、プレイヤーヘッドの左隣 2 枠を
+        // 採取ツール専用枠として確保する（既存の装備枠とは重複させない）。
+        int headSlot = layout.playerHeadSlot();
+        int toolBase = headSlot > 1 ? headSlot - 2 : 6;
+        EquipSlot[] toolSlots = {EquipSlot.TOOL_1, EquipSlot.TOOL_2};
+        for (int index = 0; index < toolSlots.length; index++) {
+            EquipSlot toolSlot = toolSlots[index];
+            if (result.containsValue(toolSlot)) {
+                continue;
+            }
+            int candidate = toolBase + index;
+            while (candidate >= 0 && result.containsKey(candidate)) {
+                candidate++;
+            }
+            if (candidate >= 0) {
+                result.putIfAbsent(candidate, toolSlot);
+            }
+        }
+
         return Collections.unmodifiableMap(result);
     }
 
@@ -470,6 +548,8 @@ public final class MenuGui implements InventoryHolder {
                 result.putIfAbsent(feature.slot(), feature);
             }
         }
+        // トグルボタンを含め、ボタンの配置は menu.yml の定義だけに従う。
+        // 未定義のボタンを空きスロットへ自動配置することはしない。
         return Collections.unmodifiableMap(result);
     }
 

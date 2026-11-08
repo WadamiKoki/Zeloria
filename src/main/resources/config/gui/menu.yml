@@ -9,6 +9,8 @@ gui:
 filler:
   equipment: "LIGHT"
 equipment_slots:
+  tool_1: 6
+  tool_2: 7
   helmet: 16
   offhand: 24
   chestplate: 25
@@ -37,6 +39,12 @@ features:
     icon: class_tree
     action: class_tree
     permission: "zeloria.player"
+
+# レベルアップ通知（チャット）の切り替え
+# 下段の左端とその隣に配置する。未定義の項目はボタンを配置しない。
+toggles:
+  self-log-slot: 45
+  others-log-slot: 46
 
 sounds:
   open:

@@ -53,6 +53,9 @@ public class PlayerData {
     /** スキルクールダウン終了時刻（ログアウト時のみ保存するシリアライズ文字列）。 */
     private String cooldownEndAt = "";
 
+    /** プレイヤー設定（レベルアップ通知などのトグル）。 */
+    private PlayerSettings settings = PlayerSettings.DEFAULT;
+
     /** RPG ステータス（HP / MP・攻撃力・クリティカル・リジェネなど）。 */
     private final PlayerStats stats = new PlayerStats();
 
@@ -175,6 +178,7 @@ public class PlayerData {
                 InventorySerializer.encodeEquipment(equippedItems),
                 VirtualInventoryJson.encode(virtualInventory),
                 VirtualInventoryJson.encode(virtualEquipment),
+                SettingsJson.encode(settings),
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
                 stats.getBaseMaxMana(),
@@ -253,6 +257,7 @@ public class PlayerData {
         data.equippedItems.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
         data.virtualInventory.putAll(VirtualInventoryJson.decode(snapshot.virtualInventoryJson()));
         data.virtualEquipment.putAll(VirtualInventoryJson.decode(snapshot.virtualEquipmentJson()));
+        data.settings = SettingsJson.decode(snapshot.playerSettingsJson());
 
         return data;
     }
@@ -735,6 +740,24 @@ public class PlayerData {
      */
     public synchronized void setCooldownEndAt(String cooldownEndAt) {
         this.cooldownEndAt = cooldownEndAt == null ? "" : cooldownEndAt;
+    }
+
+    /**
+     * プレイヤー設定を取得する。
+     *
+     * @return プレイヤー設定（未設定時は既定値）
+     */
+    public synchronized PlayerSettings getSettings() {
+        return settings;
+    }
+
+    /**
+     * プレイヤー設定を設定する。
+     *
+     * @param settings 新しい設定（{@code null} の場合は既定値）
+     */
+    public synchronized void setSettings(PlayerSettings settings) {
+        this.settings = settings == null ? PlayerSettings.DEFAULT : settings;
     }
 
     public synchronized long getMoney() {

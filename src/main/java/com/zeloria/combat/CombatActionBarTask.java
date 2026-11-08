@@ -36,6 +36,23 @@ public final class CombatActionBarTask extends BukkitRunnable {
         this.plugin = plugin;
     }
 
+    /**
+     * プレイヤーが戦闘モード中か判定する。
+     * <p>
+     * 頭上ステータス表示など、他の毎秒更新処理と戦闘判定を揃えるための共通ヘルパー。
+     *
+     * @param plugin プラグイン
+     * @param player 対象プレイヤー
+     * @return 戦闘モード中の場合は {@code true}
+     */
+    public static boolean isInCombatMode(Zeloria plugin, Player player) {
+        if (plugin == null || player == null) {
+            return false;
+        }
+        CombatModeService modeService = plugin.getCombatModeService();
+        return modeService != null && modeService.isActive(player);
+    }
+
     @Override
     public void run() {
         CombatModeService modeService = plugin.getCombatModeService();

@@ -9,9 +9,11 @@ import java.util.Locale;
 /**
  * 仮想装備枠のスロット種別。
  * <p>
- * 統合メニュー上部（水色ガラスエリア）に配置される 6 枠に対応する。
+ * 統合メニュー上部（水色ガラスエリア）に配置される装備枠に対応する。
  * 各枠は受け入れ可能なアイテム種別を持ち、インベントリからの右クリック装着時に
  * {@link #match(ItemStack)} で装着先を自動判定する。
+ * プレイヤーヘッド左隣の 2 枠（{@link #TOOL_1} / {@link #TOOL_2}）は
+ * 採取ツール（{@code ItemCategory.TOOL}）専用の装備枠として扱う。
  */
 public enum EquipSlot {
 
@@ -31,7 +33,13 @@ public enum EquipSlot {
     MAIN_WEAPON("main_weapon", "メイン武器"),
 
     /** オフハンド。 */
-    OFFHAND("offhand", "オフハンド");
+    OFFHAND("offhand", "オフハンド"),
+
+    /** 道具枠 1（採取ツール専用）。 */
+    TOOL_1("tool_1", "道具1"),
+
+    /** 道具枠 2（採取ツール専用）。 */
+    TOOL_2("tool_2", "道具2");
 
     private final String key;
     private final String displayName;
@@ -53,6 +61,15 @@ public enum EquipSlot {
      */
     public String getDisplayName() {
         return displayName;
+    }
+
+    /**
+     * 採取ツール専用の道具枠か判定する。
+     *
+     * @return 道具枠の場合は {@code true}
+     */
+    public boolean isToolSlot() {
+        return this == TOOL_1 || this == TOOL_2;
     }
 
     /**
@@ -142,7 +159,33 @@ public enum EquipSlot {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
+        if (isToolSlot()) {
+            return isToolMaterial(stack.getType());
+        }
         EquipSlot matched = match(stack);
         return matched == this;
+    }
+
+    /**
+     * バニラ素材が採取ツールとして扱えるか判定する。
+     * <p>
+     * プラグイン製ツールは {@code ItemCategory.TOOL} の定義で判定するため、
+     * ここではカーソル装着時のフォールバックとして素材名を照合する。
+     */
+    private static boolean isToolMaterial(Material type) {
+        if (type == null) {
+            return false;
+        }
+        String name = type.name();
+        return name.endsWith("_PICKAXE")
+                || name.endsWith("_SHOVEL")
+                || name.endsWith("_HOE")
+                || name.endsWith("_AXE")
+                || type == Material.SHEARS
+                || type == Material.FISHING_ROD
+                || type == Material.FLINT_AND_STEEL
+                || type == Material.BRUSH
+                || type == Material.CARROT_ON_A_STICK
+                || type == Material.WARPED_FUNGUS_ON_A_STICK;
     }
 }

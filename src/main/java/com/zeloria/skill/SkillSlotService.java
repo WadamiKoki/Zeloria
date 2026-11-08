@@ -1,7 +1,6 @@
 package com.zeloria.skill;
 
 import com.zeloria.core.Zeloria;
-import com.zeloria.core.MessageService;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.item.VirtualItem;
@@ -24,19 +23,16 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 戦闘モード中のスキルスロット表示を管理するサービス。
  * <p>
  * ホットバー slot 1〜5（数字キー 2〜6）に、現在のクラスのスキルを表示する。
- * 戦闘モード ON 時はプレイヤーが元から持っていたスロット 1〜5 の実アイテムを退避し、
- * OFF 時は退避アイテムをロック枠以外の空きスロットへ戻したうえで、割り当ての無い
- * スロットを含む slot 1〜5 を灰色ガラス板で埋める。スキル表示アイテムは
+ * 通常レイヤーでは slot 1〜5 が常に仮想表示で埋まるため、実アイテムの退避・返却は行わない。
+ * 戦闘モード ON 時はスキルアイコン、OFF 時は割り当ての無いスロットを含めて
+ * 灰色ガラス板を配置する。スキル表示アイテムは
  * {@link VirtualItem#markSkillSlot(ItemStack)} で仮想アイテムとして扱うため、
  * ドロップ・移動・死亡時ドロップの保護対象になる。
  * <p>
@@ -58,17 +54,17 @@ public final class SkillSlotService {
     /** スキルアイコンの最大スタック数（クールダウン秒数の表示上限）。 */
     private static final int ICON_MAX_STACK = 64;
 
-    /** 戦闘モード OFF 時に表示する灰色ガラス板（空きスキルスロット）。 */
+    /** スキル未割り当て時に表示する黒色ガラス板（空きスキルスロット）。 */
     private static final ItemStack IDLE_ICON = createIdleIcon();
 
     /**
-     * 戦闘モード OFF 時のスキルスロット表示アイテムを生成する。
+     * スキル未割り当て時のスキルスロット表示アイテムを生成する。
      */
     private static ItemStack createIdleIcon() {
-        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemStack item = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text("スキルスロット", NamedTextColor.GRAY)
+            meta.displayName(Component.text("スキルスロット", NamedTextColor.DARK_GRAY)
                     .decoration(TextDecoration.ITALIC, false));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
@@ -76,16 +72,7 @@ public final class SkillSlotService {
         return VirtualItem.markPlaceholder(item);
     }
 
-    /** メッセージ定義ファイル（{@code MessageData/equipment.yml}）。 */
-    private static final String MESSAGE_FILE = "equipment";
-
-    /** 退避アイテムが入りきらず足元へドロップした際の通知キー。 */
-    private static final String MESSAGE_OVERFLOW = "overflow_dropped";
-
     private final Zeloria plugin;
-
-    /** プレイヤー UUID → 退避した元アイテム（スキルスロット順）。 */
-    private final Map<UUID, ItemStack[]> savedItems = new ConcurrentHashMap<>();
 
     public SkillSlotService(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -94,8 +81,8 @@ public final class SkillSlotService {
     /**
      * スキルスロットの表示を開始する（表示済みの場合は内容を更新する）。
      * <p>
-     * 元アイテムの退避は初回のみ行う。割り当てられていないスキルスロットには
-     * 灰色ガラス板を配置し、スロットの見た目を統一する。
+     * 割り当てられていないスキルスロットには灰色ガラス板を配置し、
+     * スロットの見た目を統一する。
      *
      * @param player 対象プレイヤー
      */
@@ -108,18 +95,14 @@ public final class SkillSlotService {
             return;
         }
 
-        List<Skill> skills = assignedSkills(player);
-        if (!savedItems.containsKey(player.getUniqueId())) {
-            savedItems.put(player.getUniqueId(), saveAndClear(player));
-        }
-        applyIcons(player, skills);
+        applyIcons(player, assignedSkills(player));
     }
 
     /**
-     * スキルスロットの表示を終了し、退避していた元アイテムをインベントリへ戻す。
+     * スキルスロットの表示を終了し、slot 1〜5 を空きスロット表示へ戻す。
      * <p>
-     * ホットバー slot 1〜5 は戦闘モード OFF の常設表示として灰色ガラス板で埋め、
-     * 元アイテムをホットバーへ戻さない（裏でアイテムを保持しない）。
+     * 実アイテムの退避・返却は行わない。スキル表示アイコンは仮想アイテムのため、
+     * 空きスロット表示で上書きするだけで安全に消去できる。
      *
      * @param player 対象プレイヤー
      */
@@ -131,18 +114,14 @@ public final class SkillSlotService {
             Bukkit.getScheduler().runTask(plugin, () -> hide(player));
             return;
         }
-        // 戦闘モードを一度も ON にしていない場合は、ホットバーの実アイテムを動かさない。
-        if (!savedItems.containsKey(player.getUniqueId()) && !hasVirtualSkillDisplay(player)) {
-            return;
-        }
-        clearSlots(player, true);
+        showIdle(player);
     }
 
     /**
-     * 戦闘モード OFF 時のホットバー slot 1〜5 を灰色ガラス板で埋める。
+     * 戦闘モード OFF 時のホットバー slot 1〜5 を空きスロット表示で埋める。
      * <p>
-     * スロットに実アイテムが入っていた場合は、失わないようロック枠以外の
-     * 空きスロットへ移動する。既に灰色ガラス板が配置されている場合は何もしない。
+     * 実アイテムの退避・返却は行わない。仮想表示または空のスロットだけを対象とし、
+     * 想定外の実アイテムが存在する場合は上書きせずそのまま残す。
      *
      * @param player 対象プレイヤー
      */
@@ -162,36 +141,34 @@ public final class SkillSlotService {
         }
 
         PlayerInventory inventory = player.getInventory();
-        List<ItemStack> displaced = new ArrayList<>();
         for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
             int slot = FIRST_SKILL_SLOT + index;
             ItemStack current = inventory.getItem(slot);
             if (isIdleIcon(current)) {
                 continue;
             }
-            if (current != null && !current.getType().isAir() && !VirtualItem.isVirtual(current)) {
-                displaced.add(current.clone());
+            if (current == null || current.getType().isAir()
+                    || VirtualItem.isVirtual(current)) {
+                inventory.setItem(slot, IDLE_ICON.clone());
             }
-            inventory.setItem(slot, IDLE_ICON.clone());
-        }
-
-        for (ItemStack item : displaced) {
-            returnToInventory(player, item);
         }
     }
 
     /**
-     * 死亡時にスキルスロットの表示を解除し、退避していた元アイテムを返す。
+     * 仮想スキル表示だけを除去する（死亡・退出・プラグイン停止時）。
      * <p>
-     * 返却したアイテムは呼び出し側が死亡ドロップへ追加するか、インベントリへ戻す。
-     * スキル表示アイテム自体はインベントリから除去する。
+     * 実アイテムの退避・返却は行わない。空きスロット表示も配置しないため、
+     * 退出処理後にバニラのプレイヤーデータへ仮想アイテムが残らない。
      *
      * @param player 対象プレイヤー
-     * @return 退避していた元アイテム（存在しない場合は空）
      */
-    public List<ItemStack> detach(Player player) {
-        if (player == null || !Bukkit.isPrimaryThread()) {
-            return List.of();
+    public void clearDisplay(Player player) {
+        if (player == null) {
+            return;
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () -> clearDisplay(player));
+            return;
         }
 
         PlayerInventory inventory = player.getInventory();
@@ -199,40 +176,6 @@ public final class SkillSlotService {
             int slot = FIRST_SKILL_SLOT + index;
             if (VirtualItem.isVirtual(inventory.getItem(slot))) {
                 inventory.setItem(slot, null);
-            }
-        }
-
-        ItemStack[] saved = savedItems.remove(player.getUniqueId());
-        if (saved == null) {
-            return List.of();
-        }
-        List<ItemStack> result = new ArrayList<>(SKILL_SLOT_COUNT);
-        for (ItemStack item : saved) {
-            if (item != null) {
-                result.add(item);
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 退避アイテムをインベントリの空きスロットへ戻す。
-     *
-     * @param player 対象プレイヤー
-     * @param items  戻すアイテム
-     */
-    public void restoreItems(Player player, List<ItemStack> items) {
-        if (player == null || items == null) {
-            return;
-        }
-        if (!Bukkit.isPrimaryThread()) {
-            List<ItemStack> copy = List.copyOf(items);
-            Bukkit.getScheduler().runTask(plugin, () -> restoreItems(player, copy));
-            return;
-        }
-        for (ItemStack item : items) {
-            if (item != null && !item.getType().isAir()) {
-                returnToInventory(player, item);
             }
         }
     }
@@ -319,69 +262,14 @@ public final class SkillSlotService {
     }
 
     /**
-     * プラグイン無効化時に、オンラインプレイヤーの表示を解除する。
+     * プラグイン無効化時に、オンラインプレイヤーの仮想スキル表示を解除する。
      * <p>
-     * 無効化中は空きスロット表示（灰色ガラス）を配置せず、スキルアイコンと
-     * 退避アイテムの復元だけを行う。
+     * 無効化中は空きスロット表示（灰色ガラス）も配置しない。
      */
     public void shutdown() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            clearSlots(player, false);
+            clearDisplay(player);
         }
-        savedItems.clear();
-    }
-
-    /**
-     * スキルスロットを空にし、退避アイテムをインベントリの空き枠へ戻す。
-     *
-     * @param player        対象プレイヤー
-     * @param showIdleAfter 解除後に灰色ガラス板を配置する場合 {@code true}
-     */
-    private void clearSlots(Player player, boolean showIdleAfter) {
-        PlayerInventory inventory = player.getInventory();
-        ItemStack[] saved = savedItems.remove(player.getUniqueId());
-        List<ItemStack> overflow = new ArrayList<>();
-
-        for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
-            int slot = FIRST_SKILL_SLOT + index;
-            ItemStack current = inventory.getItem(slot);
-            if (saved != null && saved[index] != null) {
-                // 退避アイテムはホットバーへ戻さず、空きスロットへ逃がす。
-                overflow.add(saved[index]);
-            }
-            if (current != null
-                    && !current.getType().isAir()
-                    && !VirtualItem.isVirtual(current)) {
-                overflow.add(current.clone());
-            }
-            inventory.setItem(slot, null);
-        }
-
-        for (ItemStack item : overflow) {
-            if (item != null && !item.getType().isAir()) {
-                returnToInventory(player, item);
-            }
-        }
-
-        if (showIdleAfter) {
-            showIdle(player);
-        }
-    }
-
-    private ItemStack[] saveAndClear(Player player) {
-        PlayerInventory inventory = player.getInventory();
-        ItemStack[] saved = new ItemStack[SKILL_SLOT_COUNT];
-        for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
-            int slot = FIRST_SKILL_SLOT + index;
-            ItemStack current = inventory.getItem(slot);
-            if (current != null
-                    && !current.getType().isAir()
-                    && !VirtualItem.isVirtual(current)) {
-                saved[index] = current.clone();
-            }
-            inventory.setItem(slot, null);
-        }
-        return saved;
     }
 
     private void applyIcons(Player player, List<Skill> skills) {
@@ -436,41 +324,12 @@ public final class SkillSlotService {
     }
 
     /**
-     * ホットバー slot 1〜5 にスキル表示アイコンが残っているか判定する。
-     */
-    private static boolean hasVirtualSkillDisplay(Player player) {
-        PlayerInventory inventory = player.getInventory();
-        for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
-            if (VirtualItem.isSkillSlot(inventory.getItem(FIRST_SKILL_SLOT + index))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * アイテムが戦闘モード OFF 時用の灰色ガラス板か判定する。
      */
     private static boolean isIdleIcon(ItemStack item) {
         return item != null
                 && item.getType() == Material.GRAY_STAINED_GLASS_PANE
                 && VirtualItem.isPlaceholder(item);
-    }
-
-    private void returnToInventory(Player player, ItemStack item) {
-        PlayerInventory inventory = player.getInventory();
-        int slot = VirtualInventoryService.firstEmptyUnlockedSlot(inventory);
-        if (slot >= 0) {
-            inventory.setItem(slot, item);
-            return;
-        }
-        if (player.isOnline()) {
-            player.getWorld().dropItemNaturally(player.getLocation(), item);
-            MessageService messages = plugin.getMessageService();
-            if (messages != null) {
-                messages.actionBar(player, MESSAGE_FILE, MESSAGE_OVERFLOW, Map.of());
-            }
-        }
     }
 
     private static boolean isAvailable(Player player) {

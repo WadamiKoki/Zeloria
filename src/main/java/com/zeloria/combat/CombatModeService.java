@@ -21,8 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 状態はログインセッション内の一時状態として扱い、DB へは保存しない。
  * 仮想武器を手に持った状態で「スニーク + 下向き + 右クリック」すると切り替わる。
  * ON の間は {@link SkillSlotService} がホットバー slot 1〜5 にスキルを表示し、
- * OFF にすると退避していた実アイテムを空き枠へ戻したうえで、ホットバー slot 1〜5 を
- * 灰色ガラス板で埋める（実アイテムを裏で保持しない）。
+ * OFF にするとホットバー slot 1〜5 を灰色ガラス板で埋める。
+ * slot 1〜5 は通常レイヤーでは常に仮想表示のため、実アイテムの退避・返却は行わない。
  * <p>
  * 仮想武器を別スロットへ持ち替えた場合や死亡・退出時は自動的に OFF になる。
  */
@@ -144,12 +144,15 @@ public final class CombatModeService {
     }
 
     /**
-     * 戦闘モードを OFF にし、スキルスロットを元の実アイテムへ戻す。
+     * 戦闘モードを OFF にし、スキルスロットを空きスロット表示へ戻す。
+     * <p>
+     * 既に OFF の場合は何もしない（冪等）。ビルドワールドへのテレポート直前など、
+     * 複数経路から呼ばれても副作用が重複しない。
      *
      * @param player 対象プレイヤー
      */
     public void deactivate(Player player) {
-        if (player == null) {
+        if (player == null || !isActive(player)) {
             return;
         }
         combatMode.remove(player.getUniqueId());
@@ -162,8 +165,8 @@ public final class CombatModeService {
     /**
      * 退出時の後始末を行う。
      * <p>
-     * スキルスロットを元に戻してから状態を破棄する。退出後は
-     * {@link VirtualInventoryService#clear(Player)} が仮想アイテムを除去する。
+     * スキル表示アイコンだけを除去してから状態を破棄する。退出後は
+     * {@link VirtualInventoryService#clear(Player)} が残りの仮想アイテムを除去する。
      *
      * @param player 対象プレイヤー
      */
@@ -172,11 +175,11 @@ public final class CombatModeService {
             return;
         }
         combatMode.remove(player.getUniqueId());
-        skillSlotService.hide(player);
+        skillSlotService.clearDisplay(player);
     }
 
     /**
-     * 状態だけを破棄する（スキルスロットの復元は呼び出し側で行う）。
+     * 状態だけを破棄する（スキル表示の解除は呼び出し側で行う）。
      *
      * @param playerId プレイヤー UUID
      */

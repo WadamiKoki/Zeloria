@@ -7,6 +7,7 @@ import com.zeloria.mob.MobStats;
 import com.zeloria.mob.MobStatsService;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
+import com.zeloria.player.PlayerStatusDisplayTask;
 import com.zeloria.world.CollisionManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -440,7 +441,12 @@ public final class CombatService {
         double nextHealth = stats.getCurrentHealth() - damage;
         playHurtSound(player);
         stats.setCurrentHealth(Math.max(0.0, nextHealth));
+        // バニラ体力バーと頭上 HP ゲージを被弾と同時に更新する。
         syncPlayerHealth(player);
+        PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+        if (statusDisplayTask != null) {
+            statusDisplayTask.refresh(player);
+        }
 
         if (nextHealth <= 0.0) {
             DeathListener deathListener = plugin.getDeathListener();
@@ -461,6 +467,10 @@ public final class CombatService {
         }
         stats.setCurrentHealth(stats.getCurrentHealth() + amount);
         syncPlayerHealth(player);
+        PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+        if (statusDisplayTask != null) {
+            statusDisplayTask.refresh(player);
+        }
     }
 
     /* ------------------------------------------------------------------

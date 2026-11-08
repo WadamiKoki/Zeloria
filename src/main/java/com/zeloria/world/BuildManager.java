@@ -1262,6 +1262,8 @@ public class BuildManager {
      * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
      * {@code level.dat_old} などのメタデータは複製せず、テンプレート保存時に
      * 新しいワールド UID が Paper 側で生成される。
+     * また {@code data/paper/metadata.dat} はワールド UUID を含むため、
+     * {@code data} ディレクトリごとコピーせず該当ファイルだけを除外する。
      *
      * @param source 複製元
      * @param target 複製先
@@ -1276,6 +1278,9 @@ public class BuildManager {
         for (Path path : paths) {
             Path relative = source.relativize(path);
             if (relative.getNameCount() == 0) {
+                continue;
+            }
+            if (LayerManager.isExcludedCopyPath(relative)) {
                 continue;
             }
             String topLevel = relative.getName(0).toString();

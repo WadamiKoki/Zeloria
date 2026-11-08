@@ -5,6 +5,7 @@ import com.zeloria.combat.CombatService;
 import com.zeloria.combat.DamageResult;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStats;
+import com.zeloria.player.PlayerStatusDisplayTask;
 import com.zeloria.player.PlayerStatsService;
 import com.zeloria.skill.Skill;
 import org.bukkit.Location;
@@ -131,6 +132,11 @@ public final class SkillCastService {
         if (plugin.getPlayerStatsService() != null) {
             // 満腹度ゲージ（MP バー）とレベル／経験値表示を即時更新する。
             plugin.getPlayerStatsService().syncVanillaStats(player, data);
+        }
+        // 消費後の HP / MP を頭上ゲージにも即時反映する。
+        PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+        if (statusDisplayTask != null) {
+            statusDisplayTask.refresh(player);
         }
         cooldownService.set(player.getUniqueId(), skill.id(), cooldownMillis);
 

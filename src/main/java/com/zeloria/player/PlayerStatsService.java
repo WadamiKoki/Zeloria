@@ -238,7 +238,7 @@ public final class PlayerStatsService {
      *     <li>満腹度ゲージ: 現在 MP / 最大 MP の割合を 0〜20 に割り当てる（MP バーとして使用）</li>
      *     <li>満腹度の隠し値（saturation）: 常に 0（満腹度ゲージの揺れを防ぐ）</li>
      *     <li>レベル: 現在選択中クラスのレベル</li>
-     *     <li>経験値バー: 次レベルまでの進捗（{@link LevelService#requiredExp(int)} を使用）</li>
+     *     <li>経験値バー: 次レベルまでの進捗（{@link LevelService#requiredExp(int)} を使用、カンスト時は 0%）</li>
      * </ul>
      * 非同期スレッドから呼ばれた場合はメインスレッドへ委譲する。
      *
@@ -259,12 +259,17 @@ public final class PlayerStatsService {
         int level = Math.max(0, data.getCurrentClassLevel());
         long currentExp = data.getCurrentClassExp();
         LevelService levelService = plugin.getLevelService();
-        long requiredExp = level <= 0 || levelService == null
+        // カンスト時は次レベルが存在しないため、経験値バーを空（0%）で固定する。
+        // プレイヤーヘッドとメニュー側は EXP: MAX / (MAX) 表示に統一している。
+        boolean maxLevel = levelService != null && level >= levelService.maxLevel();
+        long requiredExp = level <= 0 || levelService == null || maxLevel
                 ? 0L
                 : levelService.requiredExp(level);
-        float expProgress = requiredExp <= 0L
+        float expProgress = maxLevel
                 ? 0.0f
-                : (float) clamp((double) currentExp / (double) requiredExp, 0.0, 1.0);
+                : requiredExp <= 0L
+                        ? 0.0f
+                        : (float) clamp((double) currentExp / (double) requiredExp, 0.0, 1.0);
 
         runOnMainThread(player, () -> {
             if (!player.isOnline()) {

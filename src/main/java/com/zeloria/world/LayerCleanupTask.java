@@ -13,16 +13,17 @@ import java.util.Optional;
 /**
  * 空になったレイヤーインスタンスを自動削除する定期タスク。
  * <p>
- * {@link #CHECK_INTERVAL_TICKS}（30 秒）ごとにロード済みインスタンスのプレイヤー数を確認し、
+ * {@link #CHECK_INTERVAL_TICKS}（10 秒）ごとにロード済みインスタンスのプレイヤー数を確認し、
  * 次の条件をすべて満たすインスタンスに対して削除タイマーを開始する。
  * <ul>
- *     <li>LayerData の {@code isShared} が {@code false}</li>
+ *     <li>LayerData の {@code isShared} が {@code false}、または Hub テンプレートである</li>
  *     <li>プレイヤー数が 0 人</li>
  * </ul>
- * タイマーは既定 {@link #IDLE_TIMEOUT_SECONDS}（60 秒）で、カウントダウン中に
+ * タイマーは既定 {@link #IDLE_TIMEOUT_SECONDS}（30 秒）で、カウントダウン中に
  * プレイヤーが再入場した場合はキャンセルする。0 人のままタイマーが満了した場合は
  * {@link LoggerService} へ記録したうえで {@link LayerManager#unloadAndDeleteLayer(String)}
- * により安全にアンロード・削除する。
+ * により安全にアンロード・削除する。Hub は無人になると削除されるが、
+ * ポータル入場時に {@link LayerManager} が自動で再生成する。
  * <p>
  * 建築ワールド（{@link BuildManager#BUILD_NAMESPACE} 名前空間）はこの通常削除の
  * 対象外とし、{@link BuildManager#checkAutoSave(long)} による専用の自動保存で管理する。
@@ -31,11 +32,11 @@ import java.util.Optional;
  */
 public class LayerCleanupTask extends BukkitRunnable {
 
-    /** プレイヤー数を確認する間隔（ティック）。20 ティック × 30 秒。 */
-    public static final long CHECK_INTERVAL_TICKS = 20L * 30L;
+    /** プレイヤー数を確認する間隔（ティック）。20 ティック × 10 秒。 */
+    public static final long CHECK_INTERVAL_TICKS = 20L * 10L;
 
     /** 空になってから削除するまでの既定時間（秒）。 */
-    public static final long IDLE_TIMEOUT_SECONDS = 60L;
+    public static final long IDLE_TIMEOUT_SECONDS = 30L;
 
     private final Zeloria plugin;
 
@@ -122,12 +123,16 @@ public class LayerCleanupTask extends BukkitRunnable {
     }
 
     /**
-     * 自動削除の対象か判定する（{@code isShared: false} のインスタンスのみ対象）。
+     * 自動削除の対象か判定する。
+     * <p>
+     * {@code isShared: false} のインスタンスに加え、共有設定でも Hub テンプレートだけは
+     * 無人時に削除する（入場時に {@link LayerManager} が再生成する）。
      */
     private boolean isAutoDeletable(LayerConfigService configService, String instanceId) {
         Optional<LayerData> layerData = configService.findByWorldName(instanceId);
         // 設定が不明なインスタンスは誤削除を避けるため対象外とする。
-        return layerData.map(data -> !data.isShared()).orElse(false);
+        return layerData.map(data -> !data.isShared()
+                || Zeloria.HUB_TEMPLATE_ID.equalsIgnoreCase(data.getTemplateId())).orElse(false);
     }
 
     private void deleteIdleInstance(LayerManager layerManager, String instanceId, long elapsedSeconds) {

@@ -26,6 +26,7 @@ import java.util.UUID;
  * @param virtualEquipmentBase64  装備中アイテムの Base64 データ
  * @param virtualInventoryJson    保管庫タブ（JSON）
  * @param virtualEquipmentJson    装備保管庫タブ（JSON）
+ * @param playerSettingsJson      プレイヤー設定（JSON）
  * @param maxHealth               最大 HP
  * @param currentHealth           現在 HP
  * @param maxMana                 最大 MP
@@ -63,6 +64,7 @@ public record PlayerSnapshot(
         String virtualEquipmentBase64,
         String virtualInventoryJson,
         String virtualEquipmentJson,
+        String playerSettingsJson,
         double maxHealth,
         double currentHealth,
         double maxMana,
@@ -116,6 +118,8 @@ public record PlayerSnapshot(
         virtualEquipmentBase64 = virtualEquipmentBase64 == null ? InventorySerializer.EMPTY : virtualEquipmentBase64;
         virtualInventoryJson = blankToEmptyObject(virtualInventoryJson);
         virtualEquipmentJson = blankToEmptyObject(virtualEquipmentJson);
+        playerSettingsJson = playerSettingsJson == null || playerSettingsJson.isBlank()
+                ? SettingsJson.DEFAULT_JSON : playerSettingsJson;
         cooldownEndAt = cooldownEndAt == null ? "" : cooldownEndAt;
     }
 
@@ -142,6 +146,7 @@ public record PlayerSnapshot(
                 InventorySerializer.EMPTY,
                 "{}",
                 "{}",
+                SettingsJson.DEFAULT_JSON,
                 PlayerStats.DEFAULT_MAX_HEALTH,
                 PlayerStats.DEFAULT_MAX_HEALTH,
                 PlayerStats.DEFAULT_MAX_MANA,
@@ -178,7 +183,7 @@ public record PlayerSnapshot(
                 classLevelsJson, classExpsJson, classTreePointsJson, allocatedClassNodesJson,
                 gatheringLevelsJson, gatheringExpsJson,
                 virtualEquipmentBase64,
-                virtualInventoryJson, virtualEquipmentJson,
+                virtualInventoryJson, virtualEquipmentJson, playerSettingsJson,
                 maxHealth, currentHealth, maxMana, currentMana,
                 attackPower, defense1, defense2, criticalRate, criticalDamage,
                 accuracy, evasion, dodgeCooldownReduction, cooldownReduction,

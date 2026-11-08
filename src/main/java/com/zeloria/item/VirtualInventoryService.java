@@ -9,6 +9,7 @@ import com.zeloria.player.VirtualInventoryTab;
 import com.zeloria.player.VirtualItemEntry;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.skill.SkillSlotService;
+import com.zeloria.world.BuildManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -66,11 +67,14 @@ public class VirtualInventoryService {
     /** オフハンドスロット（{@link PlayerInventory} のインデックス）。 */
     public static final int OFFHAND_SLOT = 40;
 
-    /** 右端 3 枠のガラスパネル開始スロット。 */
+    /** 右端のスキル表示パネル開始スロット（6〜7 は操作不可）。 */
     public static final int HOTBAR_PANEL_FIRST_SLOT = 6;
 
-    /** 右端 3 枠のガラスパネル終了スロット。 */
-    public static final int HOTBAR_PANEL_LAST_SLOT = 8;
+    /** 右端のうち、ガラスパネルを配置する終了スロット。 */
+    public static final int HOTBAR_PANEL_LAST_SLOT = 7;
+
+    /** メニュー本を配置するホットバーのスロット番号。 */
+    public static final int MENU_BUTTON_SLOT = 8;
 
     /* ------------------------------------------------------------------
      * 仮想インベントリ（メインインベントリ 9〜35）
@@ -196,11 +200,85 @@ public class VirtualInventoryService {
             return;
         }
 
+        // 建築ワールドではバニラのホットバー・インベントリをそのまま使う。
+        if (BuildManager.isBuildWorld(player.getWorld())) {
+            removeVirtualItems(player, true);
+            if (VirtualItem.isVirtual(player.getItemOnCursor())) {
+                player.setItemOnCursor(null);
+            }
+            return;
+        }
+
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         if (data == null) {
             return;
         }
         apply(player, data);
+    }
+
+    /**
+     * 建築ワールド入場時に仮想インベントリ表示を解除し、バニラ操作へ戻す。
+     * <p>
+     * 戦闘モードの解除はテレポート直前（{@code PlayerTeleportEvent}）で完了している前提とし、
+     * ここでは仮想アイテムの除去だけを行う。退出時は
+     * {@link #leaveBuildMode(Player)} で再適用する。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void enterBuildMode(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () -> enterBuildMode(player));
+            return;
+        }
+
+        removeVirtualItems(player, true);
+        if (VirtualItem.isVirtual(player.getItemOnCursor())) {
+            player.setItemOnCursor(null);
+        }
+        currentTabs.remove(player.getUniqueId());
+        currentScrolls.remove(player.getUniqueId());
+    }
+
+    /**
+     * 建築ワールド退出時にホットバーの物理アイテムをクリアし、仮想表示を再適用する。
+     * <p>
+     * 建築ワールドではバニラのホットバーをそのまま使うため slot 0〜8 に物理アイテムが
+     * 残り得る。通常レイヤーへ戻る際はこれらを削除し、武器・スキル枠・メニュー本・
+     * パネルを改めて仮想表示で埋める。メインインベントリ（slot 9〜35）は対象外。
+     *
+     * @param player 対象プレイヤー
+     */
+    public void leaveBuildMode(Player player) {
+        if (player == null || !player.isOnline()) {
+            return;
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            Bukkit.getScheduler().runTask(plugin, () -> leaveBuildMode(player));
+            return;
+        }
+        clearBuildHotbar(player);
+        currentTabs.put(player.getUniqueId(), VirtualInventoryTab.STORAGE);
+        currentScrolls.put(player.getUniqueId(), 0);
+        refresh(player);
+    }
+
+    /**
+     * 建築ワールド退出時にホットバー slot 0〜8 の物理アイテムを削除する。
+     * <p>
+     * 仮想アイテムは {@link #refresh(Player)} で再配置するため、ここでは実アイテムだけを
+     * 対象とする。メインインベントリ（slot 9〜35）には触れない。
+     */
+    private void clearBuildHotbar(Player player) {
+        PlayerInventory inventory = player.getInventory();
+        for (int slot = 0; slot <= VirtualInventoryService.MENU_BUTTON_SLOT; slot++) {
+            ItemStack item = inventory.getItem(slot);
+            if (item != null && !item.getType().isAir() && !VirtualItem.isVirtual(item)) {
+                inventory.setItem(slot, null);
+            }
+        }
     }
 
     /**
@@ -242,10 +320,9 @@ public class VirtualInventoryService {
         absorbPhysicalBagItems(player, data, inventory);
         renderBag(player, data, inventory);
 
-        // 仮想アイテムを配置した後に退避アイテムを戻すことで、
-        // 空き枠探索がロック枠（特に slot 0）へ吸い込まれるのを防ぐ。
+        // 仮想アイテムを配置した後に退避した実アイテムを戻す。
         for (ItemStack item : displaced) {
-            returnToInventory(player, inventory, item);
+            returnDisplacedItem(player, inventory, item);
         }
 
         // 右端 3 枠は仮想ストレージ化に伴い、常時ガラスパネルで埋める。
@@ -270,7 +347,7 @@ public class VirtualInventoryService {
     private void absorbHotbarPanelItems(PlayerData data, PlayerInventory inventory,
                                         List<ItemStack> displaced) {
         ItemService itemService = plugin.getItemService();
-        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= HOTBAR_PANEL_LAST_SLOT; slot++) {
+        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= MENU_BUTTON_SLOT; slot++) {
             ItemStack current = inventory.getItem(slot);
             if (current == null || current.getType().isAir() || VirtualItem.isVirtual(current)) {
                 continue;
@@ -290,7 +367,7 @@ public class VirtualInventoryService {
     }
 
     /**
-     * ホットバー右端 3 枠を操作不可のガラスパネルで埋める。
+     * ホットバー右端のスキル表示 2 枠を操作不可のガラスパネルで埋める。
      * <p>
      * 仮想表示アイテムとしてマーカーを付与するため、ドロップ・移動・拾得の
      * 対象にはならない。既に同じパネルがある場合は再生成しない。
@@ -306,6 +383,27 @@ public class VirtualInventoryService {
                     new ItemStack(Material.GRAY_STAINED_GLASS_PANE));
             inventory.setItem(slot, panel);
         }
+
+        ItemStack menuButton = createMenuButton();
+        if (!menuButton.isSimilar(inventory.getItem(MENU_BUTTON_SLOT))) {
+            inventory.setItem(MENU_BUTTON_SLOT, menuButton);
+        }
+    }
+
+    /**
+     * ホットバー右端に配置するメニュー本を生成する。
+     */
+    private static ItemStack createMenuButton() {
+        ItemStack item = new ItemStack(Material.BOOK);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(MINI.deserialize("<!italic><white>メニュー</white>"));
+            meta.lore(List.of(MINI.deserialize(
+                    "<!italic><gray>クリックで装備メニューを開きます</gray>")));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        return VirtualItem.markPlaceholder(item);
     }
 
     /**
@@ -370,27 +468,14 @@ public class VirtualInventoryService {
     }
 
     /**
-     * 退避した実アイテムをロック枠以外へ戻す。
+     * 退避した実アイテムを仮想表示領域（slot 0〜8・9〜35）以外へ戻す。
      * <p>
-     * まず既存の同種スタックへまとめ、次に空きスロット、最後にオフハンドへ移す。
-     * それでも入りきらない場合は、テレポート完了後にプレイヤーの足元へドロップする
-     * （ログイン直後のテレポートでアイテムが置き去りになるのを防ぐ）。
+     * メインインベントリは仮想インベントリ、ホットバーは武器・スキル枠・パネルの
+     * 表示領域のため、オフハンドが空の場合だけそこへ移す。入りきらない場合は
+     * テレポート完了後にプレイヤーの足元へドロップする。
      */
-    private void returnToInventory(Player player, PlayerInventory inventory, ItemStack item) {
-        // メインインベントリ（9〜35）は仮想インベントリ表示、ホットバー右端 3 枠は
-        // ガラスパネルのため、退避先はホットバー 1〜5 のみとする。
+    private void returnDisplacedItem(Player player, PlayerInventory inventory, ItemStack item) {
         ItemStack remaining = item.clone();
-        remaining = mergeIntoRange(inventory, remaining, 1, 5);
-        if (remaining == null) {
-            return;
-        }
-
-        int slot = firstEmptyUnlockedSlot(inventory);
-        if (slot >= 0) {
-            inventory.setItem(slot, remaining);
-            return;
-        }
-
         ItemStack offhand = inventory.getItemInOffHand();
         if (offhand == null || offhand.getType().isAir()) {
             inventory.setItemInOffHand(remaining);
@@ -409,66 +494,6 @@ public class VirtualInventoryService {
         });
     }
 
-    /**
-     * 指定範囲の同種スタックへアイテムをまとめる。
-     *
-     * @return まとめきれなかった残り。すべて収まった場合は {@code null}
-     */
-    private static ItemStack mergeIntoRange(PlayerInventory inventory, ItemStack item,
-                                            int start, int end) {
-        ItemStack remaining = item;
-        for (int slot = start; slot <= end; slot++) {
-            if (isLockedSlot(slot)) {
-                continue;
-            }
-            ItemStack existing = inventory.getItem(slot);
-            if (existing == null || existing.getType().isAir()
-                    || VirtualItem.isVirtual(existing)
-                    || !existing.isSimilar(remaining)) {
-                continue;
-            }
-            int max = Math.min(existing.getMaxStackSize(), remaining.getMaxStackSize());
-            int space = max - existing.getAmount();
-            if (space <= 0) {
-                continue;
-            }
-            int moved = Math.min(space, remaining.getAmount());
-            existing.setAmount(existing.getAmount() + moved);
-            inventory.setItem(slot, existing);
-            remaining.setAmount(remaining.getAmount() - moved);
-            if (remaining.getAmount() <= 0) {
-                return null;
-            }
-        }
-        return remaining;
-    }
-
-    /**
-     * ロック枠を除いた最初の空きスロットを取得する。
-     * <p>
-     * メインインベントリ（9〜35）は仮想インベントリが使用し、ホットバー右端 3 枠
-     * （6〜8）はガラスパネルで固定するため、ホットバー 1〜5 のみを探す。
-     * ホットバー slot 0 と防具・オフハンドは対象外。
-     *
-     * @return 空きスロット。空きが無い場合は {@code -1}
-     */
-    public static int firstEmptyUnlockedSlot(PlayerInventory inventory) {
-        return firstEmptyInRange(inventory, 1, 5);
-    }
-
-    private static int firstEmptyInRange(PlayerInventory inventory, int start, int end) {
-        for (int slot = start; slot <= end; slot++) {
-            if (isLockedSlot(slot)) {
-                continue;
-            }
-            ItemStack item = inventory.getItem(slot);
-            if (item == null || item.getType().isAir()) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
     /* ------------------------------------------------------------------
      * 仮想インベントリ（タブ・スクロール・追加/消費）
      * ------------------------------------------------------------------ */
@@ -484,6 +509,11 @@ public class VirtualInventoryService {
         }
         currentTabs.put(player.getUniqueId(), VirtualInventoryTab.STORAGE);
         currentScrolls.put(player.getUniqueId(), 0);
+        // 建築ワールド内で再接続した場合はバニラ操作を維持する。
+        if (BuildManager.isBuildWorld(player.getWorld())) {
+            enterBuildMode(player);
+            return;
+        }
         if (PlayerData.getCached(player.getUniqueId()) == null) {
             // DB 読み込みが参加処理に間に合わなかった場合は、1 秒後に再試行する。
             Bukkit.getScheduler().runTaskLater(plugin, () -> updateBag(player), 20L);
@@ -619,7 +649,7 @@ public class VirtualInventoryService {
     /**
      * 仮想インベントリのアイテムを使用する。
      * <p>
-     * 武器・防具は装備処理を行う。素材などの消費は
+     * 武器・防具・採取ツールは装備処理を行う。素材などの消費は
      * {@link #consumeItem(Player, VirtualInventoryTab, String, long)} を使用する。
      *
      * @param player 対象プレイヤー
@@ -642,7 +672,8 @@ public class VirtualInventoryService {
         ItemData definition = findItem(entry.itemId());
         if (definition == null
                 || (definition.category() != ItemCategory.ARMOR
-                && definition.category() != ItemCategory.WEAPON)) {
+                && definition.category() != ItemCategory.WEAPON
+                && definition.category() != ItemCategory.TOOL)) {
             return false;
         }
         return equipEntry(player, tab, key);
@@ -716,12 +747,13 @@ public class VirtualInventoryService {
         }
 
         ItemStack stack = itemService.createItem(definition);
-        EquipSlot equipSlot = resolveEquipSlot(definition, stack);
+        EquipSlot equipSlot = resolveEquipSlot(data, definition, stack);
         if (equipSlot == null) {
             return false;
         }
         EquipmentService equipmentService = plugin.getEquipmentService();
-        if (equipmentService != null
+        boolean toolSlot = definition.category() == ItemCategory.TOOL;
+        if (!toolSlot && equipmentService != null
                 && (!equipmentService.meetsRequiredLevel(player, stack)
                 || !equipmentService.canEquip(player, stack))) {
             return false;
@@ -735,12 +767,17 @@ public class VirtualInventoryService {
             return false;
         }
         if (previousDefinition != null
-                && store(data, VirtualInventoryTab.EQUIPMENT_STORAGE,
+                && store(data, tabFor(previousDefinition),
                 previousDefinition.id(), 1L) <= 0) {
             return false;
         }
 
-        data.removeVirtualBagEntry(tab, key);
+        VirtualItemEntry remaining = entry.minus(1L);
+        if (remaining.amount() <= 0) {
+            data.removeVirtualBagEntry(tab, key);
+        } else {
+            data.putVirtualBagEntry(tab, key, remaining);
+        }
         data.setEquipment(equipSlot, stack);
         if (equipmentService != null) {
             equipmentService.recompute(player);
@@ -755,8 +792,13 @@ public class VirtualInventoryService {
      * <p>
      * 武器は素材が棒・クワなどでもメイン武器として扱う。防具は定義の
      * {@code equipment_slot} を優先し、判定できない場合のみ素材から推定する。
+     * 採取ツールは道具枠 1・2 の空き枠へ順に配置する。
      */
-    private static EquipSlot resolveEquipSlot(ItemData definition, ItemStack stack) {
+    private EquipSlot resolveEquipSlot(PlayerData data, ItemData definition,
+                                       ItemStack stack) {
+        if (definition.category() == ItemCategory.TOOL) {
+            return resolveToolSlot(data, definition);
+        }
         if (definition instanceof WeaponData) {
             return EquipSlot.MAIN_WEAPON;
         }
@@ -764,6 +806,36 @@ public class VirtualInventoryService {
             return armor.equipmentSlot();
         }
         return EquipSlot.match(stack);
+    }
+
+    /**
+     * 採取ツールを配置する道具枠を解決する。
+     * <p>
+     * 同じツールを装備済みの枠を優先し、次に空き枠、どちらも無い場合は
+     * 道具枠 1 を入れ替え対象とする。
+     */
+    private EquipSlot resolveToolSlot(PlayerData data, ItemData definition) {
+        EquipSlot[] toolSlots = {EquipSlot.TOOL_1, EquipSlot.TOOL_2};
+        ItemService itemService = plugin.getItemService();
+        if (itemService == null) {
+            return EquipSlot.TOOL_1;
+        }
+        for (EquipSlot slot : toolSlots) {
+            ItemStack equipped = data.getEquipment(slot);
+            if (equipped == null) {
+                continue;
+            }
+            ItemData equippedDefinition = itemService.findItem(equipped).orElse(null);
+            if (equippedDefinition != null && equippedDefinition.id().equals(definition.id())) {
+                return slot;
+            }
+        }
+        for (EquipSlot slot : toolSlots) {
+            if (data.getEquipment(slot) == null) {
+                return slot;
+            }
+        }
+        return EquipSlot.TOOL_1;
     }
 
     /**
@@ -884,10 +956,9 @@ public class VirtualInventoryService {
         }
 
         int used = entries.size();
-        int free = Math.max(0, BAG_MAX_ENTRIES - used);
         inventory.setItem(SCROLL_UP_SLOT, scrollButton("up", "▲ 上へスクロール", offset, maxScroll));
         inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down", "▼ 下へスクロール", offset, maxScroll));
-        inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, offset, maxScroll, used, free));
+        inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, offset, maxScroll, used));
     }
 
     /**
@@ -1023,7 +1094,7 @@ public class VirtualInventoryService {
     }
 
     private static ItemStack tabButton(VirtualInventoryTab tab, int offset, int maxScroll,
-                                       int used, int free) {
+                                       int used) {
         Material material = tab == VirtualInventoryTab.EQUIPMENT_STORAGE
                 ? Material.CHEST
                 : Material.ENDER_CHEST;
@@ -1038,8 +1109,6 @@ public class VirtualInventoryService {
                             + tab.displayName() + "</white></gray>"),
                     MINI.deserialize("<!italic><gray>使用枠: <white>" + used
                             + "</white>/<white>" + BAG_MAX_ENTRIES + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>空き容量: <green>" + free
-                            + "</green> 枠</gray>"),
                     MINI.deserialize("<!italic><gray>表示位置: <white>" + page
                             + "</white>/<white>" + maxPage + "</white></gray>"),
                     MINI.deserialize("<!italic><dark_gray>クリックで次のタブへ</dark_gray>")));
@@ -1054,8 +1123,8 @@ public class VirtualInventoryService {
      * メインインベントリ（9〜35）に残っている実アイテムを
      * 仮想インベントリへ取り込む。
      * <p>
-     * プラグイン製アイテムでない場合はホットバー 1〜8 へ退避し、
-     * 入りきらない場合のみ足元へドロップする。
+     * プラグイン製アイテムでない場合はスキルスロット（1〜5）へは戻さず、
+     * オフハンドが空ならそこへ、埋まっている場合は足元へドロップする。
      */
     private void absorbPhysicalBagItems(Player player, PlayerData data, PlayerInventory inventory) {
         ItemService itemService = plugin.getItemService();
@@ -1080,7 +1149,7 @@ public class VirtualInventoryService {
         }
 
         for (ItemStack item : unsupported) {
-            returnToInventory(player, inventory, item);
+            returnDisplacedItem(player, inventory, item);
         }
     }
 
@@ -1234,10 +1303,23 @@ public class VirtualInventoryService {
     public static boolean isLockedSlot(int slot) {
         return slot == WEAPON_HOTBAR_SLOT
                 || (slot >= HOTBAR_PANEL_FIRST_SLOT && slot <= HOTBAR_PANEL_LAST_SLOT)
+                || slot == MENU_BUTTON_SLOT
                 || slot == BOOTS_SLOT
                 || slot == LEGGINGS_SLOT
                 || slot == CHESTPLATE_SLOT
                 || slot == HELMET_SLOT;
+    }
+
+    /**
+     * ホットバーのメニュー本か判定する。
+     *
+     * @param stack 判定対象
+     * @return メニュー本の場合は {@code true}
+     */
+    public static boolean isMenuButton(ItemStack stack) {
+        return stack != null
+                && stack.getType() == Material.BOOK
+                && VirtualItem.isPlaceholder(stack);
     }
 
     private static ItemStack armorItem(PlayerInventory inventory, EquipSlot slot) {

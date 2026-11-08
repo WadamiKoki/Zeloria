@@ -132,6 +132,10 @@ public class EquipmentService {
             return false;
         }
         for (EquipSlot slot : EquipSlot.values()) {
+            // 採取ツールはクラス制限を持たないため、クラス変更の判定対象外とする。
+            if (slot.isToolSlot()) {
+                continue;
+            }
             ItemStack equipped = data.getEquipment(slot);
             if (equipped != null && !equipped.isEmpty()) {
                 return true;

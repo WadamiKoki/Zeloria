@@ -39,6 +39,9 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class PlayerService {
 
+    /** 新規プレイヤーに設定する既定クラス ID。 */
+    private static final String DEFAULT_CLASS_ID = "vanguard";
+
     private final Zeloria plugin;
     private final PlayerRepository repository;
 
@@ -181,11 +184,46 @@ public class PlayerService {
      * スナップショットから {@link PlayerData} を復元する。
      */
     private PlayerData fromSnapshot(PlayerSnapshot snapshot) {
-        return applyClassDefaults(PlayerData.fromSnapshot(snapshot));
+        PlayerData data = applyClassDefaults(PlayerData.fromSnapshot(snapshot));
+        // 初回参加（DB 既定値）や旧データでクラス未選択の場合のみ Vanguard を設定する。
+        applyDefaultClass(data);
+        return data;
     }
 
     private PlayerData createDefault(UUID uuid, String name) {
-        return applyClassDefaults(new PlayerData(uuid, name));
+        PlayerData data = applyClassDefaults(new PlayerData(uuid, name));
+        applyDefaultClass(data);
+        return data;
+    }
+
+    /**
+     * クラス未選択のプレイヤーデータに既定クラス（Vanguard）を設定する。
+     * <p>
+     * 既に {@code currentClassId} を持つデータは上書きしない。クラス定義がまだ
+     * 読み込まれていない、または Vanguard が存在しない場合は設定せず警告だけを出す。
+     *
+     * @param data 既定クラスを適用するプレイヤーデータ
+     */
+    private void applyDefaultClass(PlayerData data) {
+        if (data == null || data.getClassData().currentClassIdOrNull() != null) {
+            return;
+        }
+        ClassManager classManager = plugin.getClassManager();
+        if (classManager == null) {
+            return;
+        }
+
+        ZeloriaClass definition = classManager.find(DEFAULT_CLASS_ID).orElse(null);
+        if (definition == null) {
+            plugin.getLogger().warning(
+                    "既定クラス '" + DEFAULT_CLASS_ID + "' の定義が見つからないため、"
+                            + "新規プレイヤーのクラスを設定できませんでした: " + data.getName());
+            return;
+        }
+
+        data.getClassData().unlock(definition.id());
+        data.getClassData().setCurrentClassId(definition.id());
+        data.initializeClassProgress(definition.id());
     }
 
     /**

@@ -50,6 +50,9 @@ import java.util.stream.Stream;
  * <p>
  * コピー対象は {@link #WORLD_COPY_WHITELIST}（{@code level.dat} / {@code region/} / {@code data/}）のみとし、
  * UID・ロック・プレイヤーデータなどのメタデータは引き継がない。
+ * ただし {@code data/paper/metadata.dat} だけは例外としてコピー対象から除外する。
+ * このファイルにワールド UUID が含まれており、コピーすると複数レイヤーで
+ * UUID が重複してワールドが正常に扱えなくなるため。
  * <p>
  * ワールド操作を伴うため、すべてのメソッドはメインスレッドから呼び出すこと。
  */
@@ -73,6 +76,10 @@ public class LayerManager {
      * {@code data} もコピー対象に含める。これが欠けるとスポーン位置が Y=0 になり
      * テレポートが失敗する。
      * <p>
+     * ただし {@code data/paper/metadata.dat} はワールド UUID を保持しており、
+     * コピーするとレイヤー間で UUID が重複するため、{@link #isExcludedCopyPath(Path)}
+     * で個別に除外する。{@code data} ディレクトリ全体は除外しない。
+     * <p>
      * {@link BuildManager} のテンプレート保存処理からも共有参照される。
      */
     public static final Set<String> WORLD_COPY_WHITELIST = Set.of(
@@ -80,6 +87,17 @@ public class LayerManager {
             "region",
             "data"
     );
+
+    /**
+     * コピー対象から除外する Paper メタデータの相対パス。
+     * <p>
+     * ワールド UUID を含むため、テンプレート・インスタンス間で共有すると
+     * 同一 UUID のワールドが複数ロードされ、Paper 側で不整合が発生する。
+     */
+    private static final String PAPER_METADATA_RELATIVE_PATH = "data/paper/metadata.dat";
+
+    /** 建築ワールドのディレクトリ名接尾辞（{@code <templateId>_build}）。 */
+    private static final String BUILD_WORLD_SUFFIX = "_build";
 
     /**
      * メインワールドのレベル名が取得できなかった場合に使用する既定値。
@@ -220,6 +238,104 @@ public class LayerManager {
         } catch (IOException e) {
             plugin.getLogger().warning("テンプレートディレクトリの作成に失敗しました: " + e.getMessage());
         }
+
+        // 旧バージョンで作成されたテンプレート／建築ワールドには、コピーされた
+        // data/paper/metadata.dat が残っている可能性がある。起動時に取り除き、
+        // 以後のレイヤー生成でワールド UUID が重複しないようにする。
+        cleanupCopiedPaperMetadata();
+    }
+
+    /**
+     * テンプレートと建築ワールドの残骸から {@code data/paper/metadata.dat} を削除する。
+     * <p>
+     * このファイルはワールド UUID を保持しているため、テンプレートに残ったまま
+     * 複製するとすべてのレイヤーが同じ UUID を持つ。起動時に一度だけ削除し、
+     * 既存インストールでも UUID 重複を解消する。
+     */
+    private void cleanupCopiedPaperMetadata() {
+        int deleted = 0;
+
+        // WorldData/<templateId>/data/paper/metadata.dat
+        if (Files.isDirectory(templateRoot)) {
+            try (Stream<Path> stream = Files.list(templateRoot)) {
+                for (Path templateDir : stream.toList()) {
+                    if (!Files.isDirectory(templateDir)) {
+                        continue;
+                    }
+                    String name = templateDir.getFileName().toString();
+                    if (name.startsWith(".")) {
+                        // 保存処理中の一時ディレクトリ・バックアップは対象外。
+                        continue;
+                    }
+                    deleted += deletePaperMetadata(templateDir);
+                }
+            } catch (IOException e) {
+                plugin.getLogger().warning(
+                        "テンプレート内の Paper メタデータ確認に失敗しました: " + e.getMessage());
+            }
+        }
+
+        // dimensions/minecraft/<templateId>_build/data/paper/metadata.dat
+        // 建築ワールドの残骸が UUID を持ったまま保存されると、次回の建築で
+        // テンプレートへ UUID が混入するため、起動時に取り除く。
+        if (Files.isDirectory(instanceRoot)) {
+            try (Stream<Path> stream = Files.list(instanceRoot)) {
+                for (Path worldDir : stream.toList()) {
+                    if (!Files.isDirectory(worldDir)) {
+                        continue;
+                    }
+                    if (!worldDir.getFileName().toString().endsWith(BUILD_WORLD_SUFFIX)) {
+                        continue;
+                    }
+                    deleted += deletePaperMetadata(worldDir);
+                }
+            } catch (IOException e) {
+                plugin.getLogger().warning(
+                        "建築ワールド内の Paper メタデータ確認に失敗しました: " + e.getMessage());
+            }
+        }
+
+        if (deleted > 0) {
+            plugin.getLogger().info("Paper のワールド UUID メタデータを削除しました: " + deleted + " 件");
+        }
+    }
+
+    /**
+     * 指定ワールドディレクトリ配下の {@code data/paper/metadata.dat} を削除する。
+     *
+     * @return 削除したファイル数（0 または 1）
+     */
+    private int deletePaperMetadata(Path worldDir) {
+        Path metadata = worldDir.resolve(PAPER_METADATA_RELATIVE_PATH).normalize();
+        if (!metadata.startsWith(worldDir.normalize())) {
+            return 0;
+        }
+        try {
+            if (Files.deleteIfExists(metadata)) {
+                return 1;
+            }
+        } catch (IOException e) {
+            plugin.getLogger().warning(
+                    "Paper メタデータの削除に失敗しました: " + metadata + " (" + e.getMessage() + ")");
+        }
+        return 0;
+    }
+
+    /**
+     * コピー対象から除外すべき相対パスか判定する。
+     * <p>
+     * 除外するのは {@code data/paper/metadata.dat} のみ。{@code data} 配下の
+     * それ以外のファイル（{@code world_gen_settings.dat} など）はコピーする。
+     *
+     * @param relative コピー元からの相対パス
+     * @return 除外する場合は {@code true}
+     */
+    static boolean isExcludedCopyPath(Path relative) {
+        if (relative == null) {
+            return false;
+        }
+        String normalized = relative.toString().replace('\\', '/');
+        return normalized.equalsIgnoreCase(PAPER_METADATA_RELATIVE_PATH);
     }
 
     /**
@@ -964,6 +1080,38 @@ public class LayerManager {
     }
 
     /**
+     * プレイヤーが現在いるレイヤーインスタンスの ID を取得する。
+     * <p>
+     * 同じテンプレートから生成された別インスタンスを区別するため、テンプレート ID ではなく
+     * インスタンス ID（ワールドキー）を返す。メインワールドや建築ワールドなど、
+     * レイヤーインスタンス以外にいる場合は {@code null} を返す。
+     *
+     * @param player 対象プレイヤー
+     * @return レイヤーインスタンス ID。レイヤー外の場合は {@code null}
+     */
+    public String getCurrentLayerId(Player player) {
+        if (player == null) {
+            return null;
+        }
+        World world = player.getWorld();
+        if (world == null) {
+            return null;
+        }
+
+        String key = world.getKey().getKey();
+        World loaded = loadedWorlds.get(key);
+        if (loaded != null && loaded.equals(world)) {
+            return key;
+        }
+        for (Map.Entry<String, World> entry : loadedWorlds.entrySet()) {
+            if (entry.getValue().equals(world)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * インスタンス ID → テンプレート ID の対応を取得する（不変ビュー）。
      */
     public Map<String, String> getInstanceTemplates() {
@@ -1321,6 +1469,8 @@ public class LayerManager {
      * （{@code level.dat} / {@code region/} / {@code data/}）だけを
      * コピーするホワイトリスト方式。{@code session.lock} / {@code uid.dat} /
      * {@code level.dat_old} などのメタデータやプレイヤーデータは一切コピーしない。
+     * また {@code data/paper/metadata.dat} はワールド UUID を含むため、
+     * {@link #isExcludedCopyPath(Path)} で個別に除外する。
      * 個別ファイルのコピー失敗は警告に留め、複製全体は継続する。
      *
      * @param source 複製元（テンプレートディレクトリ）
@@ -1332,6 +1482,17 @@ public class LayerManager {
             stream.forEach(path -> {
                 Path relative = source.relativize(path);
                 if (relative.getNameCount() == 0) {
+                    return;
+                }
+                if (isExcludedCopyPath(relative)) {
+                    // コピー先に残っている場合も削除し、UUID 重複を解消する。
+                    try {
+                        Files.deleteIfExists(target.resolve(relative));
+                    } catch (IOException e) {
+                        plugin.getLogger().warning(
+                                "除外ファイルの削除に失敗: " + target.resolve(relative)
+                                        + " (" + e.getMessage() + ")");
+                    }
                     return;
                 }
                 String topLevel = relative.getName(0).toString();

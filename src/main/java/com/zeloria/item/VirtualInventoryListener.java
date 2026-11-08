@@ -5,6 +5,7 @@ import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.VirtualInventoryTab;
+import com.zeloria.world.BuildManager;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -18,6 +19,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
@@ -67,8 +69,21 @@ public class VirtualInventoryListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
+        // 建築ワールドではバニラのインベントリ操作をそのまま許可する。
+        if (isBuildWorld(player)) {
+            return;
+        }
 
         int playerSlot = clickedPlayerSlot(event);
+
+        // ホットバー右端のメニュー本は、自分のインベントリ画面でのみメニューを開く。
+        if (playerSlot == VirtualInventoryService.MENU_BUTTON_SLOT
+                && isOwnInventoryView(event.getView())
+                && VirtualInventoryService.isMenuButton(event.getCurrentItem())) {
+            event.setCancelled(true);
+            openMenu(player);
+            return;
+        }
 
         // メインインベントリ（9〜35）はタブ式仮想インベントリのため、
         // シフトクリック・ダブルクリック・数字キー・ドラッグを含めてすべて拒否する。
@@ -123,8 +138,8 @@ public class VirtualInventoryListener implements Listener {
      * 仮想インベントリ領域（9〜35）のクリックを処理する。
      * <p>
      * 呼び出し元で {@link InventoryClickEvent#setCancelled(boolean)} 済みのため、
-     * ここでは表示データの更新だけを行う。装備操作はメニュー GUI に一本化するため、
-     * 装備保管庫を含むタブ画面の左クリックでは装備しない。
+     * ここでは表示データの更新だけを行う。武器・防具の通常クリックは装備、
+     * シフトクリックはタブ間移動として処理する。
      */
     private void handleBagClick(InventoryClickEvent event, Player player) {
         VirtualInventoryService service = plugin.getVirtualInventoryService();
@@ -154,10 +169,14 @@ public class VirtualInventoryListener implements Listener {
             return;
         }
 
-        // タブ画面では装備保管庫のアイテムをクリックしても装備しない。
-        // 装備は /menu の装備枠・プレイヤーインベントリ操作からのみ行う。
+        // タブ画面では装備保管庫のアイテムをシフトクリックでタブ間移動する。
+        // 通常クリックでは武器・防具をその場で装備する（装備できた場合のみ）。
         if (event.isShiftClick()) {
             service.moveEntry(player, tab, key);
+            return;
+        }
+        if (event.getClick() == ClickType.LEFT || event.getClick() == ClickType.RIGHT) {
+            service.useEntry(player, tab, key);
         }
     }
 
@@ -173,7 +192,7 @@ public class VirtualInventoryListener implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
-        if (event.getAction() == InventoryAction.NOTHING) {
+        if (isBuildWorld(player) || event.getAction() == InventoryAction.NOTHING) {
             return;
         }
 
@@ -186,6 +205,9 @@ public class VirtualInventoryListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onInventoryDrag(InventoryDragEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (isBuildWorld(player)) {
             return;
         }
         if (VirtualItem.isVirtual(event.getOldCursor())) {
@@ -228,11 +250,18 @@ public class VirtualInventoryListener implements Listener {
      */
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerInteract(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND) {
+        if (event.getHand() != EquipmentSlot.HAND || isBuildWorld(event.getPlayer())) {
             return;
         }
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        if (VirtualInventoryService.isMenuButton(event.getItem())) {
+            // メニュー本は見た目専用アイテムのため、バニラの使用処理を止めて
+            // メニュー GUI の表示だけを行う。
+            event.setCancelled(true);
+            openMenu(event.getPlayer());
             return;
         }
         if (VirtualItem.isPlaceholder(event.getItem())) {
@@ -304,6 +333,9 @@ public class VirtualInventoryListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onAttemptPickupItem(PlayerAttemptPickupItemEvent event) {
         Player player = event.getPlayer();
+        if (isBuildWorld(player)) {
+            return;
+        }
 
         ItemService itemService = plugin.getItemService();
         VirtualInventoryService service = plugin.getVirtualInventoryService();
@@ -347,6 +379,57 @@ public class VirtualInventoryListener implements Listener {
     }
 
     /**
+     * 建築ワールドへの入退場時に仮想インベントリ表示を切り替える。
+     * <p>
+     * 入場時はバニラのホットバー操作を許可し、退出時は仮想表示を再適用する。
+     * テレポート確定後にインベントリを操作するため、次の tick で実行する。
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        boolean leavingBuildWorld = BuildManager.isBuildWorld(event.getFrom());
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            VirtualInventoryService service = plugin.getVirtualInventoryService();
+            if (service == null) {
+                return;
+            }
+            if (isBuildWorld(player)) {
+                service.enterBuildMode(player);
+            } else if (leavingBuildWorld) {
+                // 建築ワールドから通常レイヤーへ戻ったときだけ、ホットバーの物理アイテムを
+                // クリアして仮想表示を再適用する。
+                service.leaveBuildMode(player);
+            } else {
+                service.refresh(player);
+            }
+        });
+    }
+
+    /**
+     * 次のティックでメニュー GUI を開く。
+     * <p>
+     * インベントリ操作イベントの処理中に別のインベントリを開くと、
+     * クリック結果の確定と競合するため 1 ティック遅延させる。
+     */
+    private void openMenu(Player player) {
+        if (player == null) {
+            return;
+        }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            var menuService = plugin.getMenuService();
+            if (menuService != null) {
+                menuService.open(player);
+            }
+        });
+    }
+
+    /**
      * 次のティックで仮想表示を再同期する。
      * <p>
      * クリック結果やリスポーンによるインベントリ変更が確定した後に反映するため、
@@ -355,10 +438,20 @@ public class VirtualInventoryListener implements Listener {
     private void scheduleRefresh(Player player) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             VirtualInventoryService service = plugin.getVirtualInventoryService();
-            if (service != null && player.isOnline()) {
+            if (service == null || !player.isOnline()) {
+                return;
+            }
+            if (isBuildWorld(player)) {
+                service.enterBuildMode(player);
+            } else {
                 service.refresh(player);
             }
         });
+    }
+
+    /** 対象プレイヤーが建築ワールド内にいるか判定する。 */
+    private static boolean isBuildWorld(Player player) {
+        return player != null && BuildManager.isBuildWorld(player.getWorld());
     }
 
     /**

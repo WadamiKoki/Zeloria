@@ -8,8 +8,9 @@ import org.bukkit.scheduler.BukkitRunnable;
 import java.util.Objects;
 
 /**
- * 戦闘外の HP / MP 自然回復を 1 秒ごとに処理するタスク。
+ * 戦闘外の HP / MP 自然回復を 3 秒ごとに処理するタスク。
  * <p>
+ * 1 回あたりの回復量は従来（毎秒）と同じ値を使用し、実行頻度だけを 3 秒へ変更する。
  * 戦闘終了（最後にダメージを与えた／受けた時刻）から
  * {@link PlayerStatsService#REGEN_COMBAT_DELAY_MILLIS} が経過するまで回復しない。
  * 回復量は {@code flat * (1.0 + percent)} で計算し、
@@ -23,8 +24,8 @@ import java.util.Objects;
  */
 public class PlayerRegenTask extends BukkitRunnable {
 
-    /** タスクの実行周期（ティック）。20 ティック = 1 秒。 */
-    public static final long PERIOD_TICKS = 20L;
+    /** タスクの実行周期（ティック）。60 ティック = 3 秒。 */
+    public static final long PERIOD_TICKS = 60L;
 
     private final Zeloria plugin;
 
@@ -65,7 +66,9 @@ public class PlayerRegenTask extends BukkitRunnable {
     }
 
     /**
-     * 1 秒分の自然回復を適用する。
+     * 1 回分の自然回復を適用する。
+     * <p>
+     * 3 秒周期でも 1 回あたりの回復量は毎秒時代と同じ値を使用する。
      *
      * @param stats 対象ステータス
      * @return HP または MP が変化した場合は {@code true}
@@ -100,11 +103,11 @@ public class PlayerRegenTask extends BukkitRunnable {
     }
 
     /**
-     * 固定値と割合から 1 秒あたりの回復量を計算する。
+     * 固定値と割合から 1 回あたりの回復量を計算する。
      *
      * @param flat    固定回復量（マイナス可）
      * @param percent 割合（比率。マイナス可）
-     * @return 1 秒あたりの回復量
+     * @return 1 回あたりの回復量
      */
     public static double regenAmount(double flat, double percent) {
         return flat * (1.0 + percent);
