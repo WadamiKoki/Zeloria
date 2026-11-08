@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.EquipmentService;
 import com.zeloria.player.PlayerData;
@@ -10,7 +11,6 @@ import com.zeloria.player.PlayerClassData;
 import com.zeloria.player.ZeloriaClass;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -124,7 +124,7 @@ public final class ClassSelectGUI implements Listener {
 
         ConfigurationSection gui = config.getConfigurationSection("gui");
         String titleRaw = gui == null ? config.getString("title") : gui.getString("title");
-        Component title = MINI.deserialize(
+        Component title = TextComponents.mini(MINI,
                 titleRaw == null || titleRaw.isBlank() ? DEFAULT_TITLE : titleRaw);
 
         int rows = gui == null
@@ -454,10 +454,10 @@ public final class ClassSelectGUI implements Listener {
             return item;
         }
 
-        Component name = MINI.deserialize(growth.name());
-        meta.displayName(name.replaceText(builder -> builder
+        Component name = TextComponents.mini(MINI, growth.name());
+        meta.displayName(noItalic(name.replaceText(builder -> builder
                 .matchLiteral("{class}")
-                .replacement(definition.displayName())));
+                .replacement(noItalic(definition.displayName())))));
 
         List<Component> lore = new ArrayList<>();
         for (StatDisplay stat : growth.stats()) {
@@ -465,15 +465,15 @@ public final class ClassSelectGUI implements Listener {
             if (percent == 0.0) {
                 continue;
             }
-            lore.add(MINI.deserialize(growth.line()
+            lore.add(TextComponents.mini(MINI, growth.line()
                     .replace("{label}", stat.label())
                     .replace("{value}", formatPercent(percent))));
         }
         if (lore.isEmpty()) {
-            lore.add(MINI.deserialize(growth.empty()));
+            lore.add(TextComponents.mini(MINI, growth.empty()));
         }
 
-        meta.lore(lore);
+        meta.lore(TextComponents.noItalic(lore));
         item.setItemMeta(meta);
         return item;
     }
@@ -531,7 +531,7 @@ public final class ClassSelectGUI implements Listener {
      * アイテム名・Lore の斜体（Italic）を無効化する。
      */
     private static Component noItalic(Component component) {
-        return component.decoration(TextDecoration.ITALIC, false);
+        return TextComponents.noItalic(component);
     }
 
     /* ------------------------------------------------------------------

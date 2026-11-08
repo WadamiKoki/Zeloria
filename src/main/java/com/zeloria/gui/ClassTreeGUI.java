@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerService;
@@ -181,8 +182,8 @@ public final class ClassTreeGUI implements Listener {
         scrollOffsets.put(player.getUniqueId(), offset);
 
         Component title = classTree.title() != null
-                ? classTree.title()
-                : MINI.deserialize(tree.title());
+                ? TextComponents.noItalic(classTree.title())
+                : TextComponents.mini(MINI, tree.title());
 
         Holder holder = new Holder(this);
         Inventory inventory = Bukkit.createInventory(holder, tree.totalSlots(), title);
@@ -290,9 +291,9 @@ public final class ClassTreeGUI implements Listener {
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
         }
 
-        meta.displayName(Component.empty()
+        meta.displayName(TextComponents.noItalic(Component.empty()
                 .append(statusPrefix(status))
-                .append(node.displayName()));
+                .append(node.displayName())));
 
         int points = data.getClassTreePoints(classId);
         List<Component> lore = new ArrayList<>();
@@ -314,7 +315,7 @@ public final class ClassTreeGUI implements Listener {
         lore.add(Component.empty());
         appendStatusLore(lore, data, classId, classTree, node, status);
 
-        meta.lore(lore);
+        meta.lore(TextComponents.noItalic(lore));
         meta.getPersistentDataContainer().set(
                 nodeIdKey, PersistentDataType.STRING, node.id());
         item.setItemMeta(meta);
@@ -421,14 +422,14 @@ public final class ClassTreeGUI implements Listener {
         if (meta == null) {
             return item;
         }
-        meta.displayName(MINI.deserialize(name));
+        meta.displayName(TextComponents.mini(MINI, name));
         List<Component> lore = new ArrayList<>();
         for (String line : loreLines) {
             lore.add(line == null || line.isBlank()
                     ? Component.empty()
-                    : MINI.deserialize(line));
+                    : TextComponents.mini(MINI, line));
         }
-        meta.lore(lore);
+        meta.lore(TextComponents.noItalic(lore));
         item.setItemMeta(meta);
         return item;
     }
@@ -534,7 +535,8 @@ public final class ClassTreeGUI implements Listener {
         Inventory inventory = Bukkit.createInventory(
                 holder,
                 RESET_CONFIRM_SIZE,
-                MINI.deserialize("<dark_red><bold>ツリーのリセット確認</bold></dark_red>"));
+                TextComponents.mini(MINI,
+                        "<dark_red><bold>ツリーのリセット確認</bold></dark_red>"));
         holder.inventory = inventory;
 
         ItemStack filler = createFiller();

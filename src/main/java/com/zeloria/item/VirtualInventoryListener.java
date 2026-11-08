@@ -376,7 +376,12 @@ public class VirtualInventoryListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
-        scheduleRefresh(event.getPlayer());
+        Player player = event.getPlayer();
+        // ビルドモード中は仮想表示を再適用しないため、タスクを登録する前に除外する。
+        if (isBuildMode(player)) {
+            return;
+        }
+        scheduleRefresh(player);
     }
 
     /**

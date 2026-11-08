@@ -1,5 +1,6 @@
 package com.zeloria.item;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.MessageService;
 import com.zeloria.item.VirtualItem;
@@ -154,8 +155,8 @@ public class VirtualInventoryService {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(MINI.deserialize(EMPTY_SLOT_NAME));
-            meta.lore(List.of(MINI.deserialize(EMPTY_SLOT_LORE)));
+            meta.displayName(TextComponents.mini(MINI, EMPTY_SLOT_NAME));
+            meta.lore(List.of(TextComponents.mini(MINI, EMPTY_SLOT_LORE)));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
@@ -403,8 +404,8 @@ public class VirtualInventoryService {
         ItemStack item = new ItemStack(Material.BOOK);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(MINI.deserialize("<!italic><white>メニュー</white>"));
-            meta.lore(List.of(MINI.deserialize(
+            meta.displayName(TextComponents.mini(MINI, "<!italic><white>メニュー</white>"));
+            meta.lore(List.of(TextComponents.mini(MINI,
                     "<!italic><gray>クリックで装備メニューを開きます</gray>")));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
@@ -1070,9 +1071,9 @@ public class VirtualInventoryService {
                 ? new ArrayList<>()
                 : new ArrayList<>(meta.lore());
         String formatted = String.format(Locale.US, "%,d", amount);
-        lore.add(MINI.deserialize(
+        lore.add(TextComponents.mini(MINI,
                 "<!italic><gray>所持数: <white>" + formatted + "</white></gray>"));
-        meta.lore(lore);
+        meta.lore(TextComponents.noItalic(lore));
         stack.setItemMeta(meta);
     }
 
@@ -1083,8 +1084,9 @@ public class VirtualInventoryService {
         if (meta != null) {
             int page = offset / BAG_SCROLL_STEP + 1;
             int maxPage = maxScroll / BAG_SCROLL_STEP + 1;
-            meta.displayName(MINI.deserialize("<!italic><white>" + label + "</white>"));
-            meta.lore(List.of(MINI.deserialize(
+            meta.displayName(TextComponents.mini(MINI,
+                    "<!italic><white>" + label + "</white>"));
+            meta.lore(List.of(TextComponents.mini(MINI,
                     "<!italic><gray>表示位置: <white>" + page + "</white>/<white>"
                             + maxPage + "</white></gray>")));
             meta.getPersistentDataContainer().set(
@@ -1104,15 +1106,17 @@ public class VirtualInventoryService {
         if (meta != null) {
             int page = offset / BAG_SCROLL_STEP + 1;
             int maxPage = maxScroll / BAG_SCROLL_STEP + 1;
-            meta.displayName(MINI.deserialize("<!italic><white>タブ切り替え</white>"));
+            meta.displayName(TextComponents.mini(MINI,
+                    "<!italic><white>タブ切り替え</white>"));
             meta.lore(List.of(
-                    MINI.deserialize("<!italic><gray>現在のタブ: <white>"
+                    TextComponents.mini(MINI, "<!italic><gray>現在のタブ: <white>"
                             + tab.displayName() + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>使用枠: <white>" + used
+                    TextComponents.mini(MINI, "<!italic><gray>使用枠: <white>" + used
                             + "</white>/<white>" + BAG_MAX_ENTRIES + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>表示位置: <white>" + page
+                    TextComponents.mini(MINI, "<!italic><gray>表示位置: <white>" + page
                             + "</white>/<white>" + maxPage + "</white></gray>"),
-                    MINI.deserialize("<!italic><dark_gray>クリックで次のタブへ</dark_gray>")));
+                    TextComponents.mini(MINI,
+                            "<!italic><dark_gray>クリックで次のタブへ</dark_gray>")));
             meta.getPersistentDataContainer().set(
                     TAB_SWITCH_KEY, PersistentDataType.STRING, tab.name());
             item.setItemMeta(meta);

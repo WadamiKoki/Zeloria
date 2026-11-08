@@ -777,7 +777,12 @@ public class BuildManager {
      * @return 現在の建築ワールドの場合は {@code true}
      */
     public boolean isActiveBuildWorld(World world) {
-        return world != null && buildWorlds.containsValue(world);
+        if (world == null
+                || !BUILD_NAMESPACE.equals(world.getKey().getNamespace())
+                || !world.getKey().getKey().endsWith(BUILD_WORLD_SUFFIX)) {
+            return false;
+        }
+        return buildWorlds.containsValue(world);
     }
 
     /**

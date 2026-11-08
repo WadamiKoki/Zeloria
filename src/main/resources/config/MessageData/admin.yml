@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gathering|gui|build|layer|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -50,21 +50,23 @@ stats:
   save_failed: "<red>ステータスの保存に失敗しました: <gray>{error}</gray></red>"
 
 xp:
-  usage: "<gray>使い方:</gray> <white>/admin xp \\<player> \\<amount></white>"
+  usage: "<gray>使い方:</gray> <white>/admin xp \\<player> level \\<amount></white> <dark_gray>|</dark_gray> <white>/admin xp \\<player> gathering \\<amount> \\<type></white>"
   success: "<green>{player}</green> <gray>に経験値</gray> <yellow>{amount}</yellow> <gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, EXP {exp}/{required})</dark_gray>"
   not_found: "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"
   not_loaded: "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"
-  invalid_amount: "<red>経験値は 1 以上の整数で指定してください。</red>"
+  invalid_amount: "<red>経験値は 0 以外の整数で指定してください。</red>"
+  invalid_mode: "<red>付与モードは <white>level</white> または <white>gathering</white> を指定してください: <white>{mode}</white></red>"
+  type_required: "<red>gathering を指定する場合は種別（mining / woodcutting / farming）も指定してください。</red>"
   no_class: "<red>クラス未選択のため経験値を付与できません。先にクラスを選択してください。</red>"
   unavailable: "<red>レベルサービスが初期化されていません。</red>"
 
 gathering:
-  usage: "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"
+  usage: "<gray>使い方:</gray> <white>/admin xp \\<player> gathering \\<amount> \\<type></white>"
   success: "<green>{player}</green> <gray>に</gray> <white>{type}</white> <gray>経験値</gray> <yellow>{amount}</yellow> <gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, EXP {exp}/{required})</dark_gray>"
   not_found: "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"
   not_loaded: "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"
   invalid_type: "<red>不明なギャザリング種別です: <white>{type}</white></red> <gray>指定可能: <white>mining, woodcutting, farming</white></gray>"
-  invalid_amount: "<red>ギャザリング経験値は 1 以上の整数で指定してください。</red>"
+  invalid_amount: "<red>ギャザリング経験値は 0 以外の整数で指定してください。</red>"
   no_gain: "<yellow>{player}</yellow> <gray>は既に最大レベルです。</gray>"
   unavailable: "<red>ギャザリングサービスが初期化されていません。</red>"
 

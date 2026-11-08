@@ -1,9 +1,10 @@
 package com.zeloria.world;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -24,7 +25,8 @@ public class BuildWorldGuardListener implements Listener {
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
     private static final Component DENIED = MINI.deserialize(
-            "<green>[Zeloria]</green> <red>建築ワールドは管理者専用のため入場できません。</red>");
+                    "<green>[Zeloria]</green> <red>建築ワールドは管理者専用のため入場できません。</red>")
+            .decoration(TextDecoration.ITALIC, false);
 
     private final BuildManager buildManager;
 
@@ -48,52 +50,24 @@ public class BuildWorldGuardListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerTeleport(PlayerTeleportEvent event) {
-        Player player = event.getPlayer();
         Location destination = event.getTo();
-
-        // テレポートがキャンセルされている原因を切り分けるための調査用ログ。
-        Bukkit.getLogger().info("[BuildGuardDebug] player=" + player.getName()
-                + ", to=" + (destination != null && destination.getWorld() != null
-                        ? destination.getWorld().getName() : "null")
-                + ", isActiveBuildWorld=" + buildManager.isActiveBuildWorld(
-                        destination != null ? destination.getWorld() : null)
-                + ", cancelled=" + event.isCancelled());
-
         if (destination == null || destination.getWorld() == null) {
             return;
         }
 
-        // キャンセル対象は「現在開いている建築ワールドへの入場」のみ。
-        // minecraft 名前空間を共有するレイヤーインスタンスやバニラワールド、
-        // 建築ワールドからの退出はキャンセルしない。
-        if (!buildManager.isActiveBuildWorld(destination.getWorld())) {
+        World destinationWorld = destination.getWorld();
+        // 建築ワールドになり得るキーだけを対象にし、通常ワールドへの転送では
+        // 管理マップの走査を行わない。
+        if (!canBeBuildWorld(destinationWorld)
+                || !buildManager.isActiveBuildWorld(destinationWorld)) {
             return;
         }
 
+        Player player = event.getPlayer();
         if (!player.hasPermission(BuildManager.BUILD_PERMISSION) && !player.isOp()) {
             event.setCancelled(true);
             player.sendMessage(DENIED);
         }
-
-        logDebug(player, destination, event.isCancelled());
-    }
-
-    /**
-     * 建築ワールド向けテレポートの判定結果をログに出力する。
-     * <p>
-     * 転送失敗の原因（イベントキャンセルか、それ以外か）を切り分けるための調査用ログ。
-     *
-     * @param player      対象プレイヤー
-     * @param destination 転送先
-     * @param cancelled   判定後のキャンセル状態
-     */
-    private void logDebug(Player player, Location destination, boolean cancelled) {
-        String worldName = destination != null && destination.getWorld() != null
-                ? destination.getWorld().getName()
-                : "null";
-        Bukkit.getLogger().info("[BuildGuardDebug] teleport event: player=" + player.getName()
-                + ", to=" + worldName
-                + ", cancelled=" + cancelled);
     }
 
     /**
@@ -107,13 +81,27 @@ public class BuildWorldGuardListener implements Listener {
     public void onTeleportOut(PlayerTeleportEvent event) {
         Location from = event.getFrom();
         Location to = event.getTo();
-        if (from == null || from.getWorld() == null
-                || !BuildManager.isBuildWorld(from.getWorld())) {
+        World fromWorld = from == null ? null : from.getWorld();
+        if (!canBeBuildWorld(fromWorld) || !buildManager.isActiveBuildWorld(fromWorld)) {
             return;
         }
-        if (to == null || !BuildManager.isBuildWorld(to.getWorld())) {
+
+        World toWorld = to == null ? null : to.getWorld();
+        if (toWorld == null || !buildManager.isActiveBuildWorld(toWorld)) {
             buildManager.restoreGameMode(event.getPlayer());
         }
+    }
+
+    /**
+     * 建築ワールドのキー形式（{@code minecraft:<template>_build}）かを軽量に判定する。
+     * <p>
+     * ファイルシステムやレイヤー ID の解析は行わず、通常ワールドへのテレポートを
+     * 早期に除外するためだけに使用する。
+     */
+    private static boolean canBeBuildWorld(World world) {
+        return world != null
+                && BuildManager.BUILD_NAMESPACE.equals(world.getKey().getNamespace())
+                && world.getKey().getKey().endsWith(BuildManager.BUILD_WORLD_SUFFIX);
     }
 
     /**

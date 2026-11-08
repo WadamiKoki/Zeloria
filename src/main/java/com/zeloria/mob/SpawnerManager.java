@@ -149,7 +149,7 @@ public final class SpawnerManager {
             definitions.put(data.id().toLowerCase(Locale.ROOT), data);
         }
 
-        debug("スポナー定義を読み込みました: count=" + definitions.size());
+        plugin.getLogger().info("スポナー定義を読み込みました: count=" + definitions.size());
     }
 
     /**
@@ -162,9 +162,9 @@ public final class SpawnerManager {
      * @param instanceId インスタンス ID
      * @param templateId テンプレート ID（{@code LayerData} の解決に使用）
      */
-    public void startFor(World world, String instanceId, String templateId) {
+    public int startFor(World world, String instanceId, String templateId) {
         if (world == null || instanceId == null || instanceId.isBlank()) {
-            return;
+            return 0;
         }
 
         stopFor(instanceId);
@@ -172,7 +172,7 @@ public final class SpawnerManager {
         LayerConfigService layerConfigService = plugin.getLayerConfigService();
         if (layerConfigService == null) {
             debug("LayerConfigService が未初期化のためスポナーを開始できません: instance=" + instanceId);
-            return;
+            return 0;
         }
 
         Optional<LayerData> found = templateId == null || templateId.isBlank()
@@ -180,7 +180,7 @@ public final class SpawnerManager {
                 : layerConfigService.findByTemplate(templateId);
         if (found.isEmpty()) {
             debug("レイヤー定義が見つかりません: instance=" + instanceId + ", template=" + templateId);
-            return;
+            return 0;
         }
 
         List<SpawnerPlacement> spawners = found.get().getSpawners();
@@ -190,16 +190,19 @@ public final class SpawnerManager {
         removeSpawnerDisplays(world);
 
         if (spawners.isEmpty()) {
-            debug("スポナー未定義のレイヤーです: instance=" + instanceId);
-            return;
+            return 0;
         }
 
         debug("レイヤーのスポナーを開始します: instance=" + instanceId
                 + ", world=" + world.getName() + ", spawners=" + spawners.size());
 
+        int started = 0;
         for (SpawnerPlacement placement : spawners) {
-            startFor(world, instanceId, placement);
+            if (startFor(world, instanceId, placement)) {
+                started++;
+            }
         }
+        return started;
     }
 
     /**
@@ -209,16 +212,16 @@ public final class SpawnerManager {
      * @param instanceId インスタンス ID
      * @param placement  レイヤー側の配置定義（ID と座標）
      */
-    public void startFor(World world, String instanceId, SpawnerPlacement placement) {
+    public boolean startFor(World world, String instanceId, SpawnerPlacement placement) {
         if (world == null || instanceId == null || instanceId.isBlank() || placement == null) {
-            return;
+            return false;
         }
 
         SpawnerData data = findDefinition(placement.spawnerId());
         if (data == null) {
             warnSpawnerOnce(placement.spawnerId(), "スポナー定義が見つかりません: spawner="
                     + placement.spawnerId() + ", instance=" + instanceId);
-            return;
+            return false;
         }
 
         String instanceKey = key(instanceId);
@@ -235,7 +238,7 @@ public final class SpawnerManager {
         if (layer.contains(placement.spawnerId(), placement.x(), placement.y(), placement.z())) {
             debug("同一座標のスポナーは登録済みのためスキップします: instance=" + instanceId
                     + ", spawner=" + data.id());
-            return;
+            return false;
         }
 
         Location location = new Location(world, placement.x(), placement.y(), placement.z());
@@ -265,6 +268,7 @@ public final class SpawnerManager {
                 + ", material=" + display.material()
                 + ", scale=" + display.scale()
                 + ", displayId=" + (displayId == null ? "-" : displayId));
+        return true;
     }
 
 
@@ -791,7 +795,7 @@ public final class SpawnerManager {
     }
 
     private void debug(String message) {
-        plugin.getLogger().info(DEBUG_PREFIX + message);
+        plugin.getLogger().fine(DEBUG_PREFIX + message);
     }
 
     private static String format(double value) {

@@ -94,7 +94,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *     <li>{@code /admin info <player>} / {@code /admin stats <player>} - プレイヤー情報・RPG ステータスを表示する</li>
  *     <li>{@code /admin stats <player> <type> <value>} - 基礎ステータスを加算（負の値で減算）して保存する</li>
  *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
- *     <li>{@code /admin xp <player> <amount>} - 経験値を付与する</li>
+ *     <li>{@code /admin xp <player> <level|gathering> <amount> [type]}
+ *         - クラスまたはギャザリング経験値を付与する</li>
  *     <li>{@code /admin build mode} - 手動ビルドモードを ON / OFF する</li>
  *     <li>{@code /admin build create <yml>} / {@code /admin build join <yml>} - 建築ワールドを作成／参加する</li>
  *     <li>{@code /admin build list|info|save|unsave} - チャンネル 1 の建築ワールドを管理する</li>
@@ -119,6 +120,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String STATS = "stats";
     private static final String XP = "xp";
     private static final String GATHERING = "gathering";
+    private static final String LEVEL = "level";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
     private static final String MODE = "mode";
@@ -185,8 +187,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> LAYER_TARGETS = List.of(ALL, ONLINE);
 
-    /** {@code /admin gathering <xp> ...} のサブコマンド候補。 */
-    private static final List<String> GATHERING_TARGETS = List.of(XP);
+    /** {@code /admin xp <player> <mode> <amount> [type]} の付与モード候補。 */
+    private static final List<String> XP_MODES = List.of(LEVEL, GATHERING);
 
     /**
      * {@code /admin stats <player> <type> <value>} で変更可能なステータス種別。
@@ -209,7 +211,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gathering|gui|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -284,7 +286,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case INFO -> handleInfo(sender, args);
             case STATS -> handleStats(sender, args);
             case XP -> handleXp(sender, args);
-            case GATHERING -> handleGathering(sender, args);
             case GUI -> handleGui(sender, args);
             case BUILD -> handleBuild(sender, args);
             case LAYER -> handleLayer(sender, args);
@@ -317,7 +318,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(INFO);
                 candidates.add(STATS);
                 candidates.add(XP);
-                candidates.add(GATHERING);
                 candidates.add(GUI);
                 candidates.add(LAYER);
             }
@@ -356,17 +356,37 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return completeGive(sender, args);
         }
 
-        if (GATHERING.equalsIgnoreCase(args[0])) {
-            return completeGathering(sender, args);
-        }
-
-        if (INFO.equalsIgnoreCase(args[0]) || XP.equalsIgnoreCase(args[0])) {
+        if (INFO.equalsIgnoreCase(args[0])) {
             if (!sender.hasPermission(ADMIN_PERMISSION)) {
                 return List.of();
             }
             if (args.length == 2) {
                 return partial(args[1], Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
+                        .toList());
+            }
+            return List.of();
+        }
+
+        if (XP.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return partial(args[1], Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .toList());
+            }
+            if (args.length == 3) {
+                return partial(args[2], XP_MODES);
+            }
+            if (args.length == 4) {
+                // 数値は補完しない。
+                return List.of();
+            }
+            if (args.length == 5 && GATHERING.equalsIgnoreCase(args[2])) {
+                return partial(args[4], Arrays.stream(GatheringType.values())
+                        .map(GatheringType::key)
                         .toList());
             }
             return List.of();
@@ -511,35 +531,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (args.length == 3 && SPAWN.equalsIgnoreCase(args[1])) {
             NpcManager npcManager = plugin.getNpcManager();
             return npcManager == null ? List.of() : partial(args[2], npcManager.getIds());
-        }
-        return List.of();
-    }
-
-    /**
-     * {@code /admin gathering xp <player> <type> <amount>} のタブ補完。
-     */
-    private List<String> completeGathering(CommandSender sender, String[] args) {
-        if (!sender.hasPermission(ADMIN_PERMISSION)) {
-            return List.of();
-        }
-        if (args.length == 2) {
-            return partial(args[1], GATHERING_TARGETS);
-        }
-        if (!XP.equalsIgnoreCase(args[1])) {
-            return List.of();
-        }
-        if (args.length == 3) {
-            return partial(args[2], Bukkit.getOnlinePlayers().stream()
-                    .map(Player::getName)
-                    .toList());
-        }
-        if (args.length == 4) {
-            return partial(args[3], Arrays.stream(GatheringType.values())
-                    .map(GatheringType::key)
-                    .toList());
-        }
-        if (args.length == 5) {
-            return partial(args[4], List.of("100", "1000", "10000"));
         }
         return List.of();
     }
@@ -2311,18 +2302,17 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin xp <player> <amount>} の本体。
+     * {@code /admin xp <player> <level|gathering> <amount> [type]} の本体。
      * <p>
-     * オンラインプレイヤーへ経験値を付与し、レベルアップ処理は
-     * {@link LevelService#grant(Player, long)} に委譲する。
+     * {@code level} はクラス経験値、{@code gathering} は指定種別のギャザリング経験値を
+     * 付与する。レベルアップ処理は各サービスへ委譲する。
      *
      * @param sender 実行者
-     * @param args   コマンド引数（{@code [xp, player, amount]}）
+     * @param args   コマンド引数（{@code [xp, player, mode, amount, type?]}）
      */
     private void handleXp(CommandSender sender, String[] args) {
-        if (args.length != 3) {
-            send(sender, message("xp.usage", Map.of(),
-                    "<gray>使い方:</gray> <white>/admin xp \\<player> \\<amount></white>"));
+        if (args.length < 4) {
+            sendXpUsage(sender);
             return;
         }
 
@@ -2333,18 +2323,84 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        long amount;
-        try {
-            amount = Long.parseLong(args[2]);
-        } catch (NumberFormatException e) {
-            amount = 0L;
-        }
-        if (amount <= 0L) {
-            send(sender, message("xp.invalid_amount", Map.of(),
-                    "<red>経験値は 1 以上の整数で指定してください。</red>"));
+        String mode = args[2].toLowerCase(Locale.ROOT);
+        if (LEVEL.equals(mode)) {
+            if (args.length != 4) {
+                sendXpUsage(sender);
+                return;
+            }
+            Long amount = parseXpAmount(args[3]);
+            if (amount == null) {
+                sendInvalidXpAmount(sender);
+                return;
+            }
+            grantClassXp(sender, target, amount);
             return;
         }
 
+        if (GATHERING.equals(mode)) {
+            if (args.length == 4) {
+                send(sender, message("xp.type_required", Map.of(),
+                        "<red>gathering を指定する場合は種別"
+                                + "（mining / woodcutting / farming）も指定してください。</red>"));
+                return;
+            }
+            if (args.length != 5) {
+                sendXpUsage(sender);
+                return;
+            }
+
+            Long amount = parseXpAmount(args[3]);
+            if (amount == null) {
+                sendInvalidXpAmount(sender);
+                return;
+            }
+
+            GatheringType type = GatheringType.fromKey(args[4]);
+            if (type == null) {
+                send(sender, message("gathering.invalid_type", Map.of("type", esc(args[4])),
+                        "<red>不明なギャザリング種別です: <white>{type}</white></red> "
+                                + "<gray>指定可能: <white>mining, woodcutting, farming</white></gray>"));
+                return;
+            }
+            grantGatheringXp(sender, target, type, amount);
+            return;
+        }
+
+        send(sender, message("xp.invalid_mode", Map.of("mode", esc(mode)),
+                "<red>付与モードは <white>level</white> または <white>gathering</white> "
+                        + "を指定してください: <white>{mode}</white></red>"));
+        sendXpUsage(sender);
+    }
+
+    private void sendXpUsage(CommandSender sender) {
+        send(sender, message("xp.usage", Map.of(),
+                "<gray>使い方:</gray> <white>/admin xp \\<player> level \\<amount></white> "
+                        + "<dark_gray>|</dark_gray> "
+                        + "<white>/admin xp \\<player> gathering \\<amount> \\<type></white>"));
+    }
+
+    private void sendInvalidXpAmount(CommandSender sender) {
+        send(sender, message("xp.invalid_amount", Map.of(),
+                "<red>経験値は 0 以外の整数で指定してください。</red>"));
+    }
+
+    /**
+     * 経験値の数値引数を解析する。0 と不正値は {@code null} を返す。
+     */
+    private static Long parseXpAmount(String raw) {
+        try {
+            long value = Long.parseLong(raw);
+            return value == 0L ? null : value;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * クラス経験値を付与する。
+     */
+    private void grantClassXp(CommandSender sender, Player target, long amount) {
         LevelService levelService = plugin.getLevelService();
         if (levelService == null) {
             send(sender, message("xp.unavailable", Map.of(),
@@ -2377,67 +2433,24 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin gathering xp <player> <type> <amount>} の本体。
-     * <p>
-     * オンラインプレイヤーへギャザリング経験値を付与し、レベルアップ処理は
-     * {@link GatheringService#grant(Player, GatheringType, long)} に委譲する。
-     *
-     * @param sender 実行者
-     * @param args   コマンド引数（{@code [gathering, xp, player, type, amount]}）
+     * ギャザリング経験値を付与する。
      */
-    private void handleGathering(CommandSender sender, String[] args) {
-        if (args.length < 2 || !XP.equalsIgnoreCase(args[1])) {
-            send(sender, message("gathering.usage", Map.of(),
-                    "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"));
-            return;
-        }
-        if (args.length != 5) {
-            send(sender, message("gathering.usage", Map.of(),
-                    "<gray>使い方:</gray> <white>/admin gathering xp \\<player> \\<type> \\<amount></white>"));
-            return;
-        }
-
-        Player target = Bukkit.getPlayerExact(args[2]);
-        if (target == null) {
-            send(sender, message("gathering.not_found", Map.of("player", esc(args[2])),
-                    "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"));
-            return;
-        }
-
-        GatheringType type = GatheringType.fromKey(args[3]);
-        if (type == null) {
-            send(sender, message("gathering.invalid_type", Map.of("type", esc(args[3])),
-                    "<red>不明なギャザリング種別です: <white>{type}</white></red> "
-                            + "<gray>指定可能: <white>mining, woodcutting, farming</white></gray>"));
-            return;
-        }
-
-        long amount;
-        try {
-            amount = Long.parseLong(args[4]);
-        } catch (NumberFormatException e) {
-            amount = 0L;
-        }
-        if (amount <= 0L) {
-            send(sender, message("gathering.invalid_amount", Map.of(),
-                    "<red>ギャザリング経験値は 1 以上の整数で指定してください。</red>"));
-            return;
-        }
-
+    private void grantGatheringXp(CommandSender sender, Player target,
+                                  GatheringType type, long amount) {
         GatheringService gatheringService = plugin.getGatheringService();
         if (gatheringService == null) {
             send(sender, message("gathering.unavailable", Map.of(),
                     "<red>ギャザリングサービスが初期化されていません。</red>"));
             return;
         }
-        if (PlayerData.getCached(target.getUniqueId()) == null) {
+
+        PlayerData data = PlayerData.getCached(target.getUniqueId());
+        if (data == null) {
             send(sender, message("gathering.not_loaded", Map.of("player", esc(target.getName())),
                     "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"));
             return;
         }
-
-        PlayerData data = PlayerData.getCached(target.getUniqueId());
-        if (data.getGatheringLevel(type) >= gatheringService.maxLevel(type)) {
+        if (amount > 0L && data.getGatheringLevel(type) >= gatheringService.maxLevel(type)) {
             send(sender, message("gathering.no_gain", Map.of("player", esc(target.getName())),
                     "<yellow>{player}</yellow> <gray>は既に最大レベルです。</gray>"));
             return;

@@ -111,7 +111,7 @@ public class MessageService {
      * @return 解決済みコンポーネント
      */
     public Component deserialize(String template, Map<String, String> placeholders) {
-        return MINI.deserialize(format(template, placeholders));
+        return TextComponents.noItalic(MINI.deserialize(format(template, placeholders)));
     }
 
     /**

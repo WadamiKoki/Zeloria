@@ -1,5 +1,6 @@
 package com.zeloria.skill;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.item.VirtualInventoryService;
@@ -302,14 +303,14 @@ public final class SkillSlotService {
         ItemStack icon = new ItemStack(skill.icon());
         ItemMeta meta = icon.getItemMeta();
         if (meta != null) {
-            meta.displayName(skill.displayName());
+            meta.displayName(TextComponents.noItalic(skill.displayName()));
             List<Component> lore = new ArrayList<>();
             lore.add(Component.text("スキル " + (hotbarSlot + 1), NamedTextColor.GRAY));
             if (!skill.description().isEmpty()) {
                 lore.addAll(skill.description());
             }
             lore.add(Component.text("右クリックで発動", NamedTextColor.DARK_GRAY));
-            meta.lore(lore);
+            meta.lore(TextComponents.noItalic(lore));
             // バニラでスタック不可のアイコン（剣など）でもクールダウン秒数を
             // 個数として表示できるようにする（Geyser / Bedrock を含む）。
             meta.setMaxStackSize(ICON_MAX_STACK);

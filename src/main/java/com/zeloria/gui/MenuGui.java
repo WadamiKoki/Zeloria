@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.gathering.GatheringService;
 import com.zeloria.gathering.GatheringType;
 import com.zeloria.player.EquipSlot;
@@ -89,7 +90,7 @@ public final class MenuGui implements InventoryHolder {
         this.equipmentSlots = buildEquipmentSlots(layout, settings);
         this.featureSlots = buildFeatureSlots(layout);
         this.inventory = Bukkit.createInventory(this, layout.totalSlots(),
-                MINI.deserialize(layout.title()));
+                TextComponents.mini(MINI, layout.title()));
     }
 
     /* ------------------------------------------------------------------
@@ -477,7 +478,7 @@ public final class MenuGui implements InventoryHolder {
         ItemStack stack = new ItemStack(material == null ? Material.STONE : material);
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
-            meta.displayName(MINI.deserialize(displayName));
+            meta.displayName(TextComponents.mini(MINI, displayName));
             stack.setItemMeta(meta);
         }
         return stack;

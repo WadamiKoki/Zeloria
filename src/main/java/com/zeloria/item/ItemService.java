@@ -1,5 +1,6 @@
 package com.zeloria.item;
 
+import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
 import net.kyori.adventure.text.Component;
@@ -508,7 +509,8 @@ public class ItemService {
      * 名前・説明文の MiniMessage を解決する。説明文はバニラ同様に斜体を無効化する。
      */
     private static Component component(String miniMessage) {
-        return MINI.deserialize("<!italic>" + (miniMessage == null ? "" : miniMessage));
+        return TextComponents.noItalic(MINI.deserialize(
+                "<!italic>" + (miniMessage == null ? "" : miniMessage)));
     }
 
     /**

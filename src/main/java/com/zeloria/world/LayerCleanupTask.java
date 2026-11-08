@@ -139,22 +139,19 @@ public class LayerCleanupTask extends BukkitRunnable {
         String detail = "空インスタンスの自動削除: instance=" + instanceId
                 + ", idle=" + elapsedSeconds + "s";
 
-        // 削除は取り消せないため、実行前に必ず記録を残す。
-        LoggerService logger = plugin.getLoggerService();
-        plugin.getLogger().info(detail + " を開始します。");
-        if (logger != null) {
-            logger.log(LoggerService.Category.LAYER, detail + " を開始します。");
+        // 成功時の通常ログは LayerManager の「[LAYER] 削除: <template>」に集約する。
+        // 実行前の詳細はデバッグ出力に落とし、失敗時のみ警告する。
+        plugin.getLogger().fine(detail + " を開始します。");
+        boolean deleted = layerManager.unloadAndDeleteLayer(instanceId);
+        if (deleted) {
+            return;
         }
 
-        boolean deleted = layerManager.unloadAndDeleteLayer(instanceId);
-        String result = detail + ", result=" + (deleted ? "SUCCESS" : "FAILED");
-
-        plugin.getLogger().info(result);
+        String failure = "空インスタンスの自動削除に失敗しました: " + detail;
+        plugin.getLogger().warning(failure);
+        LoggerService logger = plugin.getLoggerService();
         if (logger != null) {
-            logger.log(deleted ? LoggerService.Level.INFO : LoggerService.Level.WARN,
-                    LoggerService.Category.LAYER,
-                    deleted ? result
-                            : "空インスタンスの自動削除に失敗しました: instance=" + instanceId);
+            logger.log(LoggerService.Level.WARN, LoggerService.Category.LAYER, failure);
         }
     }
 

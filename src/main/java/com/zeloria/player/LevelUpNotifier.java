@@ -69,27 +69,37 @@ public final class LevelUpNotifier {
         if (source == null) {
             return;
         }
+        // 自分宛てと他人宛ては独立して判定する。他人の通知設定が自分の通知を
+        // 巻き込んでスキップしないよう、自分宛てを先に単独で処理する。
         boolean selfEnabled = data.getSettings().chatLogSelf();
-        boolean notified = false;
+        boolean selfNotified = false;
+        if (selfEnabled && source.isOnline()) {
+            source.sendMessage(message);
+            source.playSound(Sound.sound(
+                    LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
+            selfNotified = true;
+        }
+
         for (Player recipient : Bukkit.getOnlinePlayers()) {
+            if (recipient.getUniqueId().equals(source.getUniqueId())) {
+                continue;
+            }
             if (!isSameLayer(plugin, source, recipient)) {
                 continue;
             }
-            boolean self = recipient.getUniqueId().equals(source.getUniqueId());
-            PlayerSettings settings = self ? data.getSettings() : settingsOf(recipient);
-            boolean enabled = self ? settings.chatLogSelf() : settings.chatLogOthers();
-            if (!enabled) {
+
+            PlayerSettings settings = settingsOf(recipient);
+            if (!settings.chatLogOthers()) {
                 continue;
             }
 
             recipient.sendMessage(message);
             recipient.playSound(Sound.sound(
                     LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
-            notified = true;
         }
 
         // 自分の通知を OFF にしている場合は、自分向けのパーティクルも出さない。
-        if (notified && selfEnabled && source != null && source.isOnline()) {
+        if (selfNotified && source.isOnline()) {
             source.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                     source.getLocation().add(0.0, 1.0, 0.0),
                     30, 0.5, 0.8, 0.5, 0.0);

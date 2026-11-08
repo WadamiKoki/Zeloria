@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.TextComponents;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -70,11 +71,11 @@ public record GuiIcon(String materialName, String displayName, List<String> lore
         }
 
         if (!displayName.isBlank()) {
-            meta.displayName(MINI.deserialize(apply(displayName, placeholders)));
+            meta.displayName(TextComponents.mini(MINI, apply(displayName, placeholders)));
         }
         if (!lore.isEmpty()) {
             meta.lore(lore.stream()
-                    .map(line -> MINI.deserialize(apply(line, placeholders)))
+                    .map(line -> TextComponents.mini(MINI, apply(line, placeholders)))
                     .toList());
         }
         stack.setItemMeta(meta);

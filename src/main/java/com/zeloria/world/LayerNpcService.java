@@ -74,12 +74,6 @@ public final class LayerNpcService {
             }
         }
 
-        if (spawned > 0) {
-            plugin.getLogger().info(
-                    "レイヤー NPC を配置しました: layer=" + layer.getId()
-                            + " world=" + world.getName()
-                            + " count=" + spawned + "/" + placements.size());
-        }
         return spawned;
     }
 

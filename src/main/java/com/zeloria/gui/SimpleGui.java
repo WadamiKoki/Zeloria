@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.TextComponents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -70,7 +71,7 @@ public final class SimpleGui implements InventoryHolder {
                 : gui.getInt("rows", DEFAULT_ROWS);
         rows = Math.max(1, Math.min(MAX_ROWS, rows));
 
-        SimpleGui result = new SimpleGui(rows, MINI.deserialize(rawTitle));
+        SimpleGui result = new SimpleGui(rows, TextComponents.mini(MINI, rawTitle));
         result.render(config);
         return result;
     }

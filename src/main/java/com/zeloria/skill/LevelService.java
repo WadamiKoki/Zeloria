@@ -102,13 +102,15 @@ public class LevelService {
      * 余剰経験値を切り捨て、到達時点の満タン値（1 つ前のレベルに必要な経験値）を
      * 保持する。既に最大レベルへ到達している場合は経験値を加算しないが、
      * 保存値が 0 の場合は満タン値へ補正する。
+     * 負の値が指定された場合は現在の経験値のみを減算し、レベルは下げない
+     * （0 未満にはしない）。
      *
      * @param data   対象データ（{@code null} の場合は何もしない）
      * @param amount 付与量
      * @return 付与結果
      */
     public LevelResult grant(PlayerData data, long amount) {
-        if (data == null || amount <= 0L) {
+        if (data == null || amount == 0L) {
             return LevelResult.NONE;
         }
 
@@ -118,9 +120,21 @@ public class LevelService {
             return LevelResult.NONE;
         }
 
+        int oldLevel = data.getClassLevel(classId);
+        if (amount < 0L) {
+            // 負の値は現在の経験値のみを減算し、レベルは下げない（0 未満にはしない）。
+            long updated = Math.max(0L, data.getClassExp(classId) + amount);
+            data.setClassExp(classId, updated);
+            PlayerStatsService statsService = plugin.getPlayerStatsService();
+            Player player = data.getUuid() == null ? null : Bukkit.getPlayer(data.getUuid());
+            if (statsService != null && player != null) {
+                statsService.syncVanillaStats(player, data);
+            }
+            return new LevelResult(oldLevel, oldLevel, 0, updated, settings.requiredExp(oldLevel));
+        }
+
         int maxLevel = settings.maxLevel();
         long maxLevelExp = settings.requiredExp(Math.max(1, maxLevel - 1));
-        int oldLevel = data.getClassLevel(classId);
         if (oldLevel >= maxLevel) {
             // カンスト時はそれ以上経験値を加算しない。過去に 0 で保存されていた場合は
             // 経験値バーが空のままにならないよう満タン値へ補正する。

@@ -725,10 +725,11 @@ public class LayerManager {
 
         // LayerData に npcs が定義されていれば、ワールドロード直後に配置する。
         // NPC 配置の失敗でレイヤー生成自体を失敗させない。
+        int npcCount = 0;
         LayerNpcService npcService = plugin.getLayerNpcService();
         if (npcService != null) {
             try {
-                npcService.spawnFor(world, instanceId, templateId);
+                npcCount = npcService.spawnFor(world, instanceId, templateId);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "レイヤー NPC の配置に失敗しました: instance=" + instanceId
@@ -738,10 +739,11 @@ public class LayerManager {
 
         // LayerData に spawners が定義されていれば、モブの定期スポーンを開始する。
         // スポーン開始の失敗でレイヤー生成自体を失敗させない。
+        int spawnerCount = 0;
         SpawnerManager spawnerManager = plugin.getSpawnerManager();
         if (spawnerManager != null) {
             try {
-                spawnerManager.startFor(world, instanceId, templateId);
+                spawnerCount = spawnerManager.startFor(world, instanceId, templateId);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "レイヤーのスポナー開始に失敗しました: instance=" + instanceId
@@ -749,13 +751,13 @@ public class LayerManager {
             }
         }
 
-        plugin.getLogger().info("レイヤーワールドを生成しました: " + bukkitWorldName
-                + " (instance=" + instanceId + ", template=" + templateId + ", path=" + loadedDir + ")");
-        if (plugin.getLoggerService() != null) {
-            plugin.getLoggerService().log(com.zeloria.core.LoggerService.Category.LAYER,
-                    "レイヤー生成: instance=" + instanceId + ", template=" + templateId
-                            + ", world=" + bukkitWorldName + ", path=" + loadedDir);
-        }
+        String templateName = templateId == null || templateId.isBlank() ? instanceId : templateId;
+        plugin.getLogger().info("[LAYER] 生成: " + templateName
+                + " (npc=" + npcCount + ", spawner=" + spawnerCount + ")");
+        // インスタンス名・ワールドキー・パスは通常ログでは出さず、詳細確認時のみ参照できるようにする。
+        plugin.getLogger().fine("[LAYER] 生成詳細: instance=" + instanceId
+                + ", template=" + templateId + ", world=" + bukkitWorldName
+                + ", path=" + loadedDir);
         return world;
     }
 
@@ -1156,6 +1158,7 @@ public class LayerManager {
 
         Path instanceDir = resolveInstancePath(instanceId);
         String bukkitWorldName = LayerManager.worldName(instanceId);
+        String templateId = instanceTemplates.get(instanceId);
 
         World world = loadedWorlds.get(instanceId);
         if (world == null) {
@@ -1237,12 +1240,12 @@ public class LayerManager {
             return false;
         }
 
-        plugin.getLogger().info("レイヤーワールドを削除しました: " + bukkitWorldName + " (path=" + deleteTarget + ")");
-        if (plugin.getLoggerService() != null) {
-            plugin.getLoggerService().log(com.zeloria.core.LoggerService.Category.LAYER,
-                    "レイヤー削除: instance=" + instanceId + ", world=" + bukkitWorldName
-                            + ", path=" + deleteTarget);
-        }
+        String templateName = templateId == null || templateId.isBlank() ? instanceId : templateId;
+        plugin.getLogger().info("[LAYER] 削除: " + templateName);
+        // インスタンス名・ワールドキー・パスは通常ログでは出さず、詳細確認時のみ参照できるようにする。
+        plugin.getLogger().fine("[LAYER] 削除詳細: instance=" + instanceId
+                + ", template=" + templateId + ", world=" + bukkitWorldName
+                + ", path=" + deleteTarget);
         return true;
     }
 
