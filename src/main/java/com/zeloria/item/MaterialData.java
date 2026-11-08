@@ -29,7 +29,7 @@ public final class MaterialData extends ItemData {
     /**
      * YAML 設定から素材定義を生成する。
      *
-     * @param sourceKey YAML のキャッシュキー（例: {@code MaterialData/iron_ore.yml}）
+     * @param sourceKey YAML のキャッシュキー（例: {@code ItemData/material/iron_ore.yml}）
      * @param config    読み込み済み設定
      * @return 素材定義
      * @throws IllegalArgumentException {@code material} が未指定・不正な場合

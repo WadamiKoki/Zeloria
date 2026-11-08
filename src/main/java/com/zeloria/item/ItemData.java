@@ -85,7 +85,7 @@ public abstract class ItemData {
     }
 
     /**
-     * 読み込み元 YAML のキャッシュキー（例: {@code MaterialData/iron_ore.yml}）。
+     * 読み込み元 YAML のキャッシュキー（例: {@code ItemData/material/iron_ore.yml}）。
      */
     public String sourceKey() {
         return sourceKey;
