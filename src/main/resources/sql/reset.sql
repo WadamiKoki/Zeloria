@@ -20,7 +20,7 @@ DROP TABLE IF EXISTS players;
 CREATE TABLE players (
     uuid CHAR(36) NOT NULL,
     player_name VARCHAR(64) NOT NULL,
-    level INT NOT NULL DEFAULT 0,
+    level INT NOT NULL DEFAULT 1,
     exp BIGINT NOT NULL DEFAULT 0,
     money BIGINT NOT NULL DEFAULT 0,
     current_class_id VARCHAR(64) NULL,
@@ -54,6 +54,8 @@ CREATE TABLE players (
     health_regen_percent DOUBLE NULL,
     mana_regen_flat DOUBLE NULL,
     mana_regen_percent DOUBLE NULL,
+    armor_penetration DOUBLE NULL,
+    lifesteal DOUBLE NULL,
     cooldown_end_at TEXT NULL,
     last_instance VARCHAR(128) NULL,
     last_login TIMESTAMP NULL,
@@ -66,8 +68,8 @@ CREATE TABLE players (
 -- 既存環境向けマイグレーション（DROP TABLE を実行せずに列だけ追加する場合）
 -- ----------------------------------------------------------------------------
 -- 上記 CREATE TABLE は開発用の再作成用です。既存データを残す場合は、
--- 以下の ALTER 文、または sql/migrate_virtual_inventory.sql を 1 度だけ
--- 実行してください。
+-- 以下の ALTER 文、または sql/migrate_virtual_inventory.sql と
+-- sql/migrate_stats_persistence.sql を必要な分だけ 1 度実行してください。
 -- ============================================================================
 -- ALTER TABLE players
 --     ADD COLUMN virtual_inventory_json LONGTEXT NULL AFTER virtual_equipment_base64,

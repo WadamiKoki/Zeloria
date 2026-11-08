@@ -7,6 +7,7 @@ import com.zeloria.party.PartyManager;
 import com.zeloria.world.LayerManager;
 import com.zeloria.skill.CooldownService;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -182,12 +183,16 @@ public class PlayerListener implements Listener {
 
     /**
      * リスポーン時に HP / MP を全回復し、戦闘記録を破棄する。
+     * <p>
+     * バニラ死亡画面を経由した場合も、復帰後はアドベンチャーモードで操作する。
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        player.setGameMode(GameMode.ADVENTURE);
         PlayerStatsService statsService = plugin.getPlayerStatsService();
         if (statsService != null) {
-            statsService.handleRespawn(event.getPlayer());
+            statsService.handleRespawn(player);
         }
     }
 

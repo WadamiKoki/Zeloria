@@ -31,11 +31,11 @@ import com.zeloria.npc.NpcManager;
 import com.zeloria.party.PartyCommand;
 import com.zeloria.party.PartyManager;
 import com.zeloria.gui.SimpleGuiListener;
-import com.zeloria.skill.LevelListener;
 import com.zeloria.skill.LevelService;
 import com.zeloria.core.LoggerService;
 import com.zeloria.core.MessageService;
 import com.zeloria.mob.MobConfigService;
+import com.zeloria.mob.MobRewardListener;
 import com.zeloria.mob.MobStatsService;
 import com.zeloria.mob.SpawnerManager;
 import com.zeloria.combat.DeathListener;
@@ -708,7 +708,7 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new VirtualInventoryListener(this));
         this.listenerRegistrar.register(new SkillSlotListener(this));
         this.listenerRegistrar.register(new CombatModeListener(this));
-        this.listenerRegistrar.register(new LevelListener(this));
+        this.listenerRegistrar.register(new MobRewardListener(this));
         this.playerStatusDisplayTask = new PlayerStatusDisplayTask(this);
         this.listenerRegistrar.register(this.playerStatusDisplayTask);
         if (this.classSelectGUI != null) {

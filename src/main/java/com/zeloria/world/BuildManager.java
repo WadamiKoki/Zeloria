@@ -506,15 +506,29 @@ public class BuildManager {
     /**
      * 指定テンプレートで現在開いている建築ワールド数を返す。
      * <p>
-     * {@link #buildWorlds} はテンプレート ID をキーとするため、同一テンプレートの
-     * 建築ワールドは常に 1 件以下となり {@link #MAX_WORLDS_PER_TEMPLATE} を超えない。
-     * レイヤーのインスタンス数（{@code LayerData#maxInstances}）は参照しない。
+     * ロード済みワールドのうち、建築ワールド（{@code <templateId>_build}）だけを
+     * 数える。通常レイヤーインスタンスは {@link LayerManager#getOpenInstanceCount(String)}
+     * で別管理しており、この件数には含めない。
      *
      * @param templateId テンプレート ID
-     * @return 開いている建築ワールド数（0 または 1）
+     * @return 開いている建築ワールド数（{@code MAX_WORLDS_PER_TEMPLATE} 以下）
      */
     public int getOpenBuildWorldCount(String templateId) {
-        return isBuildWorldOpen(templateId) ? 1 : 0;
+        if (templateId == null || templateId.isBlank()) {
+            return 0;
+        }
+
+        int count = 0;
+        for (World world : Bukkit.getWorlds()) {
+            if (!isBuildWorld(world)) {
+                continue;
+            }
+            String mappedTemplate = templateIdOf(world);
+            if (mappedTemplate != null && templateId.equalsIgnoreCase(mappedTemplate)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

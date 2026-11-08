@@ -27,7 +27,6 @@ import java.util.Objects;
  * accuracy: 90.0        # 命中率（%）
  * evasion: 0.0          # 回避率（%）
  * expReward: 15
- * moneyReward: 5
  * alwaysShowName: true  # 頭上に表示名を常時表示する（省略時は true）
  * drops:                # 撃破時の仮想インベントリ直送ドロップ（任意）
  *   - itemId: "goblin_ear"
@@ -49,7 +48,6 @@ import java.util.Objects;
  * @param accuracy       命中率（%）
  * @param evasion        回避率（%）
  * @param expReward      撃破時経験値
- * @param moneyReward    撃破時報酬
  * @param alwaysShowName 頭上に表示名を常時表示するか
  * @param drops          撃破時のドロップ定義
  */
@@ -66,7 +64,6 @@ public record MobData(
         double accuracy,
         double evasion,
         int expReward,
-        int moneyReward,
         boolean alwaysShowName,
         List<MobDrop> drops
 ) {
@@ -89,7 +86,6 @@ public record MobData(
         accuracy = Math.max(0.0, Math.min(100.0, accuracy));
         evasion = Math.max(0.0, Math.min(100.0, evasion));
         expReward = Math.max(expReward, 0);
-        moneyReward = Math.max(moneyReward, 0);
         drops = drops == null ? List.of() : List.copyOf(drops);
     }
 
@@ -120,7 +116,6 @@ public record MobData(
                 config.getDouble("accuracy", MobStats.DEFAULT_ACCURACY),
                 config.getDouble("evasion", MobStats.DEFAULT_EVASION),
                 config.getInt("expReward", 0),
-                config.getInt("moneyReward", 0),
                 config.getBoolean("alwaysShowName", true),
                 readDrops(config)
         );

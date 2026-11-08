@@ -169,7 +169,7 @@ public final class DeathListener implements Listener {
     }
 
     /**
-     * 待機終了時に Hub の指定座標へ転送し、サバイバルへ戻して全回復する。
+     * 待機終了時に Hub の指定座標へ転送し、アドベンチャーへ戻して全回復する。
      */
     private void finishRespawn(Player player) {
         UUID playerId = player.getUniqueId();
@@ -197,7 +197,7 @@ public final class DeathListener implements Listener {
         player.setFlying(false);
         player.setAllowFlight(false);
         player.setVelocity(new Vector(0, 0, 0));
-        player.setGameMode(GameMode.SURVIVAL);
+        player.setGameMode(GameMode.ADVENTURE);
 
         PlayerStatsService statsService = plugin.getPlayerStatsService();
         if (statsService != null) {
@@ -273,7 +273,7 @@ public final class DeathListener implements Listener {
         awaitingRespawn.remove(playerId);
 
         if (player.getGameMode() == GameMode.SPECTATOR) {
-            player.setGameMode(GameMode.SURVIVAL);
+            player.setGameMode(GameMode.ADVENTURE);
         }
 
         PlayerStatsService statsService = plugin.getPlayerStatsService();

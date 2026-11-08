@@ -3,19 +3,16 @@ package com.zeloria.player;
 /**
  * メインインベントリ（スロット 9〜35）に表示する仮想インベントリのタブ。
  * <p>
- * タブ切り替えボタンを押すたびに {@link #INVENTORY} → {@link #EQUIPMENT} →
- * {@link #MATERIAL} → {@link #INVENTORY} の順で循環する。
+ * タブ切り替えボタンを押すたびに {@link #STORAGE} → {@link #EQUIPMENT_STORAGE} →
+ * {@link #STORAGE} の順で循環する。
  */
 public enum VirtualInventoryTab {
 
-    /** 通常インベントリ。 */
-    INVENTORY("通常インベントリ"),
+    /** 通常の保管庫（素材・消耗品など）。 */
+    STORAGE("保管庫"),
 
-    /** 装備インベントリ（武器・防具）。 */
-    EQUIPMENT("装備インベントリ"),
-
-    /** 素材インベントリ（素材・消耗品）。 */
-    MATERIAL("素材インベントリ");
+    /** 装備保管庫（武器・防具）。 */
+    EQUIPMENT_STORAGE("装備保管庫");
 
     private final String displayName;
 
@@ -31,10 +28,31 @@ public enum VirtualInventoryTab {
     }
 
     /**
-     * 次のタブを取得する（素材の次は通常へ戻る）。
+     * 次のタブを取得する（装備保管庫の次は保管庫へ戻る）。
      */
     public VirtualInventoryTab next() {
         VirtualInventoryTab[] values = values();
         return values[(ordinal() + 1) % values.length];
+    }
+
+    /**
+     * 保存済み・表示用アイテムに記録されたタブ名を解決する。
+     * <p>
+     * 旧バージョンの {@code INVENTORY} / {@code EQUIPMENT} / {@code MATERIAL} も
+     * 受け付け、2 タブ構成へ移行する。
+     *
+     * @param raw タブ名
+     * @return 解決されたタブ。不明な場合は {@code null}
+     */
+    public static VirtualInventoryTab fromName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (normalized) {
+            case "INVENTORY", "MATERIAL", "STORAGE" -> STORAGE;
+            case "EQUIPMENT", "EQUIPMENT_STORAGE" -> EQUIPMENT_STORAGE;
+            default -> null;
+        };
     }
 }

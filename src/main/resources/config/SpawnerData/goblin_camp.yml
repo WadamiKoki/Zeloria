@@ -16,6 +16,5 @@ display:
   # ITEM_DISPLAY または BLOCK_DISPLAY
   type: ITEM_DISPLAY
   material: SPAWNER
-  # ITEM_DISPLAY 用の item_model（任意。空なら material をそのまま表示する）
-  itemModel: ""
+  # ITEM_DISPLAY / BLOCK_DISPLAY の表示には material をそのまま使用します。
   scale: 1.0

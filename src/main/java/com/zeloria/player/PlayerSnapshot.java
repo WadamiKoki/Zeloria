@@ -23,9 +23,9 @@ import java.util.UUID;
  * @param classTreePointsJson    クラス ID → 未使用ツリーポイント（JSON）
  * @param allocatedClassNodesJson クラス ID → 解放済みツリーノード ID（JSON）
  * @param virtualEquipmentBase64  装備中アイテムの Base64 データ
- * @param virtualInventoryJson    通常インベントリタブ（JSON）
- * @param virtualEquipmentJson    装備インベントリタブ（JSON）
- * @param virtualMaterialJson     素材インベントリタブ（JSON）
+ * @param virtualInventoryJson    保管庫タブ（JSON）
+ * @param virtualEquipmentJson    装備保管庫タブ（JSON）
+ * @param virtualMaterialJson     旧素材タブ（JSON。読み込み時に保管庫へ統合）
  * @param maxHealth               最大 HP
  * @param currentHealth           現在 HP
  * @param maxMana                 最大 MP
@@ -44,6 +44,8 @@ import java.util.UUID;
  * @param healthRegenPercent      ヘルス割合リジェネ（比率。マイナス可）
  * @param manaRegenFlat           マナ固定リジェネ（マイナス可）
  * @param manaRegenPercent        マナ割合リジェネ（比率。マイナス可）
+ * @param armorPenetration        防御貫通率（0.0〜1.0）
+ * @param lifesteal               吸血率（0.0〜1.0）
  * @param cooldownEndAt           スキルクールダウン終了時刻のシリアライズ文字列
  */
 public record PlayerSnapshot(
@@ -80,11 +82,13 @@ public record PlayerSnapshot(
         double healthRegenPercent,
         double manaRegenFlat,
         double manaRegenPercent,
+        double armorPenetration,
+        double lifesteal,
         String cooldownEndAt
 ) {
 
     /** 既定のレベル。 */
-    public static final int DEFAULT_LEVEL = 0;
+    public static final int DEFAULT_LEVEL = 1;
 
     /** 既定の HP。 */
     public static final double DEFAULT_HP = 20.0;
@@ -160,6 +164,8 @@ public record PlayerSnapshot(
                 PlayerStats.DEFAULT_HEALTH_REGEN_PERCENT,
                 PlayerStats.DEFAULT_MANA_REGEN_FLAT,
                 PlayerStats.DEFAULT_MANA_REGEN_PERCENT,
+                PlayerStats.DEFAULT_ARMOR_PENETRATION,
+                PlayerStats.DEFAULT_LIFESTEAL,
                 ""
         );
     }
@@ -180,7 +186,8 @@ public record PlayerSnapshot(
                 attackPower, defense1, defense2, criticalRate, criticalDamage,
                 accuracy, evasion, dodgeCooldownReduction, cooldownReduction,
                 walkSpeed, healthRegenFlat, healthRegenPercent,
-                manaRegenFlat, manaRegenPercent, cooldownEndAt);
+                manaRegenFlat, manaRegenPercent, armorPenetration, lifesteal,
+                cooldownEndAt);
     }
 
     private static String blankToEmptyObject(String value) {

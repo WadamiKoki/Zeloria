@@ -50,7 +50,7 @@ public class DatabaseManager {
             CREATE TABLE IF NOT EXISTS %s (
                 uuid CHAR(36) NOT NULL,
                 player_name VARCHAR(64) NOT NULL,
-                level INT NOT NULL DEFAULT 0,
+                level INT NOT NULL DEFAULT 1,
                 exp BIGINT NOT NULL DEFAULT 0,
                 money BIGINT NOT NULL DEFAULT 0,
                 current_class_id VARCHAR(64) NULL,
@@ -81,6 +81,8 @@ public class DatabaseManager {
                 health_regen_percent DOUBLE NULL,
                 mana_regen_flat DOUBLE NULL,
                 mana_regen_percent DOUBLE NULL,
+                armor_penetration DOUBLE NULL,
+                lifesteal DOUBLE NULL,
                 cooldown_end_at TEXT NULL,
                 last_instance VARCHAR(128) NULL,
                 last_login TIMESTAMP NULL,
@@ -107,7 +109,8 @@ public class DatabaseManager {
             "attack_power", "defense1", "defense2", "critical_rate", "critical_damage",
             "accuracy", "evasion", "dodge_cooldown_reduction", "cooldown_reduction",
             "walk_speed", "health_regen_flat", "health_regen_percent",
-            "mana_regen_flat", "mana_regen_percent", "cooldown_end_at",
+            "mana_regen_flat", "mana_regen_percent",
+            "armor_penetration", "lifesteal", "cooldown_end_at",
             "last_instance", "last_login", "last_updated"
     );
 

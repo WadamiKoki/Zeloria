@@ -176,16 +176,16 @@ public final class LevelSettings {
     /**
      * 指定レベルの必要経験値を算出する。
      * <p>
-     * レベル 0 でも必ず 1 以上を返す（新規プレイヤーが即座にレベルアップしないよう
-     * 基準値の下限を保証する）。
+     * レベル 1 の次レベルに必要な経験値が {@code base_exp} ちょうどになるよう、
+     * 成長率は「現在レベル - 1」乗で適用する。返り値は必ず 1 以上。
      *
-     * @param level レベル（0 未満は 0 として扱う）
+     * @param level レベル（1 未満は 1 として扱う）
      * @return 次のレベルへ上がるために必要な経験値
      */
     public long requiredExp(int level) {
-        int clamped = Math.max(0, level);
+        int clamped = Math.max(1, level);
         double multiplier = multiplierFor(clamped);
-        double value = baseExp * Math.pow(expGrowth, clamped) * multiplier;
+        double value = baseExp * Math.pow(expGrowth, clamped - 1) * multiplier;
         if (!Double.isFinite(value)) {
             return Long.MAX_VALUE;
         }

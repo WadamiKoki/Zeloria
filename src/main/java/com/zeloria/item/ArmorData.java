@@ -36,13 +36,7 @@ public final class ArmorData extends ItemData {
     public ArmorData(String id, String name, Material material, List<String> lore,
                      long sellPrice, String sourceKey, EquipSlot equipmentSlot,
                      ItemStatBonus statBonus) {
-        this(id, name, material, lore, sellPrice, sourceKey, equipmentSlot, statBonus, null);
-    }
-
-    public ArmorData(String id, String name, Material material, List<String> lore,
-                     long sellPrice, String sourceKey, EquipSlot equipmentSlot,
-                     ItemStatBonus statBonus, String itemModel) {
-        super(id, name, material, lore, sellPrice, sourceKey, itemModel);
+        super(id, name, material, lore, sellPrice, sourceKey);
         this.equipmentSlot = equipmentSlot == null ? EquipSlot.HELMET : equipmentSlot;
         this.statBonus = statBonus == null ? ItemStatBonus.NONE : statBonus;
     }
@@ -69,8 +63,7 @@ public final class ArmorData extends ItemData {
                 config.getLong("sell_price", 0L),
                 sourceKey,
                 resolveEquipmentSlot(config.getString("equipment_slot"), material),
-                ItemStatBonus.fromConfig(config),
-                config.getString("item_model")
+                ItemStatBonus.fromConfig(config)
         );
     }
 
@@ -174,10 +167,5 @@ public final class ArmorData extends ItemData {
     @Override
     public ItemCategory category() {
         return ItemCategory.ARMOR;
-    }
-
-    @Override
-    public int maxStackSize() {
-        return 1;
     }
 }

@@ -2,6 +2,8 @@ package com.zeloria.gui;
 
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
+import com.zeloria.player.PlayerStats;
+import com.zeloria.skill.LevelService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -12,10 +14,12 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -42,6 +46,7 @@ public final class MenuGui implements InventoryHolder {
 
     private final UUID playerId;
     private final MenuLayout layout;
+    private final LevelService levelService;
 
     /** GUI スロット番号 → 仮想装備スロット。 */
     private final Map<Integer, EquipSlot> equipmentSlots;
@@ -57,10 +62,13 @@ public final class MenuGui implements InventoryHolder {
      * @param player   対象プレイヤー
      * @param layout   {@code gui/menu.yml} のレイアウト設定（装備枠・装飾枠の位置を参照）
      * @param settings {@code gui/inventory.yml} の設定（menu.yml に装備枠定義が無い場合の後方互換）
+     * @param levelService 必要経験値の表示に使用するレベルサービス
      */
-    public MenuGui(Player player, MenuLayout layout, InventorySettings settings) {
+    public MenuGui(Player player, MenuLayout layout, InventorySettings settings,
+                   LevelService levelService) {
         this.playerId = Objects.requireNonNull(player, "player").getUniqueId();
         this.layout = Objects.requireNonNull(layout, "layout");
+        this.levelService = levelService;
         this.equipmentSlots = buildEquipmentSlots(layout, settings);
         this.featureSlots = buildFeatureSlots(layout);
         this.inventory = Bukkit.createInventory(this, layout.totalSlots(),
@@ -118,8 +126,7 @@ public final class MenuGui implements InventoryHolder {
      * プレイヤーデータの内容を GUI へ反映する。
      * <p>
      * 前回の表示が残らないようインベントリを空にしてから、装飾アイテム・仮想装備枠・
-     * メニュー機能ボタン・閉じるボタンのみを描画する。装飾と装備枠以外のスロットは
-     * 空気のままにする。
+     * メニュー機能ボタン・プレイヤー情報ヘッド・閉じるボタンだけを描画する。
      *
      * @param player 描画対象プレイヤー（機能ボタンの権限判定に使用）
      * @param data   プレイヤーデータ
@@ -132,6 +139,7 @@ public final class MenuGui implements InventoryHolder {
         renderDecorations();
         renderEquipment(data);
         renderFeatures(player);
+        renderPlayerHead(player, data);
         renderCloseButton();
     }
 
@@ -194,6 +202,65 @@ public final class MenuGui implements InventoryHolder {
                     : icon.createItem(Map.of("id", feature.id(), "action", feature.action()));
             inventory.setItem(guiSlot, item);
         }
+    }
+
+    /**
+     * 右上にプレイヤー情報ヘッドを描画する。
+     * <p>
+     * 表示専用で、クリックしても何も起きない。レベル・経験値・HP / MP と
+     * 主要な RPG ステータスを Lore にまとめる。
+     */
+    private void renderPlayerHead(Player player, PlayerData data) {
+        int guiSlot = layout.playerHeadSlot();
+        if (!isValidSlot(guiSlot) || player == null) {
+            return;
+        }
+
+        PlayerStats stats = data.getStats();
+        long requiredExp = levelService == null
+                ? 0L
+                : levelService.requiredExp(stats.getLevel());
+
+        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            if (meta instanceof SkullMeta skullMeta) {
+                skullMeta.setOwningPlayer(player);
+            }
+            meta.displayName(MINI.deserialize("<!italic><white>" + player.getName() + "</white>"));
+            meta.lore(List.of(
+                    MINI.deserialize("<!italic><gray>レベル: <yellow>" + stats.getLevel()
+                            + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: <white>"
+                            + formatLong(stats.getExp()) + "</white>/<white>"
+                            + formatLong(requiredExp) + "</white></gray>"),
+                    MINI.deserialize("<!italic><gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
+                            + "</red>/<white>" + formatDouble(stats.getMaxHealth()) + "</white>"
+                            + " <dark_gray>|</dark_gray> <gray>MP: <blue>"
+                            + formatDouble(stats.getCurrentMana()) + "</blue>/<white>"
+                            + formatDouble(stats.getMaxMana()) + "</white></gray>"),
+                    MINI.deserialize("<!italic><gray>攻撃力: <white>"
+                            + formatDouble(stats.getAttackPower()) + "</white> <dark_gray>|</dark_gray> "
+                            + "<gray>防御力: <white>" + formatDouble(stats.getDefense()) + "</white></gray>"),
+                    MINI.deserialize("<!italic><gray>会心率: <white>"
+                            + formatDouble(stats.getCriticalRate()) + "%</white> <dark_gray>|</dark_gray> "
+                            + "<gray>回避率: <white>" + formatDouble(stats.getEvasion())
+                            + "%</white></gray>"),
+                    MINI.deserialize("<!italic><gray>移動速度: <white>"
+                            + formatDouble(stats.getMoveSpeed()
+                            / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)
+                            + "%</white></gray>")));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        inventory.setItem(guiSlot, item);
+    }
+
+    private static String formatLong(long value) {
+        return String.format(Locale.US, "%,d", value);
+    }
+
+    private static String formatDouble(double value) {
+        return String.format(Locale.US, "%.1f", value);
     }
 
     /**

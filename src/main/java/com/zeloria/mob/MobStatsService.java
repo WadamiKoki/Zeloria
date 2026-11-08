@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class MobStatsService {
 
-    /** モブを識別する PDC キー（{@code AdminCommand} / {@code LevelListener} と同一）。 */
+    /** モブを識別する PDC キー（{@code AdminCommand} / {@code MobRewardListener} と同一）。 */
     public static final String MOB_ID_KEY = "mob_id";
 
     private final Zeloria plugin;

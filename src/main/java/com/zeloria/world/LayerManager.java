@@ -20,6 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -670,6 +671,10 @@ public class LayerManager {
 
         // 既に同じテンプレートから生成されたインスタンスがあれば再利用する。
         // 建築ワールド（<templateId>_build）はレイヤーインスタンスではないため対象外。
+        // 非共有レイヤーで上限まで余裕がある場合は次のインスタンスを生成する。
+        int maxInstances = resolveMaxInstances(templateId);
+        int openInstances = getOpenInstanceCount(templateId);
+        boolean shared = isSharedTemplate(templateId);
         for (Map.Entry<String, String> entry : instanceTemplates.entrySet()) {
             if (BuildManager.isBuildWorldId(entry.getKey())) {
                 continue;
@@ -679,11 +684,13 @@ public class LayerManager {
             }
             World world = loadedWorlds.get(entry.getKey());
             if (world != null) {
-                return world;
+                if (shared || openInstances >= maxInstances) {
+                    return world;
+                }
+                break;
             }
         }
 
-        int maxInstances = resolveMaxInstances(templateId);
         int attempts = Math.min(Math.max(maxInstances, 1), MAX_INSTANCE_ATTEMPTS);
 
         for (int index = 1; index <= attempts; index++) {
@@ -692,7 +699,9 @@ public class LayerManager {
                 throw new IllegalStateException(
                         "テンプレート ID が長すぎるためインスタンス ID を生成できません: " + templateId);
             }
-            if (loadedWorlds.containsKey(instanceId) || Files.exists(resolveInstancePath(instanceId))) {
+            if (loadedWorlds.containsKey(instanceId)
+                    || pendingInstances.containsKey(instanceId)
+                    || Files.exists(resolveInstancePath(instanceId))) {
                 continue;
             }
             return createLayer(templateId, instanceId);
@@ -727,6 +736,10 @@ public class LayerManager {
 
         // 既に同じテンプレートから生成されたインスタンスがあれば再利用する。
         // 建築ワールド（<templateId>_build）はレイヤーインスタンスではないため対象外。
+        // 非共有レイヤーで上限まで余裕がある場合は次のインスタンスを生成する。
+        int maxInstances = resolveMaxInstances(templateId);
+        int openInstances = getOpenInstanceCount(templateId);
+        boolean shared = isSharedTemplate(templateId);
         for (Map.Entry<String, String> entry : instanceTemplates.entrySet()) {
             if (BuildManager.isBuildWorldId(entry.getKey())) {
                 continue;
@@ -736,22 +749,25 @@ public class LayerManager {
             }
             World world = loadedWorlds.get(entry.getKey());
             if (world != null) {
-                return CompletableFuture.completedFuture(world);
+                if (shared || openInstances >= maxInstances) {
+                    return CompletableFuture.completedFuture(world);
+                }
+                break;
             }
         }
 
         // 生成中のインスタンスがあれば、その完了を待つ future を共有する。
+        // 上限まで余裕がある非共有レイヤーは、次のインスタンスを生成する。
         for (Map.Entry<String, String> entry : pendingTemplates.entrySet()) {
             if (!templateId.equalsIgnoreCase(entry.getValue())) {
                 continue;
             }
             CompletableFuture<World> pending = pendingInstances.get(entry.getKey());
-            if (pending != null) {
+            if (pending != null && (shared || openInstances >= maxInstances)) {
                 return pending;
             }
         }
 
-        int maxInstances = resolveMaxInstances(templateId);
         int attempts = Math.min(Math.max(maxInstances, 1), MAX_INSTANCE_ATTEMPTS);
 
         for (int index = 1; index <= attempts; index++) {
@@ -890,6 +906,51 @@ public class LayerManager {
                 .map(LayerData::getMaxInstances)
                 .filter(value -> value > 0)
                 .orElse(DEFAULT_MAX_INSTANCES);
+    }
+
+    /**
+     * 指定テンプレートの通常レイヤーインスタンス数を返す。
+     * <p>
+     * ロード済み・生成中のインスタンスを重複なく数え、建築ワールド
+     * （{@code <templateId>_build}）は含めない。建築ワールド数は
+     * {@code BuildManager#getOpenBuildWorldCount(String)} で別管理する。
+     *
+     * @param templateId テンプレート ID
+     * @return 通常レイヤーインスタンス数
+     */
+    public int getOpenInstanceCount(String templateId) {
+        if (templateId == null || templateId.isBlank()) {
+            return 0;
+        }
+
+        Set<String> instanceIds = new HashSet<>(loadedWorlds.keySet());
+        instanceIds.addAll(pendingInstances.keySet());
+
+        int count = 0;
+        for (String instanceId : instanceIds) {
+            if (BuildManager.isBuildWorldId(instanceId)) {
+                continue;
+            }
+            String mappedTemplate = instanceTemplates.get(instanceId);
+            if (mappedTemplate == null) {
+                mappedTemplate = pendingTemplates.get(instanceId);
+            }
+            if (mappedTemplate != null && templateId.equalsIgnoreCase(mappedTemplate)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 指定テンプレートが共有レイヤー（{@code isShared: true}）か判定する。
+     */
+    private boolean isSharedTemplate(String templateId) {
+        LayerConfigService configService = plugin.getLayerConfigService();
+        return configService != null
+                && configService.findByTemplate(templateId)
+                .map(LayerData::isShared)
+                .orElse(false);
     }
 
     /**

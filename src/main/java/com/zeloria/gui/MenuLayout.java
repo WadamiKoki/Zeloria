@@ -20,6 +20,7 @@ import java.util.Map;
  * @param title          GUI タイトル（MiniMessage）
  * @param rows           GUI の行数（1〜6）
  * @param closeSlot      閉じるボタンのスロット番号（未使用は {@code -1}）
+ * @param playerHeadSlot プレイヤー情報ヘッドのスロット番号（未使用は {@code -1}）
  * @param fillers        背景ガラス（キー → Material 名）
  * @param equipmentSlots 仮想装備枠のスロット番号（装備種別 → GUI スロット）
  * @param decorations    装飾専用アイテム（GUI スロット → Material 名）
@@ -31,6 +32,7 @@ public record MenuLayout(
         String title,
         int rows,
         int closeSlot,
+        int playerHeadSlot,
         Map<String, String> fillers,
         Map<EquipSlot, Integer> equipmentSlots,
         Map<Integer, String> decorations,
@@ -102,6 +104,7 @@ public record MenuLayout(
                 DEFAULT_TITLE,
                 DEFAULT_ROWS,
                 53,
+                8,
                 Map.of("equipment", "LIGHT_BLUE_STAINED_GLASS_PANE"),
                 equipment,
                 decorations,

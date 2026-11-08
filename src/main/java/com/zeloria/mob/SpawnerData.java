@@ -23,7 +23,6 @@ import java.util.Objects;
  * display:
  *   type: ITEM_DISPLAY      # ITEM_DISPLAY または BLOCK_DISPLAY
  *   material: SPAWNER
- *   itemModel: "zeloria:goblin_spawner"
  *   scale: 1.0
  * </pre>
  * 負荷対策として {@code spawnRateSeconds} は最低 {@value #MIN_SPAWN_RATE_SECONDS} 秒、
@@ -136,19 +135,17 @@ public record SpawnerData(
      *
      * @param type      表示方式
      * @param material  表示に使用する Material
-     * @param itemModel ITEM_DISPLAY 用の item_model（任意）
      * @param scale     表示スケール
      */
-    public record Display(DisplayType type, Material material, String itemModel, float scale) {
+    public record Display(DisplayType type, Material material, float scale) {
 
         /** 設定が無い場合の既定表示。 */
         public static final Display DEFAULT = new Display(
-                DisplayType.ITEM_DISPLAY, DEFAULT_DISPLAY_MATERIAL, null, DEFAULT_SCALE);
+                DisplayType.ITEM_DISPLAY, DEFAULT_DISPLAY_MATERIAL, DEFAULT_SCALE);
 
         public Display {
             type = type == null ? DisplayType.ITEM_DISPLAY : type;
             material = material == null || material.isAir() ? DEFAULT_DISPLAY_MATERIAL : material;
-            itemModel = text(itemModel, null);
             scale = scale <= 0.0f ? DEFAULT_SCALE : Math.min(scale, 16.0f);
         }
 
@@ -164,7 +161,6 @@ public record SpawnerData(
             return new Display(
                     type,
                     material,
-                    text(section.getString("itemModel"), text(section.getString("item_model"), null)),
                     (float) section.getDouble("scale", DEFAULT_SCALE));
         }
     }

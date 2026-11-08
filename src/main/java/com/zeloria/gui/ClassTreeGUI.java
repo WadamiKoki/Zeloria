@@ -280,11 +280,6 @@ public final class ClassTreeGUI implements Listener {
             return item;
         }
 
-        // リソースパックのカスタムモデルを適用する（0 は未設定扱い）。
-        if (shape.customModelData() > 0) {
-            meta.setCustomModelData(shape.customModelData());
-        }
-
         // 解放済み・解放可能ノードは光沢（エンチャント＋HIDE_ENCHANTS）で強調する。
         if (status == AllocationStatus.ALLOCATED
                 || status == AllocationStatus.UNLOCKABLE) {

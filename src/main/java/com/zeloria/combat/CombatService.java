@@ -372,7 +372,7 @@ public final class CombatService {
         double remaining = Math.max(0.0, victim.getHealth() - damage);
 
         if (attacker != null) {
-            // 撃破経験値（LevelListener#getKiller）が正しく解決されるようにする。
+            // 撃破経験値（MobRewardListener#getKiller）が正しく解決されるようにする。
             victim.setKiller(attacker);
         }
 

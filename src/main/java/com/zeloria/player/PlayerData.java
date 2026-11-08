@@ -21,10 +21,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *     <li>基本情報: レベル・経験値・所持金</li>
  *     <li>RPG ステータス: {@link PlayerStats}（HP / MP・攻撃力・防御力・クリティカル・
- *         命中 / 回避・クールダウン短縮・移動速度・リジェネ）</li>
+ *         命中 / 回避・クールダウン短縮・移動速度・リジェネ・防御貫通・吸血）</li>
  *     <li>クラス状態: 現在のクラス・解放済みクラス</li>
  *     <li>仮想装備（{@link EquipSlot} ごとの {@link ItemStack}）</li>
- *     <li>仮想インベントリ（通常・装備・素材の 3 タブ。{@link VirtualItemEntry}）</li>
+ *     <li>仮想インベントリ（保管庫・装備保管庫の 2 タブ。{@link VirtualItemEntry}）</li>
  * </ul>
  * ログイン中のプレイヤーデータはクラス内のオンメモリキャッシュで共有する。
  * GUI からの読み書きはメインスレッドで行われるが、非同期保存と競合しないよう
@@ -52,14 +52,11 @@ public class PlayerData {
     /** 装備中アイテム（防具 4 部位 + メイン武器 + オフハンド）。 */
     private final Map<EquipSlot, ItemStack> equippedItems = new EnumMap<>(EquipSlot.class);
 
-    /** 通常インベントリタブの仮想アイテム。 */
+    /** 通常の保管庫タブの仮想アイテム。 */
     private final Map<String, VirtualItemEntry> virtualInventory = new LinkedHashMap<>();
 
-    /** 装備インベントリタブの仮想アイテム（武器・防具）。 */
+    /** 装備保管庫タブの仮想アイテム（武器・防具）。 */
     private final Map<String, VirtualItemEntry> virtualEquipment = new LinkedHashMap<>();
-
-    /** 素材インベントリタブの仮想アイテム（素材・消耗品）。 */
-    private final Map<String, VirtualItemEntry> virtualMaterial = new LinkedHashMap<>();
 
     /** クラス状態（現在のクラス・解放済みクラス）。 */
     private final PlayerClassData classData = new PlayerClassData();
@@ -165,7 +162,7 @@ public class PlayerData {
                 InventorySerializer.encodeEquipment(equippedItems),
                 VirtualInventoryJson.encode(virtualInventory),
                 VirtualInventoryJson.encode(virtualEquipment),
-                VirtualInventoryJson.encode(virtualMaterial),
+                "{}",
                 stats.getBaseMaxHealth(),
                 stats.getBaseCurrentHealth(),
                 stats.getBaseMaxMana(),
@@ -184,6 +181,8 @@ public class PlayerData {
                 stats.getBaseHealthRegenPercent(),
                 stats.getBaseManaRegenFlat(),
                 stats.getBaseManaRegenPercent(),
+                stats.getBaseArmorPenetration(),
+                stats.getBaseLifesteal(),
                 cooldownEndAt
         );
     }
@@ -205,7 +204,8 @@ public class PlayerData {
         data.money = snapshot.money();
 
         // 最大値 → 現在値の順で設定し、クランプが現在値を切り捨てないようにする。
-        data.stats.setLevel(snapshot.level());
+        // 旧データのレベル 0 も、開始レベル 1 へ引き上げる。
+        data.stats.setLevel(Math.max(PlayerStats.DEFAULT_LEVEL, snapshot.level()));
         data.stats.setExp(snapshot.exp());
         data.stats.setMaxHealth(snapshot.maxHealth());
         data.stats.setCurrentHealth(snapshot.currentHealth());
@@ -225,6 +225,8 @@ public class PlayerData {
         data.stats.setHealthRegenPercent(snapshot.healthRegenPercent());
         data.stats.setManaRegenFlat(snapshot.manaRegenFlat());
         data.stats.setManaRegenPercent(snapshot.manaRegenPercent());
+        data.stats.setArmorPenetration(snapshot.armorPenetration());
+        data.stats.setLifesteal(snapshot.lifesteal());
         data.cooldownEndAt = snapshot.cooldownEndAt();
 
         data.classData.restore(snapshot.currentClassId(), snapshot.unlockedClasses());
@@ -241,9 +243,79 @@ public class PlayerData {
         data.equippedItems.putAll(InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64()));
         data.virtualInventory.putAll(VirtualInventoryJson.decode(snapshot.virtualInventoryJson()));
         data.virtualEquipment.putAll(VirtualInventoryJson.decode(snapshot.virtualEquipmentJson()));
-        data.virtualMaterial.putAll(VirtualInventoryJson.decode(snapshot.virtualMaterialJson()));
+        // 旧 MATERIAL タブは廃止し、保管庫（STORAGE）へ統合する。
+        mergeLegacyEntries(data.virtualInventory,
+                VirtualInventoryJson.decode(snapshot.virtualMaterialJson()));
 
         return data;
+    }
+
+    /**
+     * 廃止した素材タブのエントリを保管庫へ統合する。
+     * <p>
+     * 既に同じアイテム ID のエントリがある場合は数量を合算する。枠キーが衝突する
+     * 場合は、衝突しないキーを割り当てる。上限を超えた分は
+     * {@link VirtualItemEntry#MAX_AMOUNT} でクランプする。
+     */
+    private static void mergeLegacyEntries(Map<String, VirtualItemEntry> target,
+                                           Map<String, VirtualItemEntry> source) {
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, VirtualItemEntry> mapEntry : source.entrySet()) {
+            VirtualItemEntry entry = mapEntry.getValue();
+            if (entry == null || entry.itemId().isBlank() || entry.amount() <= 0) {
+                continue;
+            }
+
+            // 枠キーが異なっていても、同じアイテム ID が既に保管庫にあれば数量を合算する。
+            String existingKey = findEntryKeyByItemId(target, entry.itemId());
+            if (existingKey != null) {
+                VirtualItemEntry existing = target.get(existingKey);
+                long amount = Math.min(VirtualItemEntry.MAX_AMOUNT,
+                        existing.amount() + entry.amount());
+                target.put(existingKey, new VirtualItemEntry(entry.itemId(), amount,
+                        existing.serializedData().isBlank()
+                                ? entry.serializedData() : existing.serializedData()));
+                continue;
+            }
+
+            String key = mapEntry.getKey();
+            if (target.containsKey(key)) {
+                key = uniqueEntryKey(target, entry.itemId());
+            }
+            target.put(key, entry);
+        }
+    }
+
+    /**
+     * 指定したアイテム ID を持つ既存エントリのキーを探す。
+     *
+     * @param target 検索対象
+     * @param itemId アイテム ID
+     * @return 見つかったキー。存在しない場合は {@code null}
+     */
+    private static String findEntryKeyByItemId(Map<String, VirtualItemEntry> target, String itemId) {
+        for (Map.Entry<String, VirtualItemEntry> mapEntry : target.entrySet()) {
+            VirtualItemEntry entry = mapEntry.getValue();
+            if (entry != null && entry.itemId().equals(itemId)) {
+                return mapEntry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private static String uniqueEntryKey(Map<String, VirtualItemEntry> target, String itemId) {
+        if (!target.containsKey(itemId)) {
+            return itemId;
+        }
+        int suffix = 2;
+        String key = itemId + "#" + suffix;
+        while (target.containsKey(key)) {
+            suffix++;
+            key = itemId + "#" + suffix;
+        }
+        return key;
     }
 
     /* ------------------------------------------------------------------
@@ -295,28 +367,21 @@ public class PlayerData {
     }
 
     /* ------------------------------------------------------------------
-     * 仮想インベントリ（通常・装備・素材タブ）
+     * 仮想インベントリ（保管庫・装備保管庫タブ）
      * ------------------------------------------------------------------ */
 
     /**
-     * 通常インベントリタブのコピーを取得する。
+     * 通常の保管庫タブのコピーを取得する。
      */
     public synchronized Map<String, VirtualItemEntry> getVirtualInventory() {
         return copyEntries(virtualInventory);
     }
 
     /**
-     * 装備インベントリタブのコピーを取得する。
+     * 装備保管庫タブのコピーを取得する。
      */
     public synchronized Map<String, VirtualItemEntry> getVirtualEquipmentItems() {
         return copyEntries(virtualEquipment);
-    }
-
-    /**
-     * 素材インベントリタブのコピーを取得する。
-     */
-    public synchronized Map<String, VirtualItemEntry> getVirtualMaterial() {
-        return copyEntries(virtualMaterial);
     }
 
     /**
@@ -381,9 +446,8 @@ public class PlayerData {
             return virtualInventory;
         }
         return switch (tab) {
-            case INVENTORY -> virtualInventory;
-            case EQUIPMENT -> virtualEquipment;
-            case MATERIAL -> virtualMaterial;
+            case STORAGE -> virtualInventory;
+            case EQUIPMENT_STORAGE -> virtualEquipment;
         };
     }
 
@@ -543,7 +607,8 @@ public class PlayerData {
         allocatedClassNodes.clear();
 
         ClassProgressJson.decodeIntMap(classLevelsJson)
-                .forEach((key, value) -> classLevels.put(normalizeClassId(key), value));
+                .forEach((key, value) -> classLevels.put(
+                        normalizeClassId(key), Math.max(PlayerStats.DEFAULT_LEVEL, value)));
         ClassProgressJson.decodeLongMap(classExpsJson)
                 .forEach((key, value) -> classExps.put(normalizeClassId(key), value));
         ClassProgressJson.decodeIntMap(classTreePointsJson)
@@ -573,17 +638,14 @@ public class PlayerData {
         if (normalized.isEmpty()) {
             return;
         }
-        if (classLevels.containsKey(normalized) || classExps.containsKey(normalized)) {
+        if (classLevels.containsKey(normalized)) {
             return;
         }
 
-        int level = Math.max(0, stats.getLevel());
-        long exp = Math.max(0L, stats.getExp());
-        if (level == 0 && exp == 0L) {
-            return;
-        }
+        int level = Math.max(PlayerStats.DEFAULT_LEVEL, stats.getLevel());
+        long exp = classExps.getOrDefault(normalized, Math.max(0L, stats.getExp()));
         classLevels.put(normalized, level);
-        classExps.put(normalized, exp);
+        classExps.putIfAbsent(normalized, exp);
     }
 
     /**

@@ -42,8 +42,8 @@ import java.util.UUID;
  * OFF 時は {@link com.zeloria.skill.SkillSlotService#showIdle(Player)} が
  * 灰色ガラス板を配置する。
  * <p>
- * メインインベントリ（slot 9〜35）は、通常・装備・素材の 3 タブを切り替えて表示する。
- * 1 タブ 100 枠を 24 枠ずつページングし、slot 17 / 35 の矢印でスクロール、
+ * メインインベントリ（slot 9〜35）は、保管庫・装備保管庫の 2 タブを切り替えて表示する。
+ * 1 タブ 100 枠を 24 枠ずつ表示し、slot 17 / 35 の矢印で 8 枠ずつスクロール、
  * slot 26 のチェストでタブを切り替える。表示用アイテムの数量は常に 1 とし、
  * 実際の所持数は Lore に表示する。
  * <p>
@@ -64,6 +64,12 @@ public class VirtualInventoryService {
 
     /** オフハンドスロット（{@link PlayerInventory} のインデックス）。 */
     public static final int OFFHAND_SLOT = 40;
+
+    /** 右端 3 枠のガラスパネル開始スロット。 */
+    public static final int HOTBAR_PANEL_FIRST_SLOT = 6;
+
+    /** 右端 3 枠のガラスパネル終了スロット。 */
+    public static final int HOTBAR_PANEL_LAST_SLOT = 8;
 
     /* ------------------------------------------------------------------
      * 仮想インベントリ（メインインベントリ 9〜35）
@@ -86,6 +92,9 @@ public class VirtualInventoryService {
 
     /** 1 ページに表示するアイテム枠（8 枠 × 3 行）。 */
     public static final int BAG_PAGE_SIZE = 24;
+
+    /** スクロール 1 回あたりに移動する枠数（1 行分）。 */
+    public static final int BAG_SCROLL_STEP = 8;
 
     /** 1 タブあたりの最大枠数。 */
     public static final int BAG_MAX_ENTRIES = 100;
@@ -159,8 +168,8 @@ public class VirtualInventoryService {
     /** プレイヤーごとの現在のタブ。 */
     private final Map<UUID, VirtualInventoryTab> currentTabs = new HashMap<>();
 
-    /** プレイヤーごとの現在のページ（0 始まり）。 */
-    private final Map<UUID, Integer> currentPages = new HashMap<>();
+    /** プレイヤーごとの現在のスクロール位置（0 始まりの先頭インデックス）。 */
+    private final Map<UUID, Integer> currentScrolls = new HashMap<>();
 
     public VirtualInventoryService(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -215,6 +224,7 @@ public class VirtualInventoryService {
         // 上書きして失わないよう退避しておく。
         List<ItemStack> displaced = new ArrayList<>();
         collectDisplaced(inventory.getItem(WEAPON_HOTBAR_SLOT), displaced);
+        absorbHotbarPanelItems(data, inventory, displaced);
         collectDisplaced(inventory.getHelmet(), displaced);
         collectDisplaced(inventory.getChestplate(), displaced);
         collectDisplaced(inventory.getLeggings(), displaced);
@@ -237,6 +247,9 @@ public class VirtualInventoryService {
             returnToInventory(player, inventory, item);
         }
 
+        // 右端 3 枠は仮想ストレージ化に伴い、常時ガラスパネルで埋める。
+        applyHotbarPanels(inventory);
+
         // 戦闘モード OFF 時はホットバー slot 1〜5 を灰色ガラスで埋める。
         // 戦闘モード中はスキルアイコンを維持するため、呼び出し側で判定する。
         SkillSlotService skillSlotService = plugin.getSkillSlotService();
@@ -244,6 +257,53 @@ public class VirtualInventoryService {
         if (skillSlotService != null
                 && (combatModeService == null || !combatModeService.isActive(player))) {
             skillSlotService.showIdle(player);
+        }
+    }
+
+    /**
+     * 右端 3 枠に残っている実アイテムを仮想インベントリへ取り込む。
+     * <p>
+     * プラグイン製アイテムは対応するタブへ格納し、判定できないアイテムだけを
+     * 退避リストへ回す。パネル表示で上書きしてアイテムを失わないための処理。
+     */
+    private void absorbHotbarPanelItems(PlayerData data, PlayerInventory inventory,
+                                        List<ItemStack> displaced) {
+        ItemService itemService = plugin.getItemService();
+        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= HOTBAR_PANEL_LAST_SLOT; slot++) {
+            ItemStack current = inventory.getItem(slot);
+            if (current == null || current.getType().isAir() || VirtualItem.isVirtual(current)) {
+                continue;
+            }
+
+            ItemData definition = itemService == null
+                    ? null
+                    : itemService.findItem(current).orElse(null);
+            if (definition == null) {
+                displaced.add(current.clone());
+            } else {
+                store(data, tabFor(definition), definition.id(),
+                        Math.max(1, current.getAmount()));
+            }
+            inventory.setItem(slot, null);
+        }
+    }
+
+    /**
+     * ホットバー右端 3 枠を操作不可のガラスパネルで埋める。
+     * <p>
+     * 仮想表示アイテムとしてマーカーを付与するため、ドロップ・移動・拾得の
+     * 対象にはならない。既に同じパネルがある場合は再生成しない。
+     */
+    private void applyHotbarPanels(PlayerInventory inventory) {
+        for (int slot = HOTBAR_PANEL_FIRST_SLOT; slot <= HOTBAR_PANEL_LAST_SLOT; slot++) {
+            ItemStack current = inventory.getItem(slot);
+            if (VirtualItem.isPlaceholder(current)
+                    && current.getType() == Material.GRAY_STAINED_GLASS_PANE) {
+                continue;
+            }
+            ItemStack panel = VirtualItem.markPlaceholder(
+                    new ItemStack(Material.GRAY_STAINED_GLASS_PANE));
+            inventory.setItem(slot, panel);
         }
     }
 
@@ -316,10 +376,9 @@ public class VirtualInventoryService {
      * （ログイン直後のテレポートでアイテムが置き去りになるのを防ぐ）。
      */
     private void returnToInventory(Player player, PlayerInventory inventory, ItemStack item) {
-        // メインインベントリ（9〜35）は仮想インベントリ表示に使用するため、
-        // 退避先はホットバー 6〜8 → 1〜5 のみとする。
+        // メインインベントリ（9〜35）は仮想インベントリ表示、ホットバー右端 3 枠は
+        // ガラスパネルのため、退避先はホットバー 1〜5 のみとする。
         ItemStack remaining = item.clone();
-        remaining = mergeIntoRange(inventory, remaining, 6, 8);
         remaining = mergeIntoRange(inventory, remaining, 1, 5);
         if (remaining == null) {
             return;
@@ -386,17 +445,13 @@ public class VirtualInventoryService {
     /**
      * ロック枠を除いた最初の空きスロットを取得する。
      * <p>
-     * メインインベントリ（9〜35）は仮想インベントリが使用するため、
-     * ホットバー 6〜8 → 1〜5 の順で探す。
+     * メインインベントリ（9〜35）は仮想インベントリが使用し、ホットバー右端 3 枠
+     * （6〜8）はガラスパネルで固定するため、ホットバー 1〜5 のみを探す。
      * ホットバー slot 0 と防具・オフハンドは対象外。
      *
      * @return 空きスロット。空きが無い場合は {@code -1}
      */
     public static int firstEmptyUnlockedSlot(PlayerInventory inventory) {
-        int slot = firstEmptyInRange(inventory, 6, 8);
-        if (slot >= 0) {
-            return slot;
-        }
         return firstEmptyInRange(inventory, 1, 5);
     }
 
@@ -418,7 +473,7 @@ public class VirtualInventoryService {
      * ------------------------------------------------------------------ */
 
     /**
-     * ログイン時にタブを初期状態（通常インベントリ・1 ページ目）へ戻して表示する。
+     * ログイン時にタブを初期状態（保管庫・先頭）へ戻して表示する。
      *
      * @param player 対象プレイヤー
      */
@@ -426,8 +481,8 @@ public class VirtualInventoryService {
         if (player == null) {
             return;
         }
-        currentTabs.put(player.getUniqueId(), VirtualInventoryTab.INVENTORY);
-        currentPages.put(player.getUniqueId(), 0);
+        currentTabs.put(player.getUniqueId(), VirtualInventoryTab.STORAGE);
+        currentScrolls.put(player.getUniqueId(), 0);
         if (PlayerData.getCached(player.getUniqueId()) == null) {
             // DB 読み込みが参加処理に間に合わなかった場合は、1 秒後に再試行する。
             Bukkit.getScheduler().runTaskLater(plugin, () -> updateBag(player), 20L);
@@ -450,13 +505,13 @@ public class VirtualInventoryService {
      */
     public VirtualInventoryTab currentTab(Player player) {
         if (player == null) {
-            return VirtualInventoryTab.INVENTORY;
+            return VirtualInventoryTab.STORAGE;
         }
-        return currentTabs.getOrDefault(player.getUniqueId(), VirtualInventoryTab.INVENTORY);
+        return currentTabs.getOrDefault(player.getUniqueId(), VirtualInventoryTab.STORAGE);
     }
 
     /**
-     * タブを「通常 → 装備 → 素材 → 通常…」の順で切り替える。
+     * タブを「保管庫 → 装備保管庫 → 保管庫…」の順で切り替える。
      *
      * @param player 対象プレイヤー
      */
@@ -466,12 +521,12 @@ public class VirtualInventoryService {
         }
         VirtualInventoryTab next = currentTab(player).next();
         currentTabs.put(player.getUniqueId(), next);
-        currentPages.put(player.getUniqueId(), 0);
+        currentScrolls.put(player.getUniqueId(), 0);
         updateBag(player);
     }
 
     /**
-     * ページをスクロールする。
+     * 表示位置を 1 行（8 枠）ずつスクロールする。
      *
      * @param player 対象プレイヤー
      * @param delta  変化量（上へは負、下へは正）
@@ -485,9 +540,10 @@ public class VirtualInventoryService {
             return;
         }
         int count = data.getVirtualBag(currentTab(player)).size();
-        int maxPage = maxPage(count);
-        int page = Math.max(0, Math.min(maxPage, currentPage(player, count) + delta));
-        currentPages.put(player.getUniqueId(), page);
+        int maxScroll = maxScroll(count);
+        int offset = Math.max(0, Math.min(maxScroll,
+                currentScroll(player, count) + delta * BAG_SCROLL_STEP));
+        currentScrolls.put(player.getUniqueId(), offset);
         updateBag(player);
     }
 
@@ -561,8 +617,8 @@ public class VirtualInventoryService {
     /**
      * 仮想インベントリのアイテムを使用する。
      * <p>
-     * 装備タブでは装備処理を行い、通常タブではカテゴリに応じたタブへ移動する。
-     * 素材の消費は {@link #consumeItem(Player, VirtualInventoryTab, String, long)} を使用する。
+     * 武器・防具は装備処理を行う。素材などの消費は
+     * {@link #consumeItem(Player, VirtualInventoryTab, String, long)} を使用する。
      *
      * @param player 対象プレイヤー
      * @param tab    タブ
@@ -570,20 +626,31 @@ public class VirtualInventoryService {
      * @return 処理できた場合は {@code true}
      */
     public boolean useEntry(Player player, VirtualInventoryTab tab, String key) {
-        if (tab == VirtualInventoryTab.EQUIPMENT) {
-            return equipEntry(player, key);
+        if (player == null || tab == null || key == null) {
+            return false;
         }
-        if (tab == VirtualInventoryTab.INVENTORY) {
-            return moveEntry(player, tab, key);
+        PlayerData data = PlayerData.getCached(player.getUniqueId());
+        if (data == null) {
+            return false;
         }
-        return false;
+        VirtualItemEntry entry = data.getVirtualBagEntry(tab, key);
+        if (entry == null) {
+            return false;
+        }
+        ItemData definition = findItem(entry.itemId());
+        if (definition == null
+                || (definition.category() != ItemCategory.ARMOR
+                && definition.category() != ItemCategory.WEAPON)) {
+            return false;
+        }
+        return equipEntry(player, tab, key);
     }
 
     /**
      * 仮想インベントリの枠を別タブへ移動する。
      * <p>
-     * 通常タブからはアイテム種別に応じたタブ（装備／素材）へ、
-     * 装備・素材タブからは通常タブへ移動する。
+     * 保管庫と装備保管庫の間で移動する。保管庫から装備保管庫へ移動できるのは
+     * 武器・防具のみ。
      *
      * @param player 対象プレイヤー
      * @param from   移動元タブ
@@ -603,11 +670,16 @@ public class VirtualInventoryService {
             return false;
         }
 
-        VirtualInventoryTab target = from == VirtualInventoryTab.INVENTORY
-                ? tabFor(entry.itemId())
-                : VirtualInventoryTab.INVENTORY;
-        if (target == from) {
-            return false;
+        VirtualInventoryTab target = from == VirtualInventoryTab.STORAGE
+                ? VirtualInventoryTab.EQUIPMENT_STORAGE
+                : VirtualInventoryTab.STORAGE;
+        if (target == VirtualInventoryTab.EQUIPMENT_STORAGE) {
+            ItemData definition = findItem(entry.itemId());
+            if (definition == null
+                    || (definition.category() != ItemCategory.ARMOR
+                    && definition.category() != ItemCategory.WEAPON)) {
+                return false;
+            }
         }
 
         long moved = store(data, target, entry.itemId(), entry.amount());
@@ -623,8 +695,8 @@ public class VirtualInventoryService {
         return true;
     }
 
-    private boolean equipEntry(Player player, String key) {
-        if (player == null || key == null) {
+    private boolean equipEntry(Player player, VirtualInventoryTab tab, String key) {
+        if (player == null || tab == null || key == null) {
             return false;
         }
         PlayerData data = PlayerData.getCached(player.getUniqueId());
@@ -632,7 +704,7 @@ public class VirtualInventoryService {
         if (data == null || itemService == null) {
             return false;
         }
-        VirtualItemEntry entry = data.getVirtualBagEntry(VirtualInventoryTab.EQUIPMENT, key);
+        VirtualItemEntry entry = data.getVirtualBagEntry(tab, key);
         if (entry == null) {
             return false;
         }
@@ -661,11 +733,12 @@ public class VirtualInventoryService {
             return false;
         }
         if (previousDefinition != null
-                && store(data, VirtualInventoryTab.EQUIPMENT, previousDefinition.id(), 1L) <= 0) {
+                && store(data, VirtualInventoryTab.EQUIPMENT_STORAGE,
+                previousDefinition.id(), 1L) <= 0) {
             return false;
         }
 
-        data.removeVirtualBagEntry(VirtualInventoryTab.EQUIPMENT, key);
+        data.removeVirtualBagEntry(tab, key);
         data.setEquipment(equipSlot, stack);
         if (equipmentService != null) {
             equipmentService.recompute(player);
@@ -702,7 +775,7 @@ public class VirtualInventoryService {
         }
 
         ItemData definition = findItem(itemId);
-        boolean singleInstance = tab == VirtualInventoryTab.EQUIPMENT
+        boolean singleInstance = tab == VirtualInventoryTab.EQUIPMENT_STORAGE
                 || (definition != null
                 && (definition.category() == ItemCategory.ARMOR
                 || definition.category() == ItemCategory.WEAPON));
@@ -751,20 +824,13 @@ public class VirtualInventoryService {
         return key;
     }
 
-    private VirtualInventoryTab tabFor(String itemId) {
-        ItemData definition = findItem(itemId);
-        return definition == null
-                ? VirtualInventoryTab.INVENTORY
-                : tabFor(definition);
-    }
-
     private static VirtualInventoryTab tabFor(ItemData definition) {
         if (definition == null) {
-            return VirtualInventoryTab.INVENTORY;
+            return VirtualInventoryTab.STORAGE;
         }
         return switch (definition.category()) {
-            case ARMOR, WEAPON -> VirtualInventoryTab.EQUIPMENT;
-            case MATERIAL -> VirtualInventoryTab.MATERIAL;
+            case ARMOR, WEAPON -> VirtualInventoryTab.EQUIPMENT_STORAGE;
+            case MATERIAL -> VirtualInventoryTab.STORAGE;
         };
     }
 
@@ -800,13 +866,12 @@ public class VirtualInventoryService {
         VirtualInventoryTab tab = currentTab(player);
         List<Map.Entry<String, VirtualItemEntry>> entries =
                 new ArrayList<>(data.getVirtualBag(tab).entrySet());
-        int maxPage = maxPage(entries.size());
-        int page = Math.max(0, Math.min(maxPage, currentPage(player, entries.size())));
-        currentPages.put(player.getUniqueId(), page);
-        int start = page * BAG_PAGE_SIZE;
+        int maxScroll = maxScroll(entries.size());
+        int offset = Math.max(0, Math.min(maxScroll, currentScroll(player, entries.size())));
+        currentScrolls.put(player.getUniqueId(), offset);
 
         for (int index = 0; index < BAG_PAGE_SIZE; index++) {
-            int entryIndex = start + index;
+            int entryIndex = offset + index;
             if (entryIndex >= entries.size()) {
                 break;
             }
@@ -817,23 +882,32 @@ public class VirtualInventoryService {
             }
         }
 
-        inventory.setItem(SCROLL_UP_SLOT, scrollButton("up", "▲ 上へスクロール", page, maxPage));
-        inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down", "▼ 下へスクロール", page, maxPage));
-        inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, page, maxPage));
+        int used = entries.size();
+        int free = Math.max(0, BAG_MAX_ENTRIES - used);
+        inventory.setItem(SCROLL_UP_SLOT, scrollButton("up", "▲ 上へスクロール", offset, maxScroll));
+        inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down", "▼ 下へスクロール", offset, maxScroll));
+        inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, offset, maxScroll, used, free));
     }
 
-    private int currentPage(Player player, int entryCount) {
+    private int currentScroll(Player player, int entryCount) {
         if (player == null) {
             return 0;
         }
-        int page = currentPages.getOrDefault(player.getUniqueId(), 0);
-        return Math.max(0, Math.min(maxPage(entryCount), page));
+        int offset = currentScrolls.getOrDefault(player.getUniqueId(), 0);
+        return Math.max(0, Math.min(maxScroll(entryCount), offset));
     }
 
-    private static int maxPage(int entryCount) {
-        return entryCount <= BAG_PAGE_SIZE
-                ? 0
-                : (entryCount - 1) / BAG_PAGE_SIZE;
+    /**
+     * スクロール可能な最大先頭インデックスを返す。
+     * <p>
+     * 8 枠刻みで移動しつつ、最後のアイテムまで表示できる位置まで許可する。
+     */
+    private static int maxScroll(int entryCount) {
+        int needed = Math.max(0, entryCount - BAG_PAGE_SIZE);
+        if (needed <= 0) {
+            return 0;
+        }
+        return ((needed + BAG_SCROLL_STEP - 1) / BAG_SCROLL_STEP) * BAG_SCROLL_STEP;
     }
 
     /**
@@ -892,14 +966,16 @@ public class VirtualInventoryService {
     }
 
     private static ItemStack scrollButton(String direction, String label,
-                                          int page, int maxPage) {
+                                          int offset, int maxScroll) {
         ItemStack item = new ItemStack(Material.SPECTRAL_ARROW);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
+            int page = offset / BAG_SCROLL_STEP + 1;
+            int maxPage = maxScroll / BAG_SCROLL_STEP + 1;
             meta.displayName(MINI.deserialize("<!italic><white>" + label + "</white>"));
             meta.lore(List.of(MINI.deserialize(
-                    "<!italic><gray>ページ: <white>" + (page + 1) + "</white>/<white>"
-                            + (maxPage + 1) + "</white></gray>")));
+                    "<!italic><gray>表示位置: <white>" + page + "</white>/<white>"
+                            + maxPage + "</white></gray>")));
             meta.getPersistentDataContainer().set(
                     SCROLL_KEY, PersistentDataType.STRING, direction);
             item.setItemMeta(meta);
@@ -907,16 +983,26 @@ public class VirtualInventoryService {
         return VirtualItem.mark(item);
     }
 
-    private static ItemStack tabButton(VirtualInventoryTab tab, int page, int maxPage) {
-        ItemStack item = new ItemStack(Material.CHEST);
+    private static ItemStack tabButton(VirtualInventoryTab tab, int offset, int maxScroll,
+                                       int used, int free) {
+        Material material = tab == VirtualInventoryTab.EQUIPMENT_STORAGE
+                ? Material.CHEST
+                : Material.ENDER_CHEST;
+        ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
+            int page = offset / BAG_SCROLL_STEP + 1;
+            int maxPage = maxScroll / BAG_SCROLL_STEP + 1;
             meta.displayName(MINI.deserialize("<!italic><white>タブ切り替え</white>"));
             meta.lore(List.of(
                     MINI.deserialize("<!italic><gray>現在のタブ: <white>"
                             + tab.displayName() + "</white></gray>"),
-                    MINI.deserialize("<!italic><gray>ページ: <white>" + (page + 1)
-                            + "</white>/<white>" + (maxPage + 1) + "</white></gray>"),
+                    MINI.deserialize("<!italic><gray>使用枠: <white>" + used
+                            + "</white>/<white>" + BAG_MAX_ENTRIES + "</white></gray>"),
+                    MINI.deserialize("<!italic><gray>空き容量: <green>" + free
+                            + "</green> 枠</gray>"),
+                    MINI.deserialize("<!italic><gray>表示位置: <white>" + page
+                            + "</white>/<white>" + maxPage + "</white></gray>"),
                     MINI.deserialize("<!italic><dark_gray>クリックで次のタブへ</dark_gray>")));
             meta.getPersistentDataContainer().set(
                     TAB_SWITCH_KEY, PersistentDataType.STRING, tab.name());
@@ -1021,15 +1107,7 @@ public class VirtualInventoryService {
      * @return タブ。判定できない場合は {@code null}
      */
     public static VirtualInventoryTab bagTabOf(ItemStack stack) {
-        String raw = readString(stack, BAG_TAB_KEY);
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return VirtualInventoryTab.valueOf(raw);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        return VirtualInventoryTab.fromName(readString(stack, BAG_TAB_KEY));
     }
 
     private static String readString(ItemStack stack, NamespacedKey key) {
@@ -1064,7 +1142,7 @@ public class VirtualInventoryService {
             player.setItemOnCursor(null);
         }
         currentTabs.remove(player.getUniqueId());
-        currentPages.remove(player.getUniqueId());
+        currentScrolls.remove(player.getUniqueId());
     }
 
     /**
@@ -1108,14 +1186,15 @@ public class VirtualInventoryService {
     /**
      * プレイヤー操作を禁止するスロットか判定する。
      * <p>
-     * 対象はホットバー slot 0 とバニラ防具 4 枠のみ。
-     * ホットバー slot 1〜8 は対象外。
+     * 対象はホットバー slot 0・右端 3 枠（6〜8）とバニラ防具 4 枠。
+     * ホットバー slot 1〜5 はスキルスロットのため対象外。
      *
      * @param slot {@link PlayerInventory} のスロット番号
      * @return ロック対象の場合は {@code true}
      */
     public static boolean isLockedSlot(int slot) {
         return slot == WEAPON_HOTBAR_SLOT
+                || (slot >= HOTBAR_PANEL_FIRST_SLOT && slot <= HOTBAR_PANEL_LAST_SLOT)
                 || slot == BOOTS_SLOT
                 || slot == LEGGINGS_SLOT
                 || slot == CHESTPLATE_SLOT

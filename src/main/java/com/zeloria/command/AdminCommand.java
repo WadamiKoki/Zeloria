@@ -23,6 +23,7 @@ import com.zeloria.npc.NpcManager;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.InventorySerializer;
 import com.zeloria.player.PlayerData;
+import com.zeloria.player.PlayerRepository;
 import com.zeloria.player.PlayerService;
 import com.zeloria.player.PlayerSnapshot;
 import com.zeloria.player.PlayerStatus;
@@ -84,6 +85,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *         （{@code WeaponData/archer/test} のような階層パス指定にも対応）</li>
  *     <li>{@code /admin test db} - DB 接続とテーブル作成を検証する</li>
  *     <li>{@code /admin mob spawn <mobId> [count]} - MobData を指定してモブをスポーンする</li>
+ *     <li>{@code /admin info <player>} / {@code /admin stats <player>} - プレイヤー情報・RPG ステータスを表示する</li>
+ *     <li>{@code /admin stats <player> <type> <value>} - 基礎ステータスを加算（負の値で減算）して保存する</li>
+ *     <li>{@code /admin layer info all|online} - レイヤー定義またはロード中のレイヤーを一覧表示する</li>
+ *     <li>{@code /admin xp <player> <amount>} - 経験値を付与する</li>
  *     <li>{@code /admin build create <yml>} / {@code /admin build join <yml>} - 建築ワールドを作成／参加する</li>
  *     <li>{@code /admin build list|info|save|unsave} - チャンネル 1 の建築ワールドを管理する</li>
  *     <li>{@code /admin stop} - プレイヤーデータ保存・レイヤー破棄・ワールド保存を行ってから安全に停止する</li>
@@ -104,6 +109,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final String SPAWN = "spawn";
     private static final String GIVE = "give";
     private static final String INFO = "info";
+    private static final String STATS = "stats";
+    private static final String XP = "xp";
     private static final String GUI = "gui";
     private static final String BUILD = "build";
     private static final String CREATE = "create";
@@ -170,10 +177,27 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     private static final List<String> LAYER_TARGETS = List.of(ALL, ONLINE);
 
     /**
+     * {@code /admin stats <player> <type> <value>} で変更可能なステータス種別。
+     * <p>
+     * {@link PlayerStats} / {@link PlayerSnapshot} に定義されている基礎値を対象とし、
+     * エイリアス（{@code attack_power} など）も受け付ける。タブ補完にも使用する。
+     */
+    private static final List<String> STAT_TYPES = List.of(
+            "hp", "max_hp", "max_health", "current_hp", "current_health",
+            "mp", "max_mp", "max_mana", "current_mp", "current_mana",
+            "attack", "attack_power", "defense", "defense1", "defense2",
+            "critical_rate", "crit_rate", "critical_damage", "crit_damage",
+            "accuracy", "evasion",
+            "dodge_cooldown_reduction", "cooldown_reduction",
+            "walk_speed", "move_speed", "health_regen_flat", "health_regen_percent",
+            "mana_regen_flat", "mana_regen_percent",
+            "armor_penetration", "lifesteal");
+
+    /**
      * {@code admin.yml} を読み込めなかった場合に使用する使用方法のフォールバック。
      */
     private static final String FALLBACK_USAGE =
-            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|gui|build|layer|stop></white>";
+            "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>";
 
     private final Zeloria plugin;
 
@@ -231,6 +255,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             case NPC -> handleNpc(sender, args);
             case GIVE -> handleGive(sender, args);
             case INFO -> handleInfo(sender, args);
+            case STATS -> handleStats(sender, args);
+            case XP -> handleXp(sender, args);
             case GUI -> handleGui(sender, args);
             case BUILD -> handleBuild(sender, args);
             case LAYER -> handleLayer(sender, args);
@@ -261,6 +287,8 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 candidates.add(NPC);
                 candidates.add(GIVE);
                 candidates.add(INFO);
+                candidates.add(STATS);
+                candidates.add(XP);
                 candidates.add(GUI);
                 candidates.add(LAYER);
                 if (isBuildChannel() && plugin.getBuildManager() != null) {
@@ -298,13 +326,31 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return completeGive(sender, args);
         }
 
-        if (INFO.equalsIgnoreCase(args[0])) {
-            if (!sender.hasPermission(ADMIN_PERMISSION) || args.length != 2) {
+        if (INFO.equalsIgnoreCase(args[0]) || XP.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
                 return List.of();
             }
-            return partial(args[1], Bukkit.getOnlinePlayers().stream()
-                    .map(Player::getName)
-                    .toList());
+            if (args.length == 2) {
+                return partial(args[1], Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .toList());
+            }
+            return List.of();
+        }
+
+        if (STATS.equalsIgnoreCase(args[0])) {
+            if (!sender.hasPermission(ADMIN_PERMISSION)) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return partial(args[1], Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .toList());
+            }
+            if (args.length == 3) {
+                return partial(args[2], STAT_TYPES);
+            }
+            return List.of();
         }
 
         if (GUI.equalsIgnoreCase(args[0])) {
@@ -1258,10 +1304,10 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * {@code /admin layer info <all|online>}: 読み込み済みレイヤーインスタンスを一覧表示する。
+     * {@code /admin layer info <all|online>} の本体。
      * <p>
-     * {@code all} はプレイヤーが 0 人のインスタンスも含め、アイドルアンロードまでの
-     * 残り秒数を表示する。{@code online} はプレイヤーがいるインスタンスだけを表示する。
+     * {@code all} は {@code LayerData} に定義されたレイヤー名と ID を列挙する。
+     * {@code online} は現在ロード中のレイヤーインスタンスと、その中のプレイヤーを表示する。
      */
     private void handleLayer(CommandSender sender, String[] args) {
         if (args.length != 3 || !INFO.equalsIgnoreCase(args[1])) {
@@ -1270,12 +1316,11 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         String target = args[2].toLowerCase(Locale.ROOT);
-        boolean onlineOnly;
-        if (ONLINE.equals(target)) {
-            onlineOnly = true;
-        } else if (ALL.equals(target)) {
-            onlineOnly = false;
-        } else {
+        if (ALL.equals(target)) {
+            handleLayerAll(sender);
+            return;
+        }
+        if (!ONLINE.equals(target)) {
             send(sender, layerUsage());
             return;
         }
@@ -1294,15 +1339,12 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             if (world == null) {
                 continue;
             }
-            if (onlineOnly && world.getPlayers().isEmpty()) {
-                continue;
-            }
             visible.put(entry.getKey(), world);
         }
 
         if (visible.isEmpty()) {
             send(sender, message("layer.empty", Map.of(),
-                    "<gray>表示できるレイヤーインスタンスはありません。</gray>"));
+                    "<gray>ロード中のレイヤーはありません。</gray>"));
             return;
         }
 
@@ -1352,6 +1394,38 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                             + "<dark_gray>({world})</dark_gray> "
                             + "<gray>プレイヤー: </gray><white>{players}</white> "
                             + "<dark_gray>|</dark_gray> <white>{names}</white>"));
+        }
+    }
+
+    /**
+     * {@code /admin layer info all}: 設定に定義されたレイヤー名と ID を一覧表示する。
+     *
+     * @param sender 実行者
+     */
+    private void handleLayerAll(CommandSender sender) {
+        LayerConfigService configService = plugin.getLayerConfigService();
+        if (configService == null) {
+            send(sender, message("layer.config_unavailable", Map.of(),
+                    "<yellow>レイヤー設定サービスが初期化されていません。</yellow>"));
+            return;
+        }
+
+        List<LayerData> layers = new ArrayList<>(configService.getLayers());
+        if (layers.isEmpty()) {
+            send(sender, message("layer.config_empty", Map.of(),
+                    "<gray>設定されているレイヤーはありません。</gray>"));
+            return;
+        }
+
+        layers.sort((left, right) -> left.getId().compareToIgnoreCase(right.getId()));
+        send(sender, message("layer.config_header", Map.of("count", Integer.toString(layers.size())),
+                "<green>レイヤー定義一覧</green> <gray>(<white>{count}</white> 件)</gray>"));
+
+        for (LayerData layer : layers) {
+            send(sender, message("layer.config_entry", Map.of(
+                            "name", esc(layer.getName()),
+                            "id", esc(layer.getId())),
+                    "<gray>-</gray> <white>{name}</white> <dark_gray>({id})</dark_gray>"));
         }
     }
 
@@ -1706,13 +1780,458 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
+     * {@code /admin stats <player> [<type> <value>]} の本体。
+     * <p>
+     * {@code type/value} が省略された場合は {@code /admin info} と同じ取得経路で
+     * スナップショットを解決し、RPG ステータスだけを表示する。オンライン中の値は
+     * 保存前の最新値を優先する。
+     * <p>
+     * {@code type/value} が指定された場合は変更モードとして動作し、現在値へ
+     * {@code value} を加算する（負の値で減算）。変更は {@link PlayerService} /
+     * {@link PlayerRepository} の保存経路を通して即時保存する。
+     *
+     * @param sender 実行者
+     * @param args   コマンド引数（{@code [stats, player]} または
+     *               {@code [stats, player, type, value]}）
+     */
+    private void handleStats(CommandSender sender, String[] args) {
+        if (args.length != 2 && args.length != 4) {
+            send(sender, message("stats.usage", Map.of(),
+                    "<gray>使い方:</gray> <white>/admin stats \\<player></white>"
+                            + " <dark_gray>|</dark_gray> "
+                            + "<white>/admin stats \\<player> \\<type> \\<value></white>"));
+            return;
+        }
+
+        PlayerService playerService = plugin.getPlayerService();
+        if (playerService == null) {
+            send(sender, message("stats.error", Map.of("error", "PlayerService 未初期化"),
+                    "<red>ステータスを取得できません: <gray>{error}</gray></red>"));
+            return;
+        }
+
+        String query = args[1];
+        if (args.length == 4) {
+            handleStatsChange(sender, playerService, query, args[2], args[3]);
+            return;
+        }
+
+        Player online = resolveOnlinePlayer(query);
+        PlayerData cached = online == null ? null : PlayerData.getCached(online.getUniqueId());
+
+        playerService.getRepository().findStatus(query).whenComplete((result, error) -> {
+            PlayerStatus status = result == null ? null : result.orElse(null);
+            PlayerSnapshot snapshot = status == null ? null : status.snapshot();
+            if (cached != null) {
+                snapshot = cached.snapshot();
+            }
+
+            if (snapshot == null) {
+                if (error != null) {
+                    send(sender, message("stats.error",
+                            Map.of("error", esc(rootMessage(error))),
+                            "<red>ステータスの取得に失敗しました: <gray>{error}</gray></red>"));
+                } else {
+                    send(sender, message("stats.not_found", Map.of("player", esc(query)),
+                            "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"));
+                }
+                return;
+            }
+
+            send(sender, message("info.header", Map.of("player", esc(snapshot.playerName())),
+                    "<gold>=== <white>{player}</white> ===</gold>"));
+            sendStatsBlock(sender, snapshot);
+        });
+    }
+
+    /**
+     * ステータス変更モードの本体。
+     * <p>
+     * オンラインプレイヤーは {@link PlayerData} のキャッシュを直接更新してから
+     * {@link PlayerService#save(UUID, String)} で保存する。オフラインプレイヤーは
+     * DB からスナップショットを取得し、メインスレッドで {@link PlayerData} を復元して
+     * 変更後に {@link PlayerRepository#save(PlayerSnapshot)} で保存する。
+     *
+     * @param sender        実行者
+     * @param playerService プレイヤーサービス
+     * @param query         対象プレイヤー名または UUID
+     * @param rawType       ステータス種別
+     * @param rawValue      加算する値（負の値で減算）
+     */
+    private void handleStatsChange(CommandSender sender, PlayerService playerService,
+                                   String query, String rawType, String rawValue) {
+        double amount;
+        try {
+            amount = Double.parseDouble(rawValue);
+        } catch (NumberFormatException exception) {
+            sendInvalidStatValue(sender, rawValue);
+            return;
+        }
+        if (!Double.isFinite(amount)) {
+            sendInvalidStatValue(sender, rawValue);
+            return;
+        }
+
+        // オンラインプレイヤーは保存前の最新キャッシュを直接変更する。
+        Player online = resolveOnlinePlayer(query);
+        PlayerData cached = online == null ? null : PlayerData.getCached(online.getUniqueId());
+        if (cached != null) {
+            StatChange change = applyStatChange(cached.getStats(), rawType, amount);
+            if (change == null) {
+                sendInvalidStatType(sender, rawType);
+                return;
+            }
+            applyCachedStats(online, cached);
+
+            playerService.save(cached.getUuid(), cached.getName()).whenComplete((ignored, error) -> {
+                if (error != null) {
+                    send(sender, message("stats.save_failed",
+                            Map.of("error", esc(rootMessage(error))),
+                            "<red>ステータスの保存に失敗しました: <gray>{error}</gray></red>"));
+                    return;
+                }
+                sendStatsChanged(sender, cached.getName(), change, amount);
+            });
+            return;
+        }
+
+        // オフラインプレイヤーは DB から読み込み、変更後に保存する。
+        playerService.getRepository().findStatus(query).whenComplete((result, error) -> {
+            PlayerStatus status = result == null ? null : result.orElse(null);
+            PlayerSnapshot snapshot = status == null ? null : status.snapshot();
+            if (snapshot == null) {
+                if (error != null) {
+                    send(sender, message("stats.error",
+                            Map.of("error", esc(rootMessage(error))),
+                            "<red>ステータスの取得に失敗しました: <gray>{error}</gray></red>"));
+                } else {
+                    send(sender, message("stats.not_found", Map.of("player", esc(query)),
+                            "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"));
+                }
+                return;
+            }
+
+            // PlayerData / PlayerSnapshot の生成はメインスレッドで行う。
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                PlayerData data;
+                try {
+                    data = PlayerData.fromSnapshot(snapshot);
+                } catch (RuntimeException exception) {
+                    send(sender, message("stats.error",
+                            Map.of("error", esc(rootMessage(exception))),
+                            "<red>ステータスを読み込めません: <gray>{error}</gray></red>"));
+                    return;
+                }
+
+                StatChange change = applyStatChange(data.getStats(), rawType, amount);
+                if (change == null) {
+                    sendInvalidStatType(sender, rawType);
+                    return;
+                }
+
+                PlayerSnapshot updated;
+                try {
+                    updated = data.snapshot();
+                } catch (RuntimeException exception) {
+                    send(sender, message("stats.error",
+                            Map.of("error", esc(rootMessage(exception))),
+                            "<red>ステータスを保存できません: <gray>{error}</gray></red>"));
+                    return;
+                }
+
+                playerService.getRepository().save(updated).whenComplete((ignored, saveError) -> {
+                    if (saveError != null) {
+                        send(sender, message("stats.save_failed",
+                                Map.of("error", esc(rootMessage(saveError))),
+                                "<red>ステータスの保存に失敗しました: <gray>{error}</gray></red>"));
+                        return;
+                    }
+                    sendStatsChanged(sender, snapshot.playerName(), change, amount);
+                });
+            });
+        });
+    }
+
+    /**
+     * ステータス種別と加算値から基礎値を更新する。
+     *
+     * @param stats   更新対象
+     * @param rawType ステータス種別（大文字小文字・ハイフン区切りを許容）
+     * @param amount  加算値（負の値で減算）
+     * @return 変更内容。種別が不正な場合は {@code null}
+     */
+    private static StatChange applyStatChange(PlayerStats stats, String rawType, double amount) {
+        if (stats == null || rawType == null) {
+            return null;
+        }
+
+        String type = rawType.toLowerCase(Locale.ROOT).replace('-', '_');
+        switch (type) {
+            case "hp", "max_hp", "max_health" -> {
+                double oldValue = stats.getBaseMaxHealth();
+                stats.setMaxHealth(oldValue + amount);
+                return new StatChange("max_health", oldValue, stats.getBaseMaxHealth());
+            }
+            case "current_hp", "current_health" -> {
+                double oldValue = stats.getBaseCurrentHealth();
+                stats.setCurrentHealth(oldValue + amount);
+                return new StatChange("current_health", oldValue, stats.getBaseCurrentHealth());
+            }
+            case "mp", "max_mp", "max_mana" -> {
+                double oldValue = stats.getBaseMaxMana();
+                stats.setMaxMana(oldValue + amount);
+                return new StatChange("max_mana", oldValue, stats.getBaseMaxMana());
+            }
+            case "current_mp", "current_mana" -> {
+                double oldValue = stats.getBaseCurrentMana();
+                stats.setCurrentMana(oldValue + amount);
+                return new StatChange("current_mana", oldValue, stats.getBaseCurrentMana());
+            }
+            case "attack", "attack_power" -> {
+                double oldValue = stats.getBaseAttackPower();
+                stats.setAttackPower(oldValue + amount);
+                return new StatChange("attack_power", oldValue, stats.getBaseAttackPower());
+            }
+            case "defense", "defense2" -> {
+                double oldValue = stats.getBaseDefense2();
+                stats.setDefense2(oldValue + amount);
+                return new StatChange("defense2", oldValue, stats.getBaseDefense2());
+            }
+            case "defense1" -> {
+                double oldValue = stats.getBaseDefense1();
+                stats.setDefense1(oldValue + amount);
+                return new StatChange("defense1", oldValue, stats.getBaseDefense1());
+            }
+            case "critical_rate", "crit_rate" -> {
+                double oldValue = stats.getBaseCriticalRate();
+                stats.setCriticalRate(oldValue + amount);
+                return new StatChange("critical_rate", oldValue, stats.getBaseCriticalRate());
+            }
+            case "critical_damage", "crit_damage" -> {
+                double oldValue = stats.getBaseCriticalDamage();
+                stats.setCriticalDamage(oldValue + amount);
+                return new StatChange("critical_damage", oldValue, stats.getBaseCriticalDamage());
+            }
+            case "accuracy" -> {
+                double oldValue = stats.getBaseAccuracy();
+                stats.setAccuracy(oldValue + amount);
+                return new StatChange("accuracy", oldValue, stats.getBaseAccuracy());
+            }
+            case "evasion" -> {
+                double oldValue = stats.getBaseEvasion();
+                stats.setEvasion(oldValue + amount);
+                return new StatChange("evasion", oldValue, stats.getBaseEvasion());
+            }
+            case "dodge_cooldown_reduction" -> {
+                double oldValue = stats.getBaseDodgeCooldownReduction();
+                stats.setDodgeCooldownReduction(oldValue + amount);
+                return new StatChange("dodge_cooldown_reduction", oldValue,
+                        stats.getBaseDodgeCooldownReduction());
+            }
+            case "cooldown_reduction" -> {
+                double oldValue = stats.getBaseCooldownReduction();
+                stats.setCooldownReduction(oldValue + amount);
+                return new StatChange("cooldown_reduction", oldValue,
+                        stats.getBaseCooldownReduction());
+            }
+            case "walk_speed", "move_speed" -> {
+                double oldValue = stats.getBaseMoveSpeed();
+                stats.setMoveSpeed(oldValue + amount);
+                return new StatChange("move_speed", oldValue, stats.getBaseMoveSpeed());
+            }
+            case "health_regen_flat" -> {
+                double oldValue = stats.getBaseHealthRegenFlat();
+                stats.setHealthRegenFlat(oldValue + amount);
+                return new StatChange("health_regen_flat", oldValue, stats.getBaseHealthRegenFlat());
+            }
+            case "health_regen_percent" -> {
+                double oldValue = stats.getBaseHealthRegenPercent();
+                stats.setHealthRegenPercent(oldValue + amount);
+                return new StatChange("health_regen_percent", oldValue,
+                        stats.getBaseHealthRegenPercent());
+            }
+            case "mana_regen_flat" -> {
+                double oldValue = stats.getBaseManaRegenFlat();
+                stats.setManaRegenFlat(oldValue + amount);
+                return new StatChange("mana_regen_flat", oldValue, stats.getBaseManaRegenFlat());
+            }
+            case "mana_regen_percent" -> {
+                double oldValue = stats.getBaseManaRegenPercent();
+                stats.setManaRegenPercent(oldValue + amount);
+                return new StatChange("mana_regen_percent", oldValue,
+                        stats.getBaseManaRegenPercent());
+            }
+            case "armor_penetration" -> {
+                double oldValue = stats.getBaseArmorPenetration();
+                stats.setArmorPenetration(oldValue + amount);
+                return new StatChange("armor_penetration", oldValue,
+                        stats.getBaseArmorPenetration());
+            }
+            case "lifesteal" -> {
+                double oldValue = stats.getBaseLifesteal();
+                stats.setLifesteal(oldValue + amount);
+                return new StatChange("lifesteal", oldValue, stats.getBaseLifesteal());
+            }
+            default -> {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * プレイヤー名または UUID 文字列からオンラインプレイヤーを解決する。
+     *
+     * @param query プレイヤー名または UUID
+     * @return オンラインプレイヤー。見つからない場合は {@code null}
+     */
+    private static Player resolveOnlinePlayer(String query) {
+        Player byName = Bukkit.getPlayerExact(query);
+        if (byName != null) {
+            return byName;
+        }
+        try {
+            return Bukkit.getPlayer(UUID.fromString(query));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 変更後のステータスをオンラインプレイヤーへ即時反映する。
+     *
+     * @param player 対象プレイヤー
+     * @param data   変更済みのプレイヤーデータ
+     */
+    private void applyCachedStats(Player player, PlayerData data) {
+        if (player == null || data == null) {
+            return;
+        }
+        if (plugin.getPlayerStatsService() != null) {
+            plugin.getPlayerStatsService().apply(player, data.getStats());
+        }
+        if (plugin.getCombatService() != null) {
+            plugin.getCombatService().syncPlayerHealth(player);
+        }
+    }
+
+    /** 不正なステータス種別のエラーメッセージを送信する。 */
+    private void sendInvalidStatType(CommandSender sender, String rawType) {
+        send(sender, message("stats.invalid_type", Map.of(
+                        "type", esc(rawType),
+                        "types", esc(String.join(", ", STAT_TYPES))),
+                "<red>不明なステータス種別です: <white>{type}</white></red> "
+                        + "<gray>指定可能: {types}</gray>"));
+    }
+
+    /** 不正なステータス値のエラーメッセージを送信する。 */
+    private void sendInvalidStatValue(CommandSender sender, String rawValue) {
+        send(sender, message("stats.invalid_value", Map.of("value", esc(rawValue)),
+                "<red>値は数値で指定してください: <white>{value}</white></red>"));
+    }
+
+    /** ステータス変更の成功メッセージを送信する。 */
+    private void sendStatsChanged(CommandSender sender, String playerName,
+                                  StatChange change, double amount) {
+        send(sender, message("stats.changed", Map.of(
+                        "player", esc(playerName),
+                        "type", esc(change.field()),
+                        "amount", statValue(amount),
+                        "old", statValue(change.oldValue()),
+                        "new", statValue(change.newValue())),
+                "<green>{player}</green> <gray>の</gray> <white>{type}</white> "
+                        + "<gray>を</gray> <white>{amount}</white> <gray>変更しました。</gray> "
+                        + "<dark_gray>({old} → {new})</dark_gray>"));
+    }
+
+    /**
+     * ステータス表示用に小数第 4 位で丸め、末尾の 0 を除去した文字列を返す。
+     */
+    private static String statValue(double value) {
+        if (!Double.isFinite(value)) {
+            return String.valueOf(value);
+        }
+        return BigDecimal.valueOf(value)
+                .setScale(4, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString();
+    }
+
+    /**
+     * ステータス変更結果。
+     *
+     * @param field    正規化したステータス種別
+     * @param oldValue 変更前の値
+     * @param newValue 変更後の値
+     */
+    private record StatChange(String field, double oldValue, double newValue) {
+    }
+
+    /**
+     * {@code /admin xp <player> <amount>} の本体。
+     * <p>
+     * オンラインプレイヤーへ経験値を付与し、レベルアップ処理は
+     * {@link LevelService#grant(Player, long)} に委譲する。
+     *
+     * @param sender 実行者
+     * @param args   コマンド引数（{@code [xp, player, amount]}）
+     */
+    private void handleXp(CommandSender sender, String[] args) {
+        if (args.length != 3) {
+            send(sender, message("xp.usage", Map.of(),
+                    "<gray>使い方:</gray> <white>/admin xp \\<player> \\<amount></white>"));
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            send(sender, message("xp.not_found", Map.of("player", esc(args[1])),
+                    "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"));
+            return;
+        }
+
+        long amount;
+        try {
+            amount = Long.parseLong(args[2]);
+        } catch (NumberFormatException e) {
+            amount = 0L;
+        }
+        if (amount <= 0L) {
+            send(sender, message("xp.invalid_amount", Map.of(),
+                    "<red>経験値は 1 以上の整数で指定してください。</red>"));
+            return;
+        }
+
+        LevelService levelService = plugin.getLevelService();
+        if (levelService == null) {
+            send(sender, message("xp.unavailable", Map.of(),
+                    "<red>レベルサービスが初期化されていません。</red>"));
+            return;
+        }
+        if (PlayerData.getCached(target.getUniqueId()) == null) {
+            send(sender, message("xp.not_loaded", Map.of("player", esc(target.getName())),
+                    "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"));
+            return;
+        }
+
+        LevelService.LevelResult result = levelService.grant(target, amount);
+        send(sender, message("xp.success", Map.of(
+                        "player", esc(target.getName()),
+                        "amount", Long.toString(amount),
+                        "old_level", Integer.toString(result.oldLevel()),
+                        "new_level", Integer.toString(result.newLevel()),
+                        "levels", Integer.toString(result.levelsGained()),
+                        "exp", Long.toString(result.currentExp()),
+                        "required", Long.toString(result.requiredExp())),
+                "<green>{player}</green> <gray>に経験値</gray> <yellow>{amount}</yellow> "
+                        + "<gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, "
+                        + "EXP {exp}/{required})</dark_gray>"));
+    }
+
+    /**
      * 取得済みのプレイヤー情報をチャットへ出力する。
      */
     private void sendPlayerInfo(CommandSender sender, PlayerSnapshot snapshot,
                                 String lastInstance, String lastLogin, String lastUpdated) {
-        LevelService levelService = plugin.getLevelService();
-        long requiredExp = levelService == null ? 0L : levelService.requiredExp(snapshot.level());
-
         send(sender, message("info.header", Map.of("player", esc(snapshot.playerName())),
                 "<gold>=== <white>{player}</white> ===</gold>"));
         send(sender, message("info.identity", Map.of(
@@ -1720,6 +2239,37 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         "class", esc(text(snapshot.currentClassId(), "-"))),
                 "<gray>UUID:</gray> <white>{uuid}</white> <dark_gray>|</dark_gray> "
                         + "<gray>Class:</gray> <aqua>{class}</aqua>"));
+        sendStatsBlock(sender, snapshot);
+        send(sender, message("info.connection", Map.of(
+                        "instance", esc(lastInstance),
+                        "last_login", esc(lastLogin),
+                        "last_updated", esc(lastUpdated)),
+                "<gray>Last instance:</gray> <white>{instance}</white> <dark_gray>|</dark_gray> "
+                        + "<gray>Login:</gray> <white>{last_login}</white> <dark_gray>|</dark_gray> "
+                        + "<gray>Saved:</gray> <white>{last_updated}</white>"));
+
+        Map<EquipSlot, ItemStack> equipment;
+        try {
+            equipment = InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64());
+        } catch (RuntimeException e) {
+            equipment = Map.of();
+        }
+        for (EquipSlot slot : EquipSlot.values()) {
+            ItemStack item = equipment.get(slot);
+            send(sender, message("info.equipment_entry", Map.of(
+                            "slot", esc(slot.getDisplayName()),
+                            "item", esc(describeItem(item))),
+                    "<gray>└ {slot}: <white>{item}</white></gray>"));
+        }
+    }
+
+    /**
+     * レベル・HP / MP・戦闘ステータス・リジェネを 1 ブロックで出力する。
+     */
+    private void sendStatsBlock(CommandSender sender, PlayerSnapshot snapshot) {
+        LevelService levelService = plugin.getLevelService();
+        long requiredExp = levelService == null ? 0L : levelService.requiredExp(snapshot.level());
+
         send(sender, message("info.level", Map.of(
                         "level", String.valueOf(snapshot.level()),
                         "exp", String.valueOf(snapshot.exp()),
@@ -1766,27 +2316,6 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 "<gray>Regen:</gray> HP <white>{hp_flat}</white> + <white>{hp_percent}%</white>"
                         + " <dark_gray>|</dark_gray> MP <white>{mp_flat}</white> + "
                         + "<white>{mp_percent}%</white>"));
-        send(sender, message("info.connection", Map.of(
-                        "instance", esc(lastInstance),
-                        "last_login", esc(lastLogin),
-                        "last_updated", esc(lastUpdated)),
-                "<gray>Last instance:</gray> <white>{instance}</white> <dark_gray>|</dark_gray> "
-                        + "<gray>Login:</gray> <white>{last_login}</white> <dark_gray>|</dark_gray> "
-                        + "<gray>Saved:</gray> <white>{last_updated}</white>"));
-
-        Map<EquipSlot, ItemStack> equipment;
-        try {
-            equipment = InventorySerializer.decodeEquipment(snapshot.virtualEquipmentBase64());
-        } catch (RuntimeException e) {
-            equipment = Map.of();
-        }
-        for (EquipSlot slot : EquipSlot.values()) {
-            ItemStack item = equipment.get(slot);
-            send(sender, message("info.equipment_entry", Map.of(
-                            "slot", esc(slot.getDisplayName()),
-                            "item", esc(describeItem(item))),
-                    "<gray>└ {slot}: <white>{item}</white></gray>"));
-        }
     }
 
     /**
@@ -2195,9 +2724,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                         + "</yellow> <dark_gray>|</dark_gray> <white>DEF2</white>: <yellow>"
                         + numberWithFallback(config, "defense2", "defense")
                         + "</yellow> <dark_gray>|</dark_gray> <white>EXP</white>: <yellow>"
-                        + number(config, "expReward")
-                        + "</yellow> <dark_gray>|</dark_gray> <white>Money</white>: <yellow>"
-                        + number(config, "moneyReward") + "</yellow>");
+                        + number(config, "expReward") + "</yellow>");
                 sendStatsSection(sender, config, "stats", "  <gray>└</gray>");
             }
             case "LayerData" -> {

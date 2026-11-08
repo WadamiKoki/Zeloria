@@ -4,6 +4,8 @@ name: "装備メニュー設定"
 gui:
   title: "<gradient:#00c6ff:#0072ff><bold>Zeloria</bold></gradient> <dark_gray>|</dark_gray> <white>装備メニュー</white>"
   rows: 6
+  # 右上に表示するプレイヤー情報ヘッド（未使用は -1）
+  player_head_slot: 8
 filler:
   equipment: "LIGHT"
 equipment_slots:

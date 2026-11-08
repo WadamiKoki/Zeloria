@@ -111,6 +111,7 @@ public class GuiConfigService {
         String title = config.getString("gui.title", fallback.title());
         int rows = config.getInt("gui.rows", fallback.rows());
         int closeSlot = config.getInt("footer.close_slot", fallback.closeSlot());
+        int playerHeadSlot = config.getInt("gui.player_head_slot", fallback.playerHeadSlot());
 
         Map<String, String> fillers = readStringSection(config, "filler", fallback.fillers());
         Map<EquipSlot, Integer> equipmentSlots =
@@ -120,8 +121,8 @@ public class GuiConfigService {
         Map<String, GuiIcon> icons = readIcons(config, "icons", fallback.icons());
         List<MenuFeature> features = readFeatures(config, fallback.features());
 
-        return new MenuLayout(title, rows, closeSlot, fillers, equipmentSlots, decorations,
-                sounds, icons, features);
+        return new MenuLayout(title, rows, closeSlot, playerHeadSlot, fillers, equipmentSlots,
+                decorations, sounds, icons, features);
     }
 
     /**

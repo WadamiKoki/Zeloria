@@ -6,7 +6,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * すべてのアイテム設定 YAML が継承する共通フォーマット。
@@ -24,9 +23,8 @@ import java.util.Optional;
  * </pre>
  * 種別ごとの追加項目は {@link MaterialData} / {@link ArmorData} / {@link WeaponData} が保持する。
  * <p>
- * {@code item_model} は Paper の item_model コンポーネントに使用する任意項目で、
- * 未指定の場合はコンポーネントを付与せず {@code material} 本来のバニラ表示を使用する
- * （{@link ItemService} を参照）。CustomModelData は使用しない。
+ * 見た目は {@code material} のバニラテクスチャをそのまま使用する。
+ * リソースパック用のカスタムモデルは使用しない。
  */
 public abstract class ItemData {
 
@@ -38,16 +36,10 @@ public abstract class ItemData {
     private final Material material;
     private final List<String> lore;
     private final long sellPrice;
-    private final String itemModel;
     private final String sourceKey;
 
     protected ItemData(String id, String name, Material material,
                        List<String> lore, long sellPrice, String sourceKey) {
-        this(id, name, material, lore, sellPrice, sourceKey, null);
-    }
-
-    protected ItemData(String id, String name, Material material,
-                       List<String> lore, long sellPrice, String sourceKey, String itemModel) {
         this.sourceKey = sourceKey == null ? "" : sourceKey;
         String fallback = fallbackId(this.sourceKey);
         this.id = text(id, fallback);
@@ -55,7 +47,6 @@ public abstract class ItemData {
         this.material = Objects.requireNonNull(material, "material");
         this.lore = lore == null ? List.of() : List.copyOf(lore);
         this.sellPrice = Math.max(0L, sellPrice);
-        this.itemModel = itemModel == null || itemModel.isBlank() ? null : itemModel.trim();
     }
 
     /**
@@ -94,17 +85,6 @@ public abstract class ItemData {
     }
 
     /**
-     * YAML で明示指定された item_model（例: {@code minecraft:diamond_sword}）。
-     * <p>
-     * 未指定の場合は空を返す。呼び出し側（{@link ItemService}）はこの値が
-     * 無い場合に item_model コンポーネントを付与せず、{@code material} の
-     * バニラテクスチャをそのまま使用する。
-     */
-    public Optional<String> itemModel() {
-        return Optional.ofNullable(itemModel);
-    }
-
-    /**
      * 読み込み元 YAML のキャッシュキー（例: {@code MaterialData/iron_ore.yml}）。
      */
     public String sourceKey() {
@@ -115,13 +95,6 @@ public abstract class ItemData {
      * このアイテムの種別を取得する。
      */
     public abstract ItemCategory category();
-
-    /**
-     * 1 スロットに格納できる最大数。
-     * <p>
-     * 素材は YAML の {@code max_stack_size}、防具・武器は 1 を返す。
-     */
-    public abstract int maxStackSize();
 
     /* ------------------------------------------------------------------
      * 共通パーサ

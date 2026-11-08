@@ -27,7 +27,6 @@ import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
@@ -264,7 +263,6 @@ public final class SpawnerManager {
                 + ", z=" + format(placement.z())
                 + ", display=" + display.type()
                 + ", material=" + display.material()
-                + ", itemModel=" + (display.itemModel() == null ? "-" : display.itemModel())
                 + ", scale=" + display.scale()
                 + ", displayId=" + (displayId == null ? "-" : displayId));
     }
@@ -419,17 +417,6 @@ public final class SpawnerManager {
 
         ItemDisplay itemDisplay = world.spawn(centered, ItemDisplay.class);
         ItemStack stack = new ItemStack(display.material());
-        if (display.itemModel() != null) {
-            ItemMeta meta = stack.getItemMeta();
-            NamespacedKey modelKey = namespacedKey(display.itemModel());
-            if (meta != null && modelKey != null) {
-                meta.setItemModel(modelKey);
-                stack.setItemMeta(meta);
-            } else {
-                plugin.getLogger().warning("itemModel を解決できませんでした: spawner=" + data.id()
-                        + ", itemModel=" + display.itemModel());
-            }
-        }
         itemDisplay.setItemStack(stack);
         // どの方向からでも見えるよう、プレイヤーの方を向かせる。
         itemDisplay.setBillboard(Display.Billboard.CENTER);
@@ -439,7 +426,6 @@ public final class SpawnerManager {
                 spawnerIdKey, PersistentDataType.STRING, data.id());
         debug("ItemDisplay を生成しました: spawner=" + data.id()
                 + ", material=" + display.material()
-                + ", itemModel=" + (display.itemModel() == null ? "-" : display.itemModel())
                 + ", scale=" + display.scale());
         return itemDisplay.getUniqueId();
     }
@@ -453,20 +439,6 @@ public final class SpawnerManager {
                 new Quaternionf(),
                 new Vector3f(scale, scale, scale),
                 new Quaternionf());
-    }
-
-    /**
-     * {@code namespace:path} 形式の文字列を {@link NamespacedKey} に変換する。
-     */
-    private static NamespacedKey namespacedKey(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return NamespacedKey.fromString(raw.trim());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     /**

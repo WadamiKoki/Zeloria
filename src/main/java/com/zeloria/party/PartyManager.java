@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -308,6 +309,21 @@ public final class PartyManager {
                     "role", memberId.equals(leaderId) ? "リーダー" : "メンバー",
                     "status", isOnline(memberId) ? "オンライン" : "オフライン"));
         }
+    }
+
+    /**
+     * 指定プレイヤーが所属するパーティを取得する。
+     * <p>
+     * モブ報酬の分配対象（LA のパーティメンバー）を解決するために使用する。
+     *
+     * @param playerId プレイヤーの UUID
+     * @return 所属パーティ。未所属・{@code null} の場合は空
+     */
+    public Optional<Party> partyOf(UUID playerId) {
+        if (playerId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(partiesByMember.get(playerId));
     }
 
     /**

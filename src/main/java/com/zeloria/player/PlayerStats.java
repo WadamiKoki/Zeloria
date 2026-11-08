@@ -15,6 +15,7 @@ package com.zeloria.player;
  * <ul>
  *     <li>{@code criticalRate} / {@code accuracy} / {@code evasion}: 0〜100</li>
  *     <li>{@code cooldownReduction} / {@code dodgeCooldownReduction}: 0.0〜0.5（上限 50%）</li>
+ *     <li>{@code armorPenetration} / {@code lifesteal}: 0.0〜1.0</li>
  * </ul>
  * リジェネ関連（{@code healthRegenFlat} / {@code healthRegenPercent} /
  * {@code manaRegenFlat} / {@code manaRegenPercent}）は、毒やデバフを表現できるよう
@@ -94,8 +95,14 @@ public class PlayerStats {
     /** 既定のマナ割合リジェネ。 */
     public static final double DEFAULT_MANA_REGEN_PERCENT = 0.0;
 
-    /** 既定のレベル（新規プレイヤーは 0 から開始する）。 */
-    public static final int DEFAULT_LEVEL = 0;
+    /** 既定の防御貫通率（比率）。 */
+    public static final double DEFAULT_ARMOR_PENETRATION = 0.0;
+
+    /** 既定の吸血率（比率）。 */
+    public static final double DEFAULT_LIFESTEAL = 0.0;
+
+    /** 既定のレベル（新規プレイヤーは 1 から開始する）。 */
+    public static final int DEFAULT_LEVEL = 1;
 
     /** 既定の経験値。 */
     public static final long DEFAULT_EXP = 0L;
@@ -159,14 +166,14 @@ public class PlayerStats {
      * <p>
      * クラス基礎ステータスから設定される。装備補正は {@link #bonuses} 側で加算する。
      */
-    private double armorPenetration = 0.0;
+    private double armorPenetration = DEFAULT_ARMOR_PENETRATION;
 
     /**
      * 吸血率（0.0〜1.0）の基礎値。
      * <p>
      * クラス基礎ステータスから設定される。装備補正は {@link #bonuses} 側で加算する。
      */
-    private double lifesteal = 0.0;
+    private double lifesteal = DEFAULT_LIFESTEAL;
 
     /**
      * 現在の HP / MP を最大値まで回復する（リスポーン時などに使用）。

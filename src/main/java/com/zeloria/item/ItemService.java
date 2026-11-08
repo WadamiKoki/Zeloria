@@ -30,23 +30,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ファイル名（拡張子なし）で参照できる。{@code /admin reload} 時は {@link #reload()} を
  * 呼ぶことで最新の設定を反映できる。
  * <p>
- * モデル・テクスチャの管理は Paper 1.21.4+ の item_model コンポーネントと PDC に集約する。
- * <ul>
- *     <li>item_model: YAML で {@code item_model} が明示された場合のみ適用する</li>
- *     <li>PDC: {@code zeloria:item_id}（String）を必ず格納し、
- *         item_model 適用時のみ {@code zeloria:item_model}（String）も格納する</li>
- * </ul>
- * item_model 未指定時はコンポーネントを付与しない。これにより Java 版・Bedrock 版の
- * 双方で、リソースパック未導入でも {@code material} 本来のバニラテクスチャが表示され、
- * 紫黒の Missing Texture（バグブロック）化を防ぐ。
- * CustomModelData は使用しない。いずれも内部コンポーネントのみを変更し、
- * 表示名・Lore には影響しない。
+ * 見た目は {@code material} のバニラテクスチャをそのまま使用する。リソースパック用の
+ * CustomModelData や item_model コンポーネントは付与しない。
+ * PDC には {@code zeloria:item_id}（String）などの識別情報のみを格納する。
  */
 public class ItemService {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 既定の item_model 名前空間。 */
+    /** PDC の名前空間。 */
     public static final String MODEL_NAMESPACE = "zeloria";
 
     /** PDC キー: アイテム ID。 */
@@ -55,12 +47,8 @@ public class ItemService {
     public static final String KEY_ITEM_CATEGORY = "item_category";
     /** PDC キー: 売却価格。 */
     public static final String KEY_SELL_PRICE = "sell_price";
-    /** PDC キー: 1 スロットあたりのスタック上限。 */
-    public static final String KEY_MAX_STACK_SIZE = "max_stack_size";
     /** PDC キー: 防具の装着部位。 */
     public static final String KEY_EQUIPMENT_SLOT = "equipment_slot";
-    /** PDC キー: 適用した item_model（Geyser / BE 連携用の文字列表現）。 */
-    public static final String KEY_ITEM_MODEL = "item_model";
     /** PDC キー: 装着に必要な最低レベル。 */
     public static final String KEY_REQUIRED_LEVEL = "required_level";
 
@@ -78,9 +66,7 @@ public class ItemService {
     private final NamespacedKey itemIdKey;
     private final NamespacedKey itemCategoryKey;
     private final NamespacedKey sellPriceKey;
-    private final NamespacedKey maxStackSizeKey;
     private final NamespacedKey equipmentSlotKey;
-    private final NamespacedKey itemModelKey;
     private final NamespacedKey requiredLevelKey;
     private final NamespacedKey atkKey;
     private final NamespacedKey defKey;
@@ -105,9 +91,7 @@ public class ItemService {
         this.itemIdKey = new NamespacedKey(MODEL_NAMESPACE, KEY_ITEM_ID);
         this.itemCategoryKey = new NamespacedKey(MODEL_NAMESPACE, KEY_ITEM_CATEGORY);
         this.sellPriceKey = new NamespacedKey(MODEL_NAMESPACE, KEY_SELL_PRICE);
-        this.maxStackSizeKey = new NamespacedKey(MODEL_NAMESPACE, KEY_MAX_STACK_SIZE);
         this.equipmentSlotKey = new NamespacedKey(MODEL_NAMESPACE, KEY_EQUIPMENT_SLOT);
-        this.itemModelKey = new NamespacedKey(MODEL_NAMESPACE, KEY_ITEM_MODEL);
         this.requiredLevelKey = new NamespacedKey(plugin, KEY_REQUIRED_LEVEL);
         this.atkKey = new NamespacedKey(plugin, "atk");
         this.defKey = new NamespacedKey(plugin, "def");
@@ -379,14 +363,14 @@ public class ItemService {
     /**
      * 設定データから個数 1 の {@link ItemStack} を生成する。
      * <p>
-     * MiniMessage の表示名・説明文を適用し、item_model コンポーネントと
-     * 次の情報を PDC に格納する（表示名・Lore には影響しない）。
+     * MiniMessage の表示名・説明文を適用し、次の情報を PDC に格納する
+     * （表示名・Lore には影響しない）。
      * <ul>
-     *     <li>{@code zeloria:item_id} / {@code zeloria:item_model}（Geyser / BE 連携用）</li>
-     *     <li>{@code item_category} / {@code sell_price} / {@code max_stack_size}</li>
+     *     <li>{@code zeloria:item_id}</li>
+     *     <li>{@code item_category} / {@code sell_price}</li>
      *     <li>防具・武器の各種ステータス</li>
      * </ul>
-     * CustomModelData は使用しない。
+     * リソースパック用のモデルは付与しない。
      *
      * @param data アイテム定義
      * @return 生成した ItemStack（個数 1）
@@ -416,119 +400,16 @@ public class ItemService {
         meta.setUnbreakable(true);
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE);
 
-        // Paper 1.21.4+ の item_model コンポーネントは、YAML で明示された場合のみ適用する。
-        // 未指定時に zeloria:<id> を自動付与すると、リソースパック未導入環境で
-        // Missing Texture（紫黒ブロック）になるため、その場合はコンポーネントを付けない。
-        // PDC の zeloria:item_id は item_model の有無にかかわらず常に付与する。
-        NamespacedKey itemModel = resolveItemModel(data);
-        if (itemModel != null) {
-            meta.setItemModel(itemModel);
-        }
-
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(itemIdKey, PersistentDataType.STRING, data.id());
-        if (itemModel != null) {
-            pdc.set(itemModelKey, PersistentDataType.STRING, itemModel.toString());
-        }
         pdc.set(itemCategoryKey, PersistentDataType.STRING, data.category().key());
         pdc.set(sellPriceKey, PersistentDataType.LONG, data.sellPrice());
-        pdc.set(maxStackSizeKey, PersistentDataType.INTEGER, data.maxStackSize());
 
         applyTypeData(pdc, data);
-
-        // Minecraft の max_stack_size コンポーネントは 1〜99 のみ指定可能。
-        // それを超える値（例: 9999）は PDC の max_stack_size で管理する。
-        int stackSize = data.maxStackSize();
-        if (stackSize >= 1 && stackSize <= 99) {
-            meta.setMaxStackSize(stackSize);
-        }
 
         stack.setItemMeta(meta);
         stack.setAmount(1);
         return stack;
-    }
-
-    /**
-     * アイテムに適用する item_model の {@link NamespacedKey} を解決する。
-     * <p>
-     * YAML に {@code item_model}（例: {@code minecraft:diamond_sword}）が明示されている
-     * 場合のみそのキーを返す。未指定・不正な場合は {@code null} を返し、
-     * item_model コンポーネントを付与しない（{@code material} のバニラ表示を使用する）。
-     * <p>
-     * {@code zeloria:<id>} の自動付与は行わない。リソースパック未導入の Java 版 /
-     * Bedrock 版で Missing Texture（紫黒ブロック）になることを防ぐため。
-     *
-     * @param data アイテム定義
-     * @return item_model キー。明示指定が無い／不正な場合は {@code null}
-     */
-    public NamespacedKey resolveItemModel(ItemData data) {
-        Objects.requireNonNull(data, "data");
-
-        Optional<String> explicit = data.itemModel();
-        if (explicit.isEmpty()) {
-            return null;
-        }
-
-        NamespacedKey parsed = parseModelKey(explicit.get());
-        if (parsed == null) {
-            plugin.getLogger().warning(
-                    "item_model の指定が不正なため item_model を適用しません: id=" + data.id()
-                            + ", item_model=" + explicit.get());
-        }
-        return parsed;
-    }
-
-    /**
-     * {@code zeloria:<id>} 形式の既定 item_model キーを生成する。
-     * <p>
-     * ID に名前空間として不正な文字が含まれる場合は {@code _} へ置換する。
-     *
-     * @param id アイテム ID
-     * @return 既定の item_model キー
-     * @deprecated item_model 未指定時に {@code zeloria:<id>} を自動適用すると、
-     *             リソースパック未導入環境で Missing Texture（紫黒ブロック）になるため、
-     *             {@link #createItem(ItemData)} は本メソッドを使用しない。
-     *             YAML の {@code item_model} で明示指定する運用へ移行すること。
-     */
-    @Deprecated
-    public static NamespacedKey defaultItemModel(String id) {
-        return new NamespacedKey(MODEL_NAMESPACE, sanitizeKey(id));
-    }
-
-    /**
-     * 明示指定された item_model 文字列を {@link NamespacedKey} へ解決する。
-     * <p>
-     * {@code minecraft:diamond_sword} のような名前空間付きのほか、
-     * 名前空間を省略した {@code diamond_sword} も受け付ける（{@code minecraft} 扱い）。
-     *
-     * @param raw 設定値
-     * @return 解決されたキー。不正な場合は {@code null}
-     */
-    private static NamespacedKey parseModelKey(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return NamespacedKey.fromString(raw.trim());
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    /**
-     * item_model のキー部分として使用できる文字列へ正規化する。
-     */
-    private static String sanitizeKey(String raw) {
-        String lower = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-        StringBuilder result = new StringBuilder(lower.length());
-        for (int i = 0; i < lower.length(); i++) {
-            char c = lower.charAt(i);
-            boolean valid = (c >= 'a' && c <= 'z')
-                    || (c >= '0' && c <= '9')
-                    || c == '_' || c == '-' || c == '.' || c == '/';
-            result.append(valid ? c : '_');
-        }
-        return result.isEmpty() ? "item" : result.toString();
     }
 
     private void applyTypeData(PersistentDataContainer pdc, ItemData data) {
@@ -555,31 +436,6 @@ public class ItemService {
     }
 
     /**
-     * アイテムのスタック上限を返す。
-     * <p>
-     * 生成時に PDC へ格納した {@code max_stack_size} を優先し、無い場合は
-     * ItemStack / Material の既定値を使用する。
-     *
-     * @param stack 判定対象
-     * @return 1〜9999 のスタック上限
-     */
-    public int maxStackSize(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return 1;
-        }
-
-        ItemMeta meta = stack.getItemMeta();
-        if (meta != null) {
-            Integer value = meta.getPersistentDataContainer().get(maxStackSizeKey, PersistentDataType.INTEGER);
-            if (value != null) {
-                return Math.max(MaterialData.MIN_STACK_SIZE,
-                        Math.min(MaterialData.MAX_STACK_SIZE, value));
-            }
-        }
-        return Math.max(1, stack.getMaxStackSize());
-    }
-
-    /**
      * PDC に格納されたアイテム ID を取得する。
      *
      * @param stack 判定対象
@@ -595,43 +451,6 @@ public class ItemService {
         }
         return Optional.ofNullable(
                 meta.getPersistentDataContainer().get(itemIdKey, PersistentDataType.STRING));
-    }
-
-    /**
-     * ItemMeta に設定された item_model コンポーネントを取得する。
-     *
-     * @param stack 判定対象
-     * @return item_model キー。未設定の場合は空
-     */
-    public Optional<NamespacedKey> getItemModel(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return Optional.empty();
-        }
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(meta.getItemModel());
-    }
-
-    /**
-     * PDC に格納された item_model の文字列表現を取得する。
-     * <p>
-     * Geyser / BE 連携で参照する想定の値（例: {@code zeloria:iron_ore}）。
-     *
-     * @param stack 判定対象
-     * @return item_model の文字列表現。未格納の場合は空
-     */
-    public Optional<String> getStoredItemModel(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return Optional.empty();
-        }
-        ItemMeta meta = stack.getItemMeta();
-        if (meta == null) {
-            return Optional.empty();
-        }
-        return Optional.ofNullable(
-                meta.getPersistentDataContainer().get(itemModelKey, PersistentDataType.STRING));
     }
 
     /**

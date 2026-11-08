@@ -5,4 +5,3 @@ lore:
   - "<gray>製錬すると鉄インゴットになる。"
   - "<gray>採取できる基本素材。"
 sell_price: 12
-max_stack_size: 9999

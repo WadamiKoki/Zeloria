@@ -7,7 +7,7 @@ name: "管理コマンド関連メッセージ"
 command:
   no_permission: "<red>この操作には権限 <white>{permission}</white> が必要です。</red>"
   player_only: "<red>このコマンドはプレイヤーのみ実行できます。</red>"
-  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|gui|build|layer|stop></white>"
+  usage: "<gray>使い方:</gray> <white>/admin <reload|test yaml|test db|mob|npc|give|info|stats|xp|gui|build|layer|stop></white>"
   reloaded: "<white>設定を再読み込みしました。</white> <gray>(YAML: <yellow>{count}</yellow>, MessageData: <yellow>{messages}</yellow>)</gray>"
   unknown_subcommand: "<red>不明なサブコマンドです: <white>{input}</white></red>"
 
@@ -39,6 +39,23 @@ info:
   equipment_entry: "<gray>└ {slot}: <white>{item}</white></gray>"
   not_found: "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"
   error: "<red>プレイヤー情報の取得に失敗しました: <gray>{error}</gray></red>"
+
+stats:
+  usage: "<gray>使い方:</gray> <white>/admin stats \\<player></white> <dark_gray>|</dark_gray> <white>/admin stats \\<player> \\<type> \\<value></white>"
+  not_found: "<red>プレイヤーデータが見つかりません: <white>{player}</white></red>"
+  error: "<red>ステータスの取得に失敗しました: <gray>{error}</gray></red>"
+  invalid_type: "<red>不明なステータス種別です: <white>{type}</white></red> <gray>指定可能: {types}</gray>"
+  invalid_value: "<red>値は数値で指定してください: <white>{value}</white></red>"
+  changed: "<green>{player}</green> <gray>の</gray> <white>{type}</white> <gray>を</gray> <white>{amount}</white> <gray>変更しました。</gray> <dark_gray>({old} → {new})</dark_gray>"
+  save_failed: "<red>ステータスの保存に失敗しました: <gray>{error}</gray></red>"
+
+xp:
+  usage: "<gray>使い方:</gray> <white>/admin xp \\<player> \\<amount></white>"
+  success: "<green>{player}</green> <gray>に経験値</gray> <yellow>{amount}</yellow> <gray>を付与しました。</gray> <dark_gray>(Lv {old_level} → {new_level}, EXP {exp}/{required})</dark_gray>"
+  not_found: "<red>オンラインのプレイヤーが見つかりません: <white>{player}</white></red>"
+  not_loaded: "<red>プレイヤーデータがまだ読み込まれていません: <white>{player}</white></red>"
+  invalid_amount: "<red>経験値は 1 以上の整数で指定してください。</red>"
+  unavailable: "<red>レベルサービスが初期化されていません。</red>"
 
 gui:
   usage: "<gray>使い方:</gray> <white>/admin gui \\<yml></white>"
@@ -73,7 +90,11 @@ build:
 layer:
   usage: "<gray>使い方:</gray> <white>/admin layer info <all|online></white>"
   unavailable: "<yellow>レイヤーマネージャーが初期化されていません。</yellow>"
-  empty: "<gray>表示できるレイヤーインスタンスはありません。</gray>"
+  config_unavailable: "<yellow>レイヤー設定サービスが初期化されていません。</yellow>"
+  config_empty: "<gray>設定されているレイヤーはありません。</gray>"
+  config_header: "<green>レイヤー定義一覧</green> <gray>(<white>{count}</white> 件)</gray>"
+  config_entry: "<gray>-</gray> <white>{name}</white> <dark_gray>({id})</dark_gray>"
+  empty: "<gray>ロード中のレイヤーはありません。</gray>"
   header: "<green>レイヤー一覧</green> <gray>(<white>{count}</white> 件)</gray>"
   entry: "<green>-</green> <white>{template}</white> <dark_gray>({world})</dark_gray> <gray>プレイヤー: </gray><white>{players}</white> <dark_gray>|</dark_gray> <white>{names}</white>"
   entry_idle: "<gray>-</gray> <white>{template}</white> <dark_gray>({world})</dark_gray> <gray>プレイヤー: </gray><white>0</white> <dark_gray>| </dark_gray><yellow>アンロードまで最大 {seconds} 秒</yellow>"

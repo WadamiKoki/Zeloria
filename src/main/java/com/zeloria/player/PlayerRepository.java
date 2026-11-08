@@ -36,6 +36,7 @@ public class PlayerRepository {
             accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
             walk_speed,
             health_regen_flat, health_regen_percent, mana_regen_flat, mana_regen_percent,
+            armor_penetration, lifesteal,
             cooldown_end_at
             """;
 
@@ -66,12 +67,13 @@ public class PlayerRepository {
                 accuracy, evasion, dodge_cooldown_reduction, cooldown_reduction,
                 walk_speed,
                 health_regen_flat, health_regen_percent, mana_regen_flat, mana_regen_percent,
+                armor_penetration, lifesteal,
                 cooldown_end_at,
                 last_updated
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                      ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE
                 player_name = VALUES(player_name),
                 level = VALUES(level),
@@ -105,6 +107,8 @@ public class PlayerRepository {
                 health_regen_percent = VALUES(health_regen_percent),
                 mana_regen_flat = VALUES(mana_regen_flat),
                 mana_regen_percent = VALUES(mana_regen_percent),
+                armor_penetration = VALUES(armor_penetration),
+                lifesteal = VALUES(lifesteal),
                 cooldown_end_at = VALUES(cooldown_end_at),
                 last_updated = CURRENT_TIMESTAMP
             """.formatted(TABLE_NAME);
@@ -292,8 +296,8 @@ public class PlayerRepository {
 
     private void insert(Connection connection, PlayerSnapshot snapshot) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
-            // INSERT_SQL: 34 columns（last_updated を除く）, 34 placeholders,
-            // max bind index 34。カラム順と以下のバインド順は完全に一致している。
+            // INSERT_SQL: 36 columns（last_updated を除く）, 36 placeholders,
+            // max bind index 36。カラム順と以下のバインド順は完全に一致している。
             int index = 1;
             statement.setString(index++, snapshot.uuid().toString());
             statement.setString(index++, snapshot.playerName());
@@ -328,6 +332,8 @@ public class PlayerRepository {
             statement.setDouble(index++, snapshot.healthRegenPercent());
             statement.setDouble(index++, snapshot.manaRegenFlat());
             statement.setDouble(index++, snapshot.manaRegenPercent());
+            statement.setDouble(index++, snapshot.armorPenetration());
+            statement.setDouble(index++, snapshot.lifesteal());
             statement.setString(index++, snapshot.cooldownEndAt());
 
             statement.executeUpdate();
@@ -369,6 +375,8 @@ public class PlayerRepository {
                 statOr(rs, "health_regen_percent", PlayerStats.DEFAULT_HEALTH_REGEN_PERCENT),
                 statOr(rs, "mana_regen_flat", PlayerStats.DEFAULT_MANA_REGEN_FLAT),
                 statOr(rs, "mana_regen_percent", PlayerStats.DEFAULT_MANA_REGEN_PERCENT),
+                statOr(rs, "armor_penetration", PlayerStats.DEFAULT_ARMOR_PENETRATION),
+                statOr(rs, "lifesteal", PlayerStats.DEFAULT_LIFESTEAL),
                 rs.getString("cooldown_end_at")
         );
     }

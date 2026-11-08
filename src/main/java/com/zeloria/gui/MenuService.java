@@ -3,6 +3,8 @@ package com.zeloria.gui;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.item.EquipmentService;
+import com.zeloria.item.ItemData;
+import com.zeloria.item.ItemService;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.EquipSlot;
@@ -252,7 +254,8 @@ public class MenuService {
             return;
         }
 
-        MenuGui menu = new MenuGui(player, gui.getMenu(), gui.getInventory());
+        MenuGui menu = new MenuGui(player, gui.getMenu(), gui.getInventory(),
+                plugin.getLevelService());
         equipmentClickAt.remove(player.getUniqueId());
         menu.render(player, data);
         player.openInventory(menu.getInventory());
@@ -518,9 +521,10 @@ public class MenuService {
     }
 
     /**
-     * 仮想装備を外してプレイヤーインベントリへ戻す。
+     * 仮想装備を外して仮想装備ストレージへ戻す。
      * <p>
-     * 空きスロットが無い場合は装備枠に残す。
+     * 物理インベントリには戻さず、必ず {@link VirtualInventoryService#addItem} 経由で
+     * 仮想装備ストレージへ格納する。満杯で格納できない場合は装備枠に残す。
      */
     private void unequip(Player player, PlayerData data, MenuGui menu, EquipSlot equipSlot) {
         if (equipSlot == null) {
@@ -534,16 +538,18 @@ public class MenuService {
             return;
         }
 
-        // ホットバー slot 0 と防具枠は仮想表示用にロックされているため、
-        // それらを除いた空きスロットへ戻す（満杯時の取りこぼしを防ぐ）。
-        int emptySlot = VirtualInventoryService.firstEmptyUnlockedSlot(player.getInventory());
-        if (emptySlot < 0) {
+        VirtualInventoryService virtualInventory = plugin.getVirtualInventoryService();
+        ItemService itemService = plugin.getItemService();
+        ItemData definition = itemService == null
+                ? null
+                : itemService.findItem(equipped).orElse(null);
+        if (virtualInventory == null || definition == null
+                || virtualInventory.addItem(player, definition.id(), 1L) <= 0L) {
             playSound(player, SOUND_ERROR);
-            notify(player, "<red>空きスロットがありません。</red>");
+            notify(player, "<red>仮想装備ストレージに空きがありません。</red>");
             return;
         }
 
-        player.getInventory().setItem(emptySlot, equipped);
         data.setEquipment(equipSlot, null);
 
         playSound(player, SOUND_EQUIP);

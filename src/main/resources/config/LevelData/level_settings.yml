@@ -1,7 +1,8 @@
 id: "level_settings"
 name: "レベル・経験値設定"
 
-# 必要経験値 = base_exp * exp_growth ^ レベル * 段階倍率
+# 必要経験値 = base_exp * exp_growth ^ (レベル - 1) * 段階倍率
+# レベル 1 の次レベルに必要な経験値は base_exp と同じ値になります。
 
 base_exp: 100
 exp_growth: 1.15

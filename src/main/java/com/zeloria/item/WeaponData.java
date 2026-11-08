@@ -44,17 +44,7 @@ public final class WeaponData extends ItemData {
                       int attackSpeedTicks, double attackRange, double attackAngle,
                       String attackParticle, String attackSound,
                       ItemStatBonus statBonus) {
-        this(id, name, material, lore, sellPrice, sourceKey, weaponTypes,
-                attackSpeedTicks, attackRange, attackAngle, attackParticle, attackSound,
-                statBonus, null);
-    }
-
-    public WeaponData(String id, String name, Material material, List<String> lore,
-                      long sellPrice, String sourceKey, List<String> weaponTypes,
-                      int attackSpeedTicks, double attackRange, double attackAngle,
-                      String attackParticle, String attackSound,
-                      ItemStatBonus statBonus, String itemModel) {
-        super(id, name, material, lore, sellPrice, sourceKey, itemModel);
+        super(id, name, material, lore, sellPrice, sourceKey);
         this.weaponTypes = normalizeWeaponTypes(weaponTypes);
         this.attackSpeedTicks = Math.max(1, attackSpeedTicks);
         this.attackRange = Math.max(0.0, attackRange);
@@ -103,8 +93,7 @@ public final class WeaponData extends ItemData {
                 config.getDouble("attackAngle", primaryType.attackAngle()),
                 config.getString("attackParticle", primaryType.attackParticle()),
                 config.getString("attackSound", primaryType.attackSound()),
-                ItemStatBonus.fromConfig(config),
-                config.getString("item_model")
+                ItemStatBonus.fromConfig(config)
         );
     }
 
@@ -181,10 +170,5 @@ public final class WeaponData extends ItemData {
     @Override
     public ItemCategory category() {
         return ItemCategory.WEAPON;
-    }
-
-    @Override
-    public int maxStackSize() {
-        return 1;
     }
 }

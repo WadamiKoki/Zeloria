@@ -3,19 +3,13 @@ package com.zeloria.item;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
-import com.zeloria.mob.MobConfigService;
-import com.zeloria.mob.MobData;
-import com.zeloria.mob.MobDrop;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.VirtualInventoryTab;
 import org.bukkit.Bukkit;
-import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.ClickType;
@@ -23,6 +17,7 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.player.PlayerAttemptPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
@@ -33,22 +28,19 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.persistence.PersistentDataType;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 仮想装備表示・仮想インベントリのロックと、アイテム入手経路を担うリスナー。
  * <ul>
- *     <li>ホットバー slot 0・バニラ防具 4 枠・戦闘モード中のスキルスロットを保護する</li>
+ *     <li>ホットバー slot 0・右端 3 枠・バニラ防具 4 枠・戦闘モード中のスキルスロットを保護する</li>
  *     <li>メインインベントリ（slot 9〜35）のクリック・ドラッグをすべて拒否する</li>
- *     <li>スクロール・タブ切り替え・装備／移動などの仮想インベントリ操作を処理する</li>
+ *     <li>スクロール・タブ切り替え・タブ間移動などの仮想インベントリ操作を処理する</li>
  *     <li>ダブルクリック収集・ホットバーキー交換など、ロック枠を経由する操作を拒否する</li>
  *     <li>仮想アイテムのオフハンド移動・ドロップ・耐久値減少・死亡時ドロップを拒否する</li>
- *     <li>ログイン時に仮想インベントリを復元し、モブ撃破時はドロップを仮想インベントリへ直接追加する</li>
+ *     <li>ログイン時に仮想インベントリを復元し、地面のアイテム拾得を仮想インベントリへ直接追加する</li>
  * </ul>
  * 表示内容の生成は {@link VirtualInventoryService} に委譲する。
  */
@@ -57,15 +49,10 @@ public class VirtualInventoryListener implements Listener {
     /** メッセージ定義ファイル（{@code MessageData/equipment.yml}）。 */
     private static final String MESSAGE_FILE = "equipment";
 
-    /** モブを識別する PDC キー（{@code AdminCommand} / {@code LevelListener} と同一）。 */
-    private static final String MOB_ID_KEY = "mob_id";
-
     private final Zeloria plugin;
-    private final NamespacedKey mobIdKey;
 
     public VirtualInventoryListener(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.mobIdKey = new NamespacedKey(plugin, MOB_ID_KEY);
     }
 
     /**
@@ -136,7 +123,8 @@ public class VirtualInventoryListener implements Listener {
      * 仮想インベントリ領域（9〜35）のクリックを処理する。
      * <p>
      * 呼び出し元で {@link InventoryClickEvent#setCancelled(boolean)} 済みのため、
-     * ここでは表示データの更新だけを行う。
+     * ここでは表示データの更新だけを行う。装備操作はメニュー GUI に一本化するため、
+     * 装備保管庫を含むタブ画面の左クリックでは装備しない。
      */
     private void handleBagClick(InventoryClickEvent event, Player player) {
         VirtualInventoryService service = plugin.getVirtualInventoryService();
@@ -166,13 +154,10 @@ public class VirtualInventoryListener implements Listener {
             return;
         }
 
+        // タブ画面では装備保管庫のアイテムをクリックしても装備しない。
+        // 装備は /menu の装備枠・プレイヤーインベントリ操作からのみ行う。
         if (event.isShiftClick()) {
             service.moveEntry(player, tab, key);
-            return;
-        }
-
-        if (event.getClick() == ClickType.LEFT || event.getClick() == ClickType.RIGHT) {
-            service.useEntry(player, tab, key);
         }
     }
 
@@ -295,7 +280,7 @@ public class VirtualInventoryListener implements Listener {
      * ログイン時に仮想インベントリを初期タブ（通常）で復元する。
      * <p>
      * プレイヤーデータは {@code AsyncPlayerPreLoginEvent} で読み込み済みのため、
-     * 次のティックで表示を更新すれば DB の 3 タブ分が反映される。
+     * 次のティックで表示を更新すれば DB の 2 タブ分が反映される。
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
@@ -308,17 +293,17 @@ public class VirtualInventoryListener implements Listener {
     }
 
     /**
-     * 地面のカスタムアイテムを拾得した際、物理インベントリではなく
+     * 地面のカスタムアイテムを拾得しようとした際、物理インベントリではなく
      * 仮想インベントリへ直接追加する。
      * <p>
+     * 仮想表示でメインインベントリ・ホットバーが埋まっているとバニラの拾得判定が
+     * 走らないため、{@link PlayerAttemptPickupItemEvent}（拾得試行前）で受け取る。
      * 仮想インベントリが満杯で一部しか追加できなかった場合は、
      * 残りを地面に残してアイテム消失を防ぐ。
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPickupItem(EntityPickupItemEvent event) {
-        if (!(event.getEntity() instanceof Player player)) {
-            return;
-        }
+    public void onAttemptPickupItem(PlayerAttemptPickupItemEvent event) {
+        Player player = event.getPlayer();
 
         ItemService itemService = plugin.getItemService();
         VirtualInventoryService service = plugin.getVirtualInventoryService();
@@ -348,46 +333,6 @@ public class VirtualInventoryListener implements Listener {
         } else {
             // 仮想インベントリが満杯の間は、毎 tick の拾得試行を避ける。
             event.getItem().setPickupDelay(20);
-        }
-    }
-
-    /**
-     * モブ撃破時、{@link MobData#drops()} を確率判定して仮想インベントリへ直接追加する。
-     * <p>
-     * ワールドへ物理アイテムとしてドロップさせる処理は行わない。
-     */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onEntityDeath(EntityDeathEvent event) {
-        Player killer = event.getEntity().getKiller();
-        if (killer == null) {
-            return;
-        }
-
-        String mobId = event.getEntity().getPersistentDataContainer()
-                .get(mobIdKey, PersistentDataType.STRING);
-        if (mobId == null || mobId.isBlank()) {
-            return;
-        }
-
-        MobConfigService mobConfig = plugin.getMobConfigService();
-        Optional<MobData> found = mobConfig == null
-                ? Optional.empty()
-                : mobConfig.find(mobId);
-        if (found.isEmpty() || found.get().drops().isEmpty()) {
-            return;
-        }
-
-        VirtualInventoryService service = plugin.getVirtualInventoryService();
-        if (service == null) {
-            return;
-        }
-
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (MobDrop drop : found.get().drops()) {
-            if (drop.chance() <= 0.0 || random.nextDouble() >= drop.chance()) {
-                continue;
-            }
-            service.addItem(killer, drop.itemId(), drop.amount());
         }
     }
 
