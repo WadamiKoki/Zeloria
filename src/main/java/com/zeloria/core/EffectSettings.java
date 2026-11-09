@@ -1,6 +1,8 @@
 package com.zeloria.core;
 
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 
@@ -40,11 +42,25 @@ public final class EffectSettings {
             resolved = fallback;
         }
         String key = rawKey == null || rawKey.isBlank()
-                ? (resolved == null ? "" : resolved.getKey().getKey())
+                ? soundKey(resolved)
                 : rawKey.trim();
         float volume = (float) section.getDouble("volume", 1.0);
         float pitch = (float) section.getDouble("pitch", 1.0);
         return new SoundEffect(key, resolved, volume, pitch);
+    }
+
+    /**
+     * 解決済みサウンドのキー名を取得する。
+     * <p>
+     * {@link Sound#getKey()} は非推奨のため {@link Registry#SOUNDS} から取得する。
+     * レジストリに登録されていない場合は空文字を返す。
+     */
+    private static String soundKey(Sound sound) {
+        if (sound == null) {
+            return "";
+        }
+        NamespacedKey key = Registry.SOUNDS.getKey(sound);
+        return key == null ? "" : key.getKey();
     }
 
     /**

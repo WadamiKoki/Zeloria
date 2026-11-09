@@ -12,6 +12,8 @@ import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.entity.Player;
 
 /**
@@ -75,10 +77,7 @@ public final class LevelUpNotifier {
 
         LevelSettings.LevelUpSettings levelUp = levelUpSettings(plugin);
         EffectSettings.SoundEffect sound = levelUp.sound();
-        Key soundKey = sound.sound() == null
-                ? Key.key(sound.key())
-                : Key.key(sound.sound().getKey().getNamespace(),
-                        sound.sound().getKey().getKey());
+        Key soundKey = resolveSoundKey(sound);
 
         // チャットのみトグルで制御する。パーティクルと効果音は常に発生させる。
         boolean selfEnabled = data.getSettings().chatLogSelf();
@@ -116,6 +115,23 @@ public final class LevelUpNotifier {
                     particle.offsetX(), particle.offsetY(), particle.offsetZ(),
                     particle.extra());
         }
+    }
+
+    /**
+     * 設定済みサウンドの Adventure {@link Key} を解決する。
+     * <p>
+     * {@link org.bukkit.Sound#getKey()} は非推奨のため {@link Registry#SOUNDS} から
+     * キーを取得する。レジストリに登録されていない場合は、YAML に書かれた
+     * キー文字列へフォールバックする。
+     */
+    private static Key resolveSoundKey(EffectSettings.SoundEffect sound) {
+        if (sound.sound() != null) {
+            NamespacedKey key = Registry.SOUNDS.getKey(sound.sound());
+            if (key != null) {
+                return Key.key(key.getNamespace(), key.getKey());
+            }
+        }
+        return Key.key(sound.key());
     }
 
     private static LevelSettings.LevelUpSettings levelUpSettings(Zeloria plugin) {

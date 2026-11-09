@@ -899,7 +899,7 @@ public class BuildManager {
             World existing = findBuildWorld(templateId);
             if (existing != null) {
                 // 既存ワールドを再入場した場合もバニラ自然回復を無効化する。
-                existing.setGameRule(GameRules.NATURAL_REGENERATION, false);
+                existing.setGameRule(GameRules.NATURAL_HEALTH_REGENERATION, false);
                 debugEnterBuildWorld(player, existing);
                 enterBuildWorld(templateId, player, existing, false);
                 result.complete(existing);
@@ -938,7 +938,7 @@ public class BuildManager {
             // ワールド作成直後はスポーン位置のチャンクが未ロードのことがあり、
             // その状態では teleportAsync が success=false を返すため同期的にロードする。
             // 建築ワールドでも HP はプラグイン側で管理するため、バニラの自然回復を無効化する。
-            world.setGameRule(GameRules.NATURAL_REGENERATION, false);
+            world.setGameRule(GameRules.NATURAL_HEALTH_REGENERATION, false);
             Location spawn = world.getSpawnLocation();
             world.loadChunk(spawn.getBlockX() >> 4, spawn.getBlockZ() >> 4, true);
 
