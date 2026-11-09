@@ -66,11 +66,26 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 頭上表示の縦位置（旧 0.65 から 0.5 ブロック下げる）。 */
-    private static final float DISPLAY_Y_OFFSET = 0.15f;
+    /** 頭上表示の縦位置（旧 0.15 から 0.2 ブロック上げる）。 */
+    private static final float DISPLAY_Y_OFFSET = 0.35f;
 
     /** 頭上表示の拡大率（旧 0.5 の 1.5 倍）。 */
     private static final float DISPLAY_SCALE = 0.75f;
+
+    /** ゲージを描画する等幅フォントの開始タグ。 */
+    private static final String FONT_OPEN = "<font:minecraft:uniform>";
+
+    /** 等幅フォントの終了タグ。 */
+    private static final String FONT_CLOSE = "</font>";
+
+    /** ゲージのマス数（HP・MP で共通）。 */
+    private static final int GAUGE_LENGTH = 20;
+
+    /** ゲージの塗りつぶし文字（等幅フォントで描画する ASCII 文字）。 */
+    private static final char GAUGE_FILLED = '#';
+
+    /** ゲージの残り文字（等幅フォントで描画する ASCII 文字）。 */
+    private static final char GAUGE_EMPTY = '-';
 
     private final Zeloria plugin;
 
@@ -294,14 +309,16 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
      * ステータスから表示用の MiniMessage を組み立てる。
      * <p>
      * 1 行目が HP、2 行目が MP。数値は表示せず、ゲージのみを表示する。
-     * ゲージは {@code █} を 20 個並べ、現在値の割合だけ塗り、残りを {@code ░} で表現する。
+     * 等幅フォント（{@code minecraft:uniform}）を使用し、どちらの行も
+     * 同じ文字数の ASCII ゲージで構成することで、HP バーと MP バーの
+     * 表示幅を完全に揃える。
      */
     private Component format(PlayerStats stats) {
         String hpGauge = gauge(ratio(stats.getCurrentHealth(), stats.getMaxHealth()));
         String mpGauge = gauge(ratio(stats.getCurrentMana(), stats.getMaxMana()));
 
-        String hpLine = "<red>❤ " + hpGauge + "</red>";
-        String mpLine = "<aqua>✦ " + mpGauge + "</aqua>";
+        String hpLine = FONT_OPEN + "<red>HP " + hpGauge + "</red>" + FONT_CLOSE;
+        String mpLine = FONT_OPEN + "<aqua>MP " + mpGauge + "</aqua>" + FONT_CLOSE;
 
         return MINI.deserialize(hpLine + "\n" + mpLine);
     }
@@ -314,11 +331,16 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         return Math.max(0.0, Math.min(1.0, current / max));
     }
 
-    /** 割合を 20 個のブロックで表現したゲージ文字列を返す。 */
+    /**
+     * 割合を 20 個のブロックで表現したゲージ文字列を返す。
+     * <p>
+     * 等幅フォントで同じ幅になるよう、ASCII の {@code #} と {@code -} のみを使用する。
+     */
     private static String gauge(double ratio) {
-        int filled = (int) Math.round(ratio * 20.0);
-        filled = Math.max(0, Math.min(20, filled));
-        return "█".repeat(filled) + "░".repeat(20 - filled);
+        int filled = (int) Math.round(ratio * GAUGE_LENGTH);
+        filled = Math.max(0, Math.min(GAUGE_LENGTH, filled));
+        return String.valueOf(GAUGE_FILLED).repeat(filled)
+                + String.valueOf(GAUGE_EMPTY).repeat(GAUGE_LENGTH - filled);
     }
 
     private boolean isAwaitingRespawn(Player player) {

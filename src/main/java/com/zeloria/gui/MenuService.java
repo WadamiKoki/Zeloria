@@ -320,26 +320,26 @@ public class MenuService {
      */
     public void handleClick(InventoryClickEvent event, MenuGui menu) {
         if (!(event.getWhoClicked() instanceof Player player)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
         // 一括回収（ダブルクリック）は表示用アイテムの持ち出し・複製に直結するため、
         // データ有無やクリック元の判定より先に無条件でキャンセルする。
         if (isCollectToCursor(event)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         Inventory clicked = event.getClickedInventory();
         if (data == null || clicked == null) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
         if (clicked.getHolder() instanceof MenuGui) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             handleTopClick(event, player, data, menu);
         } else {
             handleBottomClick(event, player, data, menu);
@@ -504,7 +504,7 @@ public class MenuService {
             return;
         }
 
-        event.setCancelled(true);
+        GuiClickSupport.deny(event);
         if (!beginEquipmentClick(player)) {
             return;
         }

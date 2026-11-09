@@ -7,7 +7,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -32,7 +31,7 @@ import java.util.Set;
  * </pre>
  * クリック処理は {@link SimpleGuiListener} が担う。
  */
-public final class SimpleGui implements InventoryHolder {
+public final class SimpleGui implements ZeloriaGuiHolder {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
     private static final int DEFAULT_ROWS = 3;

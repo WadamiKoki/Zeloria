@@ -12,9 +12,9 @@ import java.util.Locale;
  * 統合メニュー上部（水色ガラスエリア）に配置される装備枠に対応する。
  * 各枠は受け入れ可能なアイテム種別を持ち、インベントリからの右クリック装着時に
  * {@link #match(ItemStack)} で装着先を自動判定する。
- * プレイヤーヘッド左隣の 2 枠（{@link #TOOL_1} / {@link #TOOL_2}）は
+ * プレイヤーが自由に使える 2 枠（{@link #TOOL_1} / {@link #TOOL_2}）は
  * 採取ツール（{@code ItemCategory.TOOL}）専用の装備枠として扱う。
- * メニュー GUI では下段のコンパス（閉じるボタン）の左隣 2 枠に配置し、
+ * メニュー GUI では {@code tool_1} をスロット 24、{@code tool_2} をスロット 6 に配置し、
  * 装備内容はホットバー slot 6 / 7 に表示する。
  */
 public enum EquipSlot {
@@ -34,14 +34,11 @@ public enum EquipSlot {
     /** メイン武器。 */
     MAIN_WEAPON("main_weapon", "メイン武器"),
 
-    /** オフハンド。 */
-    OFFHAND("offhand", "オフハンド"),
+    /** 自由枠 1（採取ツール専用）。 */
+    TOOL_1("tool_1", "自由枠"),
 
-    /** 道具枠 1（採取ツール専用）。 */
-    TOOL_1("tool_1", "道具1"),
-
-    /** 道具枠 2（採取ツール専用）。 */
-    TOOL_2("tool_2", "道具2");
+    /** 自由枠 2（採取ツール専用）。 */
+    TOOL_2("tool_2", "自由枠");
 
     private final String key;
     private final String displayName;
@@ -141,15 +138,7 @@ public enum EquipSlot {
             return MAIN_WEAPON;
         }
 
-        // オフハンド。
-        if (type == Material.SHIELD
-                || type == Material.TOTEM_OF_UNDYING
-                || type == Material.ARROW
-                || type == Material.TIPPED_ARROW
-                || type == Material.FIREWORK_ROCKET) {
-            return OFFHAND;
-        }
-
+        // オフハンド装備は廃止したため、シールド等は装備対象にしない。
         return null;
     }
 

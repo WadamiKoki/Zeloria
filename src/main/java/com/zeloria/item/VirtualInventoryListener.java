@@ -1,6 +1,7 @@
 package com.zeloria.item;
 
 import com.zeloria.core.Zeloria;
+import com.zeloria.gui.GuiClickSupport;
 import com.zeloria.gui.MenuGui;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
@@ -82,7 +83,7 @@ public class VirtualInventoryListener implements Listener {
         if (playerSlot == VirtualInventoryService.MENU_BUTTON_SLOT
                 && isOwnInventoryView(event.getView())
                 && VirtualInventoryService.isMenuButton(event.getCurrentItem())) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             openMenu(player);
             return;
         }
@@ -90,7 +91,7 @@ public class VirtualInventoryListener implements Listener {
         // メインインベントリ（9〜35）はタブ式仮想インベントリのため、
         // シフトクリック・ダブルクリック・数字キー・ドラッグを含めてすべて拒否する。
         if (VirtualInventoryService.isBagSlot(playerSlot)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             handleBagClick(event, player);
             return;
         }
@@ -98,14 +99,14 @@ public class VirtualInventoryListener implements Listener {
         // 仮想アイテムをオフハンドへ移動しようとした場合は拒否する。
         if (playerSlot == VirtualInventoryService.OFFHAND_SLOT
                 && hasVirtualItem(event, player)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             notifyOffhandBlocked(player);
             scheduleRefresh(player);
             return;
         }
 
         if (VirtualInventoryService.isLockedSlot(playerSlot)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             notifyLocked(player, playerSlot);
             return;
         }
@@ -113,7 +114,7 @@ public class VirtualInventoryListener implements Listener {
         // 仮想アイテムがカーソル・クリック対象・ホットバー交換先・オフハンドに
         // 現れた場合は、複製や持ち出しを防ぐため拒否する。
         if (hasVirtualItem(event, player)) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             scheduleRefresh(player);
             return;
         }
@@ -122,7 +123,7 @@ public class VirtualInventoryListener implements Listener {
         if ((event.getAction() == InventoryAction.COLLECT_TO_CURSOR
                 || event.getClick() == ClickType.DOUBLE_CLICK)
                 && canCollectVirtual(player, event.getCursor())) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
@@ -131,7 +132,7 @@ public class VirtualInventoryListener implements Listener {
         if (event.isShiftClick()
                 && isOwnInventoryView(event.getView())
                 && isArmor(event.getCurrentItem())) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             notifyLocked(player, VirtualInventoryService.HELMET_SLOT);
         }
     }

@@ -1711,6 +1711,8 @@ public class LayerManager {
         world.setGameRule(GameRules.SPAWN_MOBS, false);
         world.setGameRule(GameRules.ADVANCE_TIME, false);
         world.setGameRule(GameRules.ADVANCE_WEATHER, false);
+        // HP はプラグイン側で管理するため、バニラの自然回復は無効化する。
+        world.setGameRule(GameRules.NATURAL_REGENERATION, false);
         // バニラのモブドロップ抽選自体をスキップする（ドロップは
         // VirtualInventoryService が仮想インベントリで管理する）。
         // DO_TILE_DROPS 相当（採掘・建築）には影響させない。

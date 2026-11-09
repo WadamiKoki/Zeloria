@@ -15,7 +15,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -42,7 +41,7 @@ import java.util.UUID;
  * {@link InventoryHolder} を実装しており、{@code InventoryClickEvent} から
  * 独自メニューかどうかを判別できる。描画はすべてメインスレッドで行う。
  */
-public final class MenuGui implements InventoryHolder {
+public final class MenuGui implements ZeloriaGuiHolder {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
@@ -520,22 +519,18 @@ public final class MenuGui implements InventoryHolder {
             }
         }
 
-        // 旧 config に道具枠の定義が無い場合でも、下段のコンパス（閉じるボタン）の
-        // 左隣 2 枠を採取ツール専用枠として確保する（既存の装備枠とは重複させない）。
-        int closeSlot = layout.closeSlot();
-        int toolBase = closeSlot > 1 ? closeSlot - 2 : 51;
+        // 旧 config に自由枠の定義が無い場合でも、menu.yml の既定位置
+        // （tool_1 = 24、tool_2 = 6）を自由枠として確保する（既存の装備枠とは重複させない）。
         EquipSlot[] toolSlots = {EquipSlot.TOOL_1, EquipSlot.TOOL_2};
+        int[] defaultToolSlots = {24, 6};
         for (int index = 0; index < toolSlots.length; index++) {
             EquipSlot toolSlot = toolSlots[index];
             if (result.containsValue(toolSlot)) {
                 continue;
             }
-            int candidate = toolBase + index;
-            while (candidate >= 0 && result.containsKey(candidate)) {
-                candidate++;
-            }
-            if (candidate >= 0) {
-                result.putIfAbsent(candidate, toolSlot);
+            int candidate = defaultToolSlots[index];
+            if (!result.containsKey(candidate)) {
+                result.put(candidate, toolSlot);
             }
         }
 

@@ -3,7 +3,7 @@ name: "装備関連メッセージ"
 
 # バニラ操作で装備しようとした場合の案内。
 armor_blocked: "<red>防具は <white>/menu</white> から装備してください。</red>"
-offhand_blocked: "<red>オフハンドは <white>/menu</white> から装備してください。</red>"
+offhand_blocked: "<red>オフハンドは使用できません。</red>"
 slot_locked: "<red>このスロットは装備表示専用のため操作できません。</red>"
 
 # 必要レベルを満たさない場合の通知。

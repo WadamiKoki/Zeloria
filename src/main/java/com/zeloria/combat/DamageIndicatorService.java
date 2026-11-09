@@ -43,7 +43,7 @@ public final class DamageIndicatorService {
     private static final long LIFETIME_TICKS = 10L;
 
     /** テキストの拡大率（以前の 4 倍）。 */
-    private static final float SCALE = 3.2f;
+    private static final float SCALE = 2.4f;
 
     /** 水平方向のばらつき幅（-0.8 〜 +0.8）。 */
     private static final double HORIZONTAL_SPREAD = 1.6;

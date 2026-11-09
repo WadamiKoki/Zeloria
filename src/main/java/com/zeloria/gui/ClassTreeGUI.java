@@ -31,7 +31,6 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -454,19 +453,19 @@ public final class ClassTreeGUI implements Listener {
         }
 
         if (event.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
         Inventory top = event.getView().getTopInventory();
         if (event.getClickedInventory() != top) {
             if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
-                event.setCancelled(true);
+                GuiClickSupport.deny(event);
             }
             return;
         }
 
-        event.setCancelled(true);
+        GuiClickSupport.deny(event);
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
@@ -785,7 +784,7 @@ public final class ClassTreeGUI implements Listener {
         RESET_CONFIRM
     }
 
-    private static final class Holder implements InventoryHolder {
+    private static final class Holder implements ZeloriaGuiHolder {
 
         private final ClassTreeGUI gui;
         private final HolderMode mode;

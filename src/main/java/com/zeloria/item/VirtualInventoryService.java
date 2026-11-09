@@ -1359,7 +1359,7 @@ public class VirtualInventoryService {
             case LEGGINGS -> inventory.setLeggings(item);
             case BOOTS -> inventory.setBoots(item);
             default -> {
-                // 武器・オフハンドはこのメソッドの対象外。
+                // 武器・自由枠はこのメソッドの対象外。
             }
         }
     }

@@ -236,7 +236,7 @@ public final class PlayerStatsService {
      * <p>
      * <ul>
      *     <li>満腹度ゲージ: 現在 MP / 最大 MP の割合を 0〜20 に割り当てる（MP バーとして使用）</li>
-     *     <li>満腹度の隠し値（saturation）: 常に 0（満腹度ゲージの揺れを防ぐ）</li>
+     *     <li>満腹度の隠し値（saturation）: 常に 20（満腹度が自然減少しないように固定）</li>
      *     <li>レベル: 現在選択中クラスのレベル</li>
      *     <li>経験値バー: 次レベルまでの進捗（{@link LevelService#requiredExp(int)} を使用、カンスト時は 0%）</li>
      * </ul>
@@ -276,7 +276,10 @@ public final class PlayerStatsService {
                 return;
             }
             player.setFoodLevel(foodLevel);
-            player.setSaturation(0.0f);
+            // 満腹度は MP バー表示専用のため、バニラの空腹処理で減少しないよう
+            // 隠し満腹度を最大値で固定し、消耗値もリセットする。
+            player.setSaturation(20.0f);
+            player.setExhaustion(0.0f);
             player.setLevel(level);
             player.setExp(expProgress);
         });

@@ -121,10 +121,11 @@ public class EquipmentService {
     }
 
     /**
-     * 仮想装備枠（メイン武器・オフハンド・兜～靴・採取ツール 2 枠）に
+     * 仮想装備枠（メイン武器・兜～靴・自由枠 2 枠）に
      * 1 つでも装備しているか判定する。
      * <p>
      * クラス変更やビルドモード開始時に、装備品の付け替えが必要か確認するために使用する。
+     * 自由枠（採取ツール枠）もプレイヤーが持ち出す装備品のため判定対象に含める。
      *
      * @param data 対象プレイヤーデータ
      * @return いずれかのスロットに装備がある場合は {@code true}
@@ -134,10 +135,6 @@ public class EquipmentService {
             return false;
         }
         for (EquipSlot slot : EquipSlot.values()) {
-            // 採取ツールはクラス武器種の制限を持たないため、クラス変更の判定対象外とする。
-            if (slot.isToolSlot()) {
-                continue;
-            }
             ItemStack equipped = data.getEquipment(slot);
             if (equipped != null && !equipped.isEmpty()) {
                 return true;

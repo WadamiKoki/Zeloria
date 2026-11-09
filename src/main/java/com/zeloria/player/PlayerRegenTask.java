@@ -58,6 +58,10 @@ public class PlayerRegenTask extends BukkitRunnable {
             if (data == null) {
                 continue;
             }
+            // 満腹度は MP バー表示専用のため、バニラの空腹・自然減少で
+            // ゲージが変動しないよう、3 秒ごとに最大値で固定する。
+            player.setSaturation(20.0f);
+            player.setExhaustion(0.0f);
             if (regenerate(data.getStats())) {
                 // 満腹度（MP バー）・レベル／経験値表示を最新値へ追従させる。
                 statsService.syncVanillaStats(player, data);

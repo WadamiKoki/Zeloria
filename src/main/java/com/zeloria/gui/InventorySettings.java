@@ -33,14 +33,13 @@ public record InventorySettings(
      */
     public static InventorySettings defaults() {
         Map<EquipSlot, Integer> equipment = new EnumMap<>(EquipSlot.class);
-        equipment.put(EquipSlot.TOOL_1, 51);
-        equipment.put(EquipSlot.TOOL_2, 52);
+        equipment.put(EquipSlot.TOOL_1, 24);
+        equipment.put(EquipSlot.TOOL_2, 6);
         equipment.put(EquipSlot.HELMET, 19);
         equipment.put(EquipSlot.CHESTPLATE, 20);
         equipment.put(EquipSlot.LEGGINGS, 21);
         equipment.put(EquipSlot.BOOTS, 22);
-        equipment.put(EquipSlot.MAIN_WEAPON, 24);
-        equipment.put(EquipSlot.OFFHAND, 25);
+        equipment.put(EquipSlot.MAIN_WEAPON, 25);
 
         return new InventorySettings(
                 equipment,

@@ -45,7 +45,7 @@ public class MenuListener implements Listener {
         MenuService menuService = plugin.getMenuService();
         if (menuService == null) {
             // サービス未初期化時は安全側に倒してすべて拒否する。
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
         menuService.handleClick(event, menu);

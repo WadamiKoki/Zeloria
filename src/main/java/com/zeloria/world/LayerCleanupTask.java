@@ -26,7 +26,8 @@ import java.util.Optional;
  * ポータル入場時に {@link LayerManager} が自動で再生成する。
  * <p>
  * 建築ワールド（{@link BuildManager#BUILD_NAMESPACE} 名前空間）はこの通常削除の
- * 対象外とし、{@link BuildManager#checkAutoSave(long)} による専用の自動保存で管理する。
+ * 対象外とする。建築ワールドは自動保存・自動アンロードを行わず、プレイヤーが
+ * 明示的に保存または破棄するまで維持する。
  * <p>
  * ワールド操作を伴うため、{@code runTaskTimer} によりメインスレッドで実行する。
  */
@@ -51,19 +52,6 @@ public class LayerCleanupTask extends BukkitRunnable {
     public void run() {
         long now = System.currentTimeMillis();
         checkIdleInstances(now);
-        checkBuildWorldAutoSave(now);
-    }
-
-    /**
-     * 建築ワールドが無人になってから 1 分経過していれば自動保存する。
-     *
-     * @param now 現在時刻（ミリ秒）
-     */
-    private void checkBuildWorldAutoSave(long now) {
-        BuildManager buildManager = plugin.getBuildManager();
-        if (buildManager != null) {
-            buildManager.checkAutoSave(now);
-        }
     }
 
     /**

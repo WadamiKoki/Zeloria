@@ -34,7 +34,7 @@ public class SimpleGuiListener implements Listener {
             return;
         }
 
-        event.setCancelled(true);
+        GuiClickSupport.deny(event);
 
         Inventory clicked = event.getClickedInventory();
         if (clicked == null || !(clicked.getHolder() instanceof SimpleGui)) {

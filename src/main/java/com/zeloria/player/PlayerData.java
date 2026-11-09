@@ -59,7 +59,7 @@ public class PlayerData {
     /** RPG ステータス（HP / MP・攻撃力・クリティカル・リジェネなど）。 */
     private final PlayerStats stats = new PlayerStats();
 
-    /** 装備中アイテム（防具 4 部位 + メイン武器 + オフハンド）。 */
+    /** 装備中アイテム（防具 4 部位 + メイン武器 + 自由枠 2 枠）。 */
     private final Map<EquipSlot, ItemStack> equippedItems = new EnumMap<>(EquipSlot.class);
 
     /** 通常の保管庫タブの仮想アイテム。 */

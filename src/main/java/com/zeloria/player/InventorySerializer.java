@@ -111,6 +111,10 @@ public final class InventorySerializer {
 
     /**
      * Base64 文字列から仮想装備を復元する。
+     * <p>
+     * オフハンド枠を廃止する前のデータは、オフハンドを含む 6 枠または 8 枠で
+     * 保存されているため、その場合はオフハンドを読み飛ばして自由枠の位置を
+     * 詰め直す。
      *
      * @param base64 Base64 文字列
      * @return 装備スロットとアイテムの対応（空枠は含まない）
@@ -120,6 +124,27 @@ public final class InventorySerializer {
         List<ItemStack> items = decodeList(base64);
 
         EquipSlot[] slots = EquipSlot.values();
+        boolean legacyWithOffhand = items.size() == LEGACY_BASE_SLOT_COUNT
+                || items.size() > slots.length;
+        if (legacyWithOffhand) {
+            // 旧形式: HELMET, CHESTPLATE, LEGGINGS, BOOTS, MAIN_WEAPON,
+            // OFFHAND, TOOL_1, TOOL_2。インデックス 5 のオフハンドを捨てる。
+            for (int index = 0; index < items.size(); index++) {
+                if (index == LEGACY_OFFHAND_INDEX) {
+                    continue;
+                }
+                int newIndex = index < LEGACY_OFFHAND_INDEX ? index : index - 1;
+                if (newIndex >= slots.length) {
+                    continue;
+                }
+                ItemStack item = items.get(index);
+                if (item != null) {
+                    result.put(slots[newIndex], item);
+                }
+            }
+            return result;
+        }
+
         int limit = Math.min(slots.length, items.size());
         for (int index = 0; index < limit; index++) {
             ItemStack item = items.get(index);
@@ -129,4 +154,10 @@ public final class InventorySerializer {
         }
         return result;
     }
+
+    /** オフハンド廃止前の基本枠数（防具 4 + メイン武器 + オフハンド）。 */
+    private static final int LEGACY_BASE_SLOT_COUNT = 6;
+
+    /** 旧形式のオフハンド枠インデックス。 */
+    private static final int LEGACY_OFFHAND_INDEX = 5;
 }

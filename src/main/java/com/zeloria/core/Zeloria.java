@@ -13,6 +13,7 @@ import com.zeloria.item.CustomItemCraftListener;
 import com.zeloria.item.VirtualInventoryListener;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.gui.GuiConfigService;
+import com.zeloria.gui.GuiCursorListener;
 import com.zeloria.gui.MenuListener;
 import com.zeloria.gui.MenuService;
 import com.zeloria.item.ItemService;
@@ -701,6 +702,7 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new PlayerListener(this));
         this.listenerRegistrar.register(new MenuListener(this));
         this.listenerRegistrar.register(new SimpleGuiListener(this));
+        this.listenerRegistrar.register(new GuiCursorListener());
         this.listenerRegistrar.register(new NpcInteractListener(this));
         this.listenerRegistrar.register(new NpcDamageListener(this));
         this.listenerRegistrar.register(new LayerEntryListener(this));

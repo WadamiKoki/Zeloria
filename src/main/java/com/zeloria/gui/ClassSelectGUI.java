@@ -25,7 +25,6 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -554,19 +553,19 @@ public final class ClassSelectGUI implements Listener {
 
         // ダブルクリックによる表示用アイテムの一括回収を防ぐ。
         if (event.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
-            event.setCancelled(true);
+            GuiClickSupport.deny(event);
             return;
         }
 
         Inventory top = event.getView().getTopInventory();
         if (event.getClickedInventory() != top) {
             if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
-                event.setCancelled(true);
+                GuiClickSupport.deny(event);
             }
             return;
         }
 
-        event.setCancelled(true);
+        GuiClickSupport.deny(event);
         if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
@@ -718,7 +717,7 @@ public final class ClassSelectGUI implements Listener {
     /**
      * この GUI のインベントリを識別するホルダー。
      */
-    private static final class Holder implements InventoryHolder {
+    private static final class Holder implements ZeloriaGuiHolder {
 
         private final ClassSelectGUI gui;
         private Inventory inventory;

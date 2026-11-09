@@ -93,7 +93,7 @@ public class GuiConfigService {
      * サーバー側 {@code menu.yml} のツール枠（{@code equipment_slots.tool_1 / tool_2}）を
      * 同梱テンプレートの値へ同期する。
      * <p>
-     * 値が異なる場合のみ、同梱テンプレートの値（51 / 52）を書き込んで保存する。
+     * 値が異なる場合のみ、同梱テンプレートの値（24 / 6）を書き込んで保存する。
      * 他のキーには触れないため、サーバー側のカスタマイズは保持される。
      *
      * @param serverConfig サーバー側の {@code menu.yml}（未配置の場合は {@code null}）
@@ -120,6 +120,14 @@ public class GuiConfigService {
             serverConfig.set(path, expected);
             applied.add(path + " (" + describeSlot(actual) + " → " + expected + ")");
         }
+
+        // 廃止したオフハンド枠がサーバー設定に残っている場合は削除する。
+        String offhandPath = "equipment_slots.offhand";
+        if (serverConfig.contains(offhandPath)) {
+            serverConfig.set(offhandPath, null);
+            applied.add(offhandPath + " (削除)");
+        }
+
         if (applied.isEmpty()) {
             return;
         }
@@ -127,7 +135,7 @@ public class GuiConfigService {
         Path file = yamlLoader.getConfigFolder().resolve(MENU_KEY);
         try {
             serverConfig.save(file.toFile());
-            plugin.getLogger().info("config/gui/menu.yml のツール枠を同梱テンプレートの値へ更新しました: "
+            plugin.getLogger().info("config/gui/menu.yml の装備枠を同梱テンプレートの値へ更新しました: "
                     + String.join(", ", applied));
         } catch (IOException e) {
             plugin.getLogger().warning("config/gui/menu.yml の保存に失敗しました: " + e.getMessage());
@@ -222,7 +230,7 @@ public class GuiConfigService {
      * {@code equipment_slots} セクションを装備種別 → GUI スロットへ変換する。
      * <p>
      * キーは {@link EquipSlot#getKey()}（{@code helmet}, {@code chestplate},
-     * {@code leggings}, {@code boots}, {@code main_weapon}, {@code offhand}）に対応する。
+     * {@code leggings}, {@code boots}, {@code main_weapon}, {@code tool_1}, {@code tool_2}）に対応する。
      */
     private static Map<EquipSlot, Integer> readMenuEquipmentSlots(
             FileConfiguration config, Map<EquipSlot, Integer> fallback) {

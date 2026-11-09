@@ -6,6 +6,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.GameRules;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -106,9 +107,6 @@ public class BuildManager {
 
     /** ディレクトリ削除の再試行間隔（ミリ秒）。 */
     private static final long DELETE_RETRY_DELAY_MS = 50L;
-
-    /** 建築ワールドが無人になってから自動保存するまでの時間（ミリ秒）。 */
-    public static final long AUTO_SAVE_IDLE_MILLIS = 60_000L;
 
     /** 転送待機中にアクションバーへ表示するメッセージ。 */
     private static final Component TRANSFER_PREPARING =
@@ -677,58 +675,6 @@ public class BuildManager {
     }
 
     /**
-     * 建築ワールドが無人になってから 1 分経過していれば、自動保存してアンロードする。
-     * <p>
-     * {@link com.zeloria.world.LayerCleanupTask} からメインスレッドで定期的に呼び出す。
-     *
-     * @param now 現在時刻（ミリ秒）
-     */
-    public synchronized void checkAutoSave(long now) {
-        if (isBusy()) {
-            return;
-        }
-
-        emptySince.keySet().retainAll(collectOpenTemplateIds());
-
-        for (String templateId : collectOpenTemplateIds()) {
-            World world = findBuildWorld(templateId);
-            if (world == null) {
-                emptySince.remove(templateId);
-                continue;
-            }
-            if (!world.getPlayers().isEmpty()) {
-                emptySince.remove(templateId);
-                continue;
-            }
-            long since = emptySince.getOrDefault(templateId, 0L);
-            if (since == 0L) {
-                emptySince.put(templateId, now);
-                continue;
-            }
-            if (now - since < AUTO_SAVE_IDLE_MILLIS) {
-                continue;
-            }
-
-            emptySince.remove(templateId);
-            saveBuildWorldAsync(templateId).whenComplete((saved, error) -> {
-                if (error != null) {
-                    plugin.getLogger().severe(
-                            "建築用ワールド " + templateId + " の自動保存に失敗しました: "
-                                    + rootMessage(error));
-                } else if (Boolean.TRUE.equals(saved)) {
-                    plugin.getLogger().info(
-                            "建築用ワールド " + templateId + " を自動保存してアンロードしました");
-                } else {
-                    plugin.getLogger().warning(
-                            "建築用ワールド " + templateId + " の自動保存を完了できませんでした。");
-                }
-            });
-            // 1 回の呼び出しで 1 ワールドずつ処理する（次回のタスクで残りを処理する）。
-            return;
-        }
-    }
-
-    /**
      * 指定したワールドが建築ワールドか判定する。
      * <p>
      * {@code minecraft} 名前空間を共有するレイヤーインスタンス
@@ -952,6 +898,8 @@ public class BuildManager {
 
             World existing = findBuildWorld(templateId);
             if (existing != null) {
+                // 既存ワールドを再入場した場合もバニラ自然回復を無効化する。
+                existing.setGameRule(GameRules.NATURAL_REGENERATION, false);
                 debugEnterBuildWorld(player, existing);
                 enterBuildWorld(templateId, player, existing, false);
                 result.complete(existing);
@@ -989,6 +937,8 @@ public class BuildManager {
 
             // ワールド作成直後はスポーン位置のチャンクが未ロードのことがあり、
             // その状態では teleportAsync が success=false を返すため同期的にロードする。
+            // 建築ワールドでも HP はプラグイン側で管理するため、バニラの自然回復を無効化する。
+            world.setGameRule(GameRules.NATURAL_REGENERATION, false);
             Location spawn = world.getSpawnLocation();
             world.loadChunk(spawn.getBlockX() >> 4, spawn.getBlockZ() >> 4, true);
 

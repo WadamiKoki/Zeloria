@@ -2,6 +2,7 @@ package com.zeloria.item;
 
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import com.zeloria.core.Zeloria;
+import com.zeloria.gui.GuiClickSupport;
 import com.zeloria.gui.MenuGui;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
@@ -55,7 +56,7 @@ public class EquipmentListener implements Listener {
             return;
         }
         // 防具スロットへの装着は /menu 経由に限定する。
-        event.setCancelled(true);
+        GuiClickSupport.deny(event);
         message(player, "armor_blocked", Map.of());
     }
 
