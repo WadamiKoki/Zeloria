@@ -1,8 +1,6 @@
 package com.zeloria.world;
 
 import com.zeloria.core.Zeloria;
-import com.zeloria.world.LayerConfigService;
-import com.zeloria.world.PortalDefinition;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
@@ -20,8 +18,8 @@ import java.util.Objects;
  * <ul>
  *     <li>{@link World#spawnParticle} は使用せず、{@link Player#spawnParticle} で
  *         可視範囲のプレイヤーへ直接パケット送信する（サーバー全体へのブロードキャストを避ける）</li>
- *     <li>描画対象はポータルから半径 32m 以内（{@code distanceSquared <= 1024}）のプレイヤーのみ</li>
- *     <li>円周上の生成点数を {@link #RING_POINTS} 点に抑え、1 点あたり 1 パーティクルとする</li>
+ *     <li>描画対象は {@code portal_settings.yml} の {@code view_distance} 以内のプレイヤーのみ</li>
+ *     <li>円周上の生成点数を {@code ring_points} 点に抑え、1 点あたりの生成数も設定で制御する</li>
  * </ul>
  * このタスクはメインスレッドで実行する（{@code runTaskTimer}）。
  */
@@ -29,21 +27,6 @@ public class PortalParticleTask extends BukkitRunnable {
 
     /** タスクの実行周期（ティック）。10 ティック＝0.5 秒。 */
     public static final long PERIOD_TICKS = 10L;
-
-    /** パーティクルを送信する最大距離（メートル）。 */
-    public static final double VIEW_DISTANCE = 32.0;
-
-    /** 可視判定の二乗値（{@code 32 * 32}）。 */
-    private static final double VIEW_DISTANCE_SQUARED = VIEW_DISTANCE * VIEW_DISTANCE;
-
-    /** 円周上に配置するパーティクル点数（密度を抑えた最小構成）。 */
-    private static final int RING_POINTS = 8;
-
-    /** ポータル座標から浮かせる高さ（足元の埋没を防ぐ）。 */
-    private static final double HEIGHT_OFFSET = 0.1;
-
-    /** 1 点あたりのパーティクル数。 */
-    private static final int PARTICLES_PER_POINT = 1;
 
     private static final double FULL_CIRCLE = Math.PI * 2.0;
 
@@ -65,15 +48,19 @@ public class PortalParticleTask extends BukkitRunnable {
             return;
         }
 
+        PortalSettings.PortalParticle settings = plugin.getPortalSettings().portal().particle();
+        double viewDistanceSquared = settings.viewDistance() * settings.viewDistance();
         for (LayerConfigService.PortalPlacement placement : placements) {
-            drawRing(placement);
+            drawRing(placement, settings, viewDistanceSquared);
         }
     }
 
     /**
      * 1 つのポータルについて円周状のパーティクルを送信する。
      */
-    private void drawRing(LayerConfigService.PortalPlacement placement) {
+    private void drawRing(LayerConfigService.PortalPlacement placement,
+                          PortalSettings.PortalParticle settings,
+                          double viewDistanceSquared) {
         World world = placement.world();
         PortalDefinition portal = placement.portal();
         // 判定と描画の半径を一致させるため、必ず仕様値（1.0m）を使用する。
@@ -85,10 +72,11 @@ public class PortalParticleTask extends BukkitRunnable {
             return;
         }
 
-        double centerY = portal.y() + HEIGHT_OFFSET;
+        double centerY = portal.y() + settings.heightOffset();
+        Particle particle = settings.type();
 
-        for (int index = 0; index < RING_POINTS; index++) {
-            double angle = FULL_CIRCLE * index / RING_POINTS;
+        for (int index = 0; index < settings.ringPoints(); index++) {
+            double angle = FULL_CIRCLE * index / settings.ringPoints();
             double x = portal.x() + Math.cos(angle) * radius;
             double z = portal.z() + Math.sin(angle) * radius;
 
@@ -97,11 +85,11 @@ public class PortalParticleTask extends BukkitRunnable {
                 if (!player.isOnline()) {
                     continue;
                 }
-                if (player.getLocation().distanceSquared(point) > VIEW_DISTANCE_SQUARED) {
+                if (player.getLocation().distanceSquared(point) > viewDistanceSquared) {
                     continue;
                 }
-                player.spawnParticle(Particle.END_ROD,
-                        x, centerY, z, PARTICLES_PER_POINT, 0.0, 0.0, 0.0, 0.0);
+                player.spawnParticle(particle,
+                        x, centerY, z, settings.countPerPoint(), 0.0, 0.0, 0.0, 0.0);
             }
         }
     }

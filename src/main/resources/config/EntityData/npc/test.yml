@@ -10,7 +10,7 @@ mobType: "VILLAGER"
 # 名前を常時表示するか。
 alwaysShowName: true
 
-# 右クリックで開く GUI（config/gui/<name>.yml）。
+# 右クリックで開く GUI（config/GuiData/<name>.yml）。
 # 空文字にすると右クリックしても何も開きません。
 interactGui: "menu"
 

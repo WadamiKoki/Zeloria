@@ -26,8 +26,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * スポーン座標は Y を {@code y} に固定し、X / Z だけを {@code spawnRange} の範囲で
  * ランダムにずらす。実際のスポーン処理は {@link com.zeloria.mob.SpawnerManager} が行う。
  * <p>
- * 負荷対策として {@code spawnRateSeconds} は最低 {@value #MIN_SPAWN_RATE_SECONDS} 秒、
- * {@code maxAlive} は最大 {@value #MAX_ALIVE} 体にクランプする。
+ * 負荷対策として {@code spawnRateSeconds} と {@code maxAlive} は、
+ * {@code SystemData/spawner_settings.yml} の {@code limits} でクランプする。
  * デバッグ表示は {@code /admin spawner mode} で一元管理するため、本定義には含めない。
  *
  * @param mobId            スポーンさせるモブ定義（{@code MobData}）の ID
@@ -90,11 +90,13 @@ public record SpawnerDefinition(
         mobId = mobId == null ? "" : mobId.trim();
         minLevel = Math.max(MIN_LEVEL, minLevel);
         maxLevel = Math.max(minLevel, maxLevel);
-        spawnRateSeconds = Math.max(MIN_SPAWN_RATE_SECONDS, spawnRateSeconds);
-        maxAlive = Math.max(1, Math.min(MAX_ALIVE, maxAlive));
+        // 設定ファイル由来のクランプ上限は fromMap(Map, SpawnerSettings.Spawner) で適用する。
+        // ここでは数値として成立しない値だけを補正する。
+        spawnRateSeconds = Math.max(1, spawnRateSeconds);
+        maxAlive = Math.max(1, maxAlive);
         spawnLimit = Math.max(1, spawnLimit);
-        spawnRadius = clamp(spawnRadius, MIN_SPAWN_RADIUS, MAX_SPAWN_RADIUS, DEFAULT_SPAWN_RADIUS);
-        spawnRange = clamp(spawnRange, 0.0, MAX_SPAWN_RANGE, DEFAULT_SPAWN_RANGE);
+        spawnRadius = sanitizePositive(spawnRadius, DEFAULT_SPAWN_RADIUS);
+        spawnRange = sanitizeNonNegative(spawnRange, DEFAULT_SPAWN_RANGE);
     }
 
     /**
@@ -140,26 +142,74 @@ public record SpawnerDefinition(
      * @return スポーン定義
      */
     public static SpawnerDefinition fromMap(Map<?, ?> map) {
-        if (map == null) {
-            return new SpawnerDefinition("", MIN_LEVEL, MIN_LEVEL, 0.0, 0.0, 0.0,
-                    MIN_SPAWN_RATE_SECONDS, DEFAULT_MAX_ALIVE, DEFAULT_SPAWN_LIMIT,
-                    DEFAULT_SPAWN_RADIUS, DEFAULT_SPAWN_RANGE);
-        }
+        return fromMap(map, null);
+    }
 
-        int minLevel = number(map.get("minLevel"), MIN_LEVEL).intValue();
+    /**
+     * YAML のリスト要素（マップ）からスポーン定義を生成する。
+     * <p>
+     * 省略されたキーは {@code spawner_settings.yml} の {@code defaults} を使用し、
+     * 値は {@code limits} の範囲へクランプする。
+     *
+     * @param map      1 エントリ分のマップ
+     * @param settings スポナー設定（{@code null} の場合は従来の定数）
+     * @return スポーン定義
+     */
+    public static SpawnerDefinition fromMap(Map<?, ?> map, SpawnerSettings.Spawner settings) {
+        int defaultRate = settings == null
+                ? MIN_SPAWN_RATE_SECONDS : settings.defaults().spawnRateSeconds();
+        int defaultMaxAlive = settings == null
+                ? DEFAULT_MAX_ALIVE : settings.defaults().maxAlive();
+        int defaultSpawnLimit = settings == null
+                ? DEFAULT_SPAWN_LIMIT : settings.defaults().spawnLimit();
+        double defaultRadius = settings == null
+                ? DEFAULT_SPAWN_RADIUS : settings.defaults().spawnRadius();
+        double defaultRange = settings == null
+                ? DEFAULT_SPAWN_RANGE : settings.defaults().spawnRange();
+
+        int minRate = settings == null
+                ? MIN_SPAWN_RATE_SECONDS : settings.limits().minSpawnRateSeconds();
+        int maxAliveLimit = settings == null ? MAX_ALIVE : settings.limits().maxAlive();
+        double minRadius = settings == null
+                ? MIN_SPAWN_RADIUS : settings.limits().minSpawnRadius();
+        double maxRadius = settings == null
+                ? MAX_SPAWN_RADIUS : settings.limits().maxSpawnRadius();
+        double maxRange = settings == null
+                ? MAX_SPAWN_RANGE : settings.limits().maxSpawnRange();
+
+        Map<?, ?> values = map == null ? Map.of() : map;
+        int minLevel = number(values.get("minLevel"), MIN_LEVEL).intValue();
+        int spawnRate = Math.max(minRate,
+                number(values.get("spawnRateSeconds"), defaultRate).intValue());
+        int maxAlive = clampInt(
+                number(values.get("maxAlive"), defaultMaxAlive).intValue(),
+                1, maxAliveLimit);
+        int spawnLimit = Math.max(1,
+                number(values.get("spawnLimit"), defaultSpawnLimit).intValue());
+        double spawnRadius = clamp(
+                number(values.get("spawnRadius"), defaultRadius).doubleValue(),
+                minRadius, maxRadius, defaultRadius);
+        double spawnRange = clamp(
+                number(values.get("spawnRange"), defaultRange).doubleValue(),
+                0.0, maxRange, defaultRange);
+
         return new SpawnerDefinition(
-                text(map.get("mobId")),
+                text(values.get("mobId")),
                 minLevel,
-                number(map.get("maxLevel"), minLevel).intValue(),
-                number(map.get("x"), 0.0).doubleValue(),
-                number(map.get("y"), 0.0).doubleValue(),
-                number(map.get("z"), 0.0).doubleValue(),
-                number(map.get("spawnRateSeconds"), MIN_SPAWN_RATE_SECONDS).intValue(),
-                number(map.get("maxAlive"), DEFAULT_MAX_ALIVE).intValue(),
-                number(map.get("spawnLimit"), DEFAULT_SPAWN_LIMIT).intValue(),
-                number(map.get("spawnRadius"), DEFAULT_SPAWN_RADIUS).doubleValue(),
-                number(map.get("spawnRange"), DEFAULT_SPAWN_RANGE).doubleValue()
+                number(values.get("maxLevel"), minLevel).intValue(),
+                number(values.get("x"), 0.0).doubleValue(),
+                number(values.get("y"), 0.0).doubleValue(),
+                number(values.get("z"), 0.0).doubleValue(),
+                spawnRate,
+                maxAlive,
+                spawnLimit,
+                spawnRadius,
+                spawnRange
         );
+    }
+
+    private static int clampInt(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static double clamp(double value, double min, double max, double fallback) {
@@ -167,6 +217,14 @@ public record SpawnerDefinition(
             return fallback;
         }
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static double sanitizePositive(double value, double fallback) {
+        return Double.isNaN(value) || value <= 0.0 ? fallback : value;
+    }
+
+    private static double sanitizeNonNegative(double value, double fallback) {
+        return Double.isNaN(value) || value < 0.0 ? fallback : value;
     }
 
     private static String text(Object value) {

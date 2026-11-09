@@ -17,11 +17,15 @@ status:
   unlocked: "<yellow>クリックでこのクラスに切り替えます</yellow>"
   locked: "<red>未解放</red>"
 
+# 成長率表示など GUI 専用マテリアル（custom_model_data は省略可）。
+materials:
+  growth:
+    material: "ITEM_FRAME"
+
 # クラスアイコンの 1 行下（スロット +9）へ並べる「レベル成長率」表示アイテム。
 # クラスアイコンが最下段にある場合、そのクラスの成長率表示は省略されます。
 growth:
   enabled: true
-  material: "ITEM_FRAME"
   name: "<light_purple>{class}</light_purple> <gray>のレベル成長率</gray>"
   # 1 ステータス分の表記（{label} と {value} が置換されます）。
   line: "<gray>{label}</gray> <dark_gray>+</dark_gray> <aqua>{value}%</aqua> <gray>/ Lv</gray>"

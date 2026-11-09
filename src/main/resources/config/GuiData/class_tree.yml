@@ -1,0 +1,24 @@
+title: "<dark_green><bold>クラスツリー</bold></dark_green>"
+
+materials:
+  filler: GRAY_STAINED_GLASS_PANE
+  reset: BARRIER
+  scroll: ARROW
+  fallback: PAPER
+  close: BARRIER
+  accept: RED_CONCRETE
+  cancel: LIME_CONCRETE
+
+sounds:
+  open:
+    key: BLOCK_ENDER_CHEST_OPEN
+    volume: 0.8
+    pitch: 1.0
+  click:
+    key: UI_BUTTON_CLICK
+    volume: 0.7
+    pitch: 1.2
+  error:
+    key: BLOCK_NOTE_BLOCK_BASS
+    volume: 0.7
+    pitch: 0.8

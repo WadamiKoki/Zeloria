@@ -1,8 +1,10 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.ConfigCache;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.player.EquipSlot;
+import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -16,23 +18,25 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code config/gui/menu.yml} と {@code config/gui/inventory.yml} を解析するサービス。
+ * {@code config/GuiData/menu.yml} / {@code inventory.yml} / {@code class_tree.yml} を
+ * 解析するサービス。
  * <p>
  * {@link YamlLoader} が読み込んだ YAML から GUI 関連の設定を取り出し、
  * {@link MenuLayout}（{@code /menu} の装備枠・メニュー機能・効果音）と
- * {@link InventorySettings}（装備枠の配置・効果音）へ変換して保持する。
+ * {@link InventorySettings}（装備枠の配置・効果音・表示用マテリアル・固定表示名）、
+ * {@link ClassTreeSettings}（クラスツリーの表示・効果音）へ変換して保持する。
  * {@code /admin reload} 時は {@link #reload()} を呼ぶことで最新の設定を反映できる。
  */
 public class GuiConfigService {
 
     /** {@code config/} からの相対キー。 */
-    private static final String MENU_KEY = "gui/menu.yml";
-    private static final String INVENTORY_KEY = "gui/inventory.yml";
+    private static final String MENU_KEY = "GuiData/menu.yml";
+    private static final String INVENTORY_KEY = "GuiData/inventory.yml";
+    private static final String CLASS_TREE_KEY = "GuiData/class_tree.yml";
 
     /** 同梱テンプレート（jar 内）の {@code menu.yml} パス。 */
     private static final String MENU_RESOURCE = "config/" + MENU_KEY;
@@ -52,15 +56,24 @@ public class GuiConfigService {
     /** {@code inventory.yml} 内の効果音パス。 */
     private static final String INVENTORY_SOUNDS_PATH = "sounds";
 
+    /** {@code inventory.yml} 内の表示用マテリアルパス。 */
+    private static final String INVENTORY_MATERIALS_PATH = "materials";
+
+    /** {@code inventory.yml} 内の固定表示名パス。 */
+    private static final String INVENTORY_NAMES_PATH = "names";
+
     private final Zeloria plugin;
     private final YamlLoader yamlLoader;
+    private final ConfigCache cache;
 
     private volatile MenuLayout menuLayout;
     private volatile InventorySettings inventorySettings;
+    private volatile ClassTreeSettings classTreeSettings;
 
-    public GuiConfigService(Zeloria plugin, YamlLoader yamlLoader) {
+    public GuiConfigService(Zeloria plugin, YamlLoader yamlLoader, ConfigCache cache) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.yamlLoader = Objects.requireNonNull(yamlLoader, "yamlLoader");
+        this.cache = Objects.requireNonNull(cache, "cache");
         reload();
     }
 
@@ -72,20 +85,26 @@ public class GuiConfigService {
     public synchronized void reload() {
         MenuLayout fallbackMenu = MenuLayout.defaults();
         InventorySettings fallbackInventory = InventorySettings.defaults();
+        ClassTreeSettings fallbackClassTree = ClassTreeSettings.defaults();
 
         FileConfiguration menuConfig = yamlLoader.getConfig(MENU_KEY);
         // サーバー側のツール枠が同梱テンプレートとずれている場合は、解析前に同梱値へ同期する。
         syncMenuToolSlots(menuConfig);
 
+        FileConfiguration inventoryConfig = yamlLoader.getConfig(INVENTORY_KEY);
+        FileConfiguration classTreeConfig = yamlLoader.getConfig(CLASS_TREE_KEY);
+
         MenuLayout parsedMenu = parseMenu(menuConfig, fallbackMenu);
-        InventorySettings parsedInventory =
-                parseInventory(yamlLoader.getConfig(INVENTORY_KEY), fallbackInventory);
+        InventorySettings parsedInventory = parseInventory(inventoryConfig, fallbackInventory);
+        ClassTreeSettings parsedClassTree = parseClassTree(classTreeConfig, fallbackClassTree);
         this.menuLayout = parsedMenu;
         this.inventorySettings = parsedInventory;
+        this.classTreeSettings = parsedClassTree;
 
         plugin.getLogger().info("GUI 設定を読み込みました (menu: "
                 + (menuConfig == null ? "default" : "custom")
-                + ", inventory: " + (yamlLoader.getConfig(INVENTORY_KEY) == null ? "default" : "custom")
+                + ", inventory: " + (inventoryConfig == null ? "default" : "custom")
+                + ", class_tree: " + (classTreeConfig == null ? "default" : "custom")
                 + ").");
     }
 
@@ -135,10 +154,10 @@ public class GuiConfigService {
         Path file = yamlLoader.getConfigFolder().resolve(MENU_KEY);
         try {
             serverConfig.save(file.toFile());
-            plugin.getLogger().info("config/gui/menu.yml の装備枠を同梱テンプレートの値へ更新しました: "
+            plugin.getLogger().info("config/GuiData/menu.yml の装備枠を同梱テンプレートの値へ更新しました: "
                     + String.join(", ", applied));
         } catch (IOException e) {
-            plugin.getLogger().warning("config/gui/menu.yml の保存に失敗しました: " + e.getMessage());
+            plugin.getLogger().warning("config/GuiData/menu.yml の保存に失敗しました: " + e.getMessage());
         }
     }
 
@@ -179,6 +198,13 @@ public class GuiConfigService {
     }
 
     /**
+     * クラスツリー GUI の設定を取得する。
+     */
+    public ClassTreeSettings getClassTree() {
+        return classTreeSettings;
+    }
+
+    /**
      * 指定名の効果音を再生する。
      * <p>
      * {@code menu.yml} の {@code sounds} を優先し、未定義の場合は
@@ -203,7 +229,7 @@ public class GuiConfigService {
      * menu.yml の解析
      * ------------------------------------------------------------------ */
 
-    private static MenuLayout parseMenu(FileConfiguration config, MenuLayout fallback) {
+    private MenuLayout parseMenu(FileConfiguration config, MenuLayout fallback) {
         if (config == null) {
             return fallback;
         }
@@ -213,17 +239,21 @@ public class GuiConfigService {
         int closeSlot = config.getInt("footer.close_slot", fallback.closeSlot());
         int playerHeadSlot = config.getInt("gui.player_head_slot", fallback.playerHeadSlot());
 
-        Map<String, String> fillers = readStringSection(config, "filler", fallback.fillers());
+        Map<String, GuiMaterial> materials =
+                readMaterials(config, "materials", fallback.materials(), MENU_KEY);
         Map<EquipSlot, Integer> equipmentSlots =
                 readMenuEquipmentSlots(config, fallback.equipmentSlots());
-        Map<Integer, String> decorations = readDecorations(config, fallback.decorations());
-        Map<String, GuiSound> sounds = readSounds(config, "sounds", fallback.sounds());
-        Map<String, GuiIcon> icons = readIcons(config, "icons", fallback.icons());
+        Map<Integer, GuiMaterial> decorations =
+                readDecorations(config, fallback.decorations(), MENU_KEY);
+        Map<String, GuiSound> sounds =
+                readSounds(config, "sounds", fallback.sounds(), MENU_KEY);
+        Map<String, GuiIcon> icons =
+                readIcons(config, "icons", fallback.icons(), MENU_KEY);
         List<MenuFeature> features = new ArrayList<>(readFeatures(config, fallback.features()));
         features.addAll(readToggleFeatures(config));
 
-        return new MenuLayout(title, rows, closeSlot, playerHeadSlot, fillers, equipmentSlots,
-                decorations, sounds, icons, features);
+        return new MenuLayout(title, rows, closeSlot, playerHeadSlot, materials,
+                equipmentSlots, decorations, sounds, icons, features);
     }
 
     /**
@@ -254,31 +284,33 @@ public class GuiConfigService {
     }
 
     /**
-     * {@code decorations} セクションを GUI スロット → Material 名へ変換する。
+     * {@code decorations} セクションを GUI スロット → マテリアルへ変換する。
      * <p>
-     * 各要素は {@code material}（Material 名）と {@code slots}（スロット番号のリスト）を
-     * 持つ。Material が未指定の場合は {@link MenuLayout#DEFAULT_DECORATION_MATERIAL} を使う。
+     * 各要素は {@code material}（Material 名）・任意の {@code custom_model_data}・
+     * {@code slots}（スロット番号のリスト）を持つ。Material が未指定・不正な場合は
+     * {@link MenuLayout#DEFAULT_DECORATION_MATERIAL} を使う。
      */
-    private static Map<Integer, String> readDecorations(
-            FileConfiguration config, Map<Integer, String> fallback) {
+    private Map<Integer, GuiMaterial> readDecorations(
+            FileConfiguration config, Map<Integer, GuiMaterial> fallback, String sourceKey) {
         ConfigurationSection section = config.getConfigurationSection("decorations");
         if (section == null) {
             return fallback;
         }
 
-        Map<Integer, String> result = new LinkedHashMap<>();
+        Material defaultMaterial = Material.GRAY_STAINED_GLASS_PANE;
+        Map<Integer, GuiMaterial> result = new LinkedHashMap<>();
         for (String key : section.getKeys(false)) {
             ConfigurationSection entry = section.getConfigurationSection(key);
             if (entry == null) {
                 continue;
             }
-            String material = entry.getString("material", MenuLayout.DEFAULT_DECORATION_MATERIAL);
-            if (material == null || material.isBlank()) {
-                material = MenuLayout.DEFAULT_DECORATION_MATERIAL;
-            }
+            Material material = cache.material(sourceKey, entry, "material", defaultMaterial);
+            GuiMaterial configured = new GuiMaterial(
+                    material == null ? defaultMaterial : material,
+                    entry.getInt("custom_model_data", 0));
             for (int slot : entry.getIntegerList("slots")) {
                 if (slot >= 0) {
-                    result.put(slot, material.trim().toUpperCase(Locale.ROOT));
+                    result.put(slot, configured);
                 }
             }
         }
@@ -334,18 +366,41 @@ public class GuiConfigService {
     }
 
     /* ------------------------------------------------------------------
+     * class_tree.yml の解析
+     * ------------------------------------------------------------------ */
+
+    private ClassTreeSettings parseClassTree(FileConfiguration config, ClassTreeSettings fallback) {
+        if (config == null) {
+            return fallback;
+        }
+
+        String title = config.getString("title", fallback.title());
+        Map<String, GuiMaterial> materials =
+                readMaterials(config, "materials", fallback.materials(), CLASS_TREE_KEY);
+        Map<String, GuiSound> sounds =
+                readSounds(config, "sounds", fallback.sounds(), CLASS_TREE_KEY);
+
+        return new ClassTreeSettings(title, materials, sounds);
+    }
+
+    /* ------------------------------------------------------------------
      * inventory.yml の解析
      * ------------------------------------------------------------------ */
 
-    private static InventorySettings parseInventory(FileConfiguration config, InventorySettings fallback) {
+    private InventorySettings parseInventory(FileConfiguration config, InventorySettings fallback) {
         if (config == null) {
             return fallback;
         }
 
         Map<EquipSlot, Integer> equipmentSlots = readEquipmentSlots(config, fallback.equipmentSlots());
-        Map<String, GuiSound> sounds = readSounds(config, INVENTORY_SOUNDS_PATH, fallback.sounds());
+        Map<String, GuiSound> sounds =
+                readSounds(config, INVENTORY_SOUNDS_PATH, fallback.sounds(), INVENTORY_KEY);
+        Map<String, GuiMaterial> materials =
+                readMaterials(config, INVENTORY_MATERIALS_PATH, fallback.materials(), INVENTORY_KEY);
+        Map<String, String> names =
+                readNames(config, INVENTORY_NAMES_PATH, fallback.names());
 
-        return new InventorySettings(equipmentSlots, sounds);
+        return new InventorySettings(equipmentSlots, sounds, materials, names);
     }
 
     private static Map<EquipSlot, Integer> readEquipmentSlots(
@@ -370,25 +425,76 @@ public class GuiConfigService {
      * 共通パーサ
      * ------------------------------------------------------------------ */
 
-    private static Map<String, String> readStringSection(
+    /**
+     * {@code materials} セクションをキー → 解決済みマテリアルへ変換する。
+     * <p>
+     * 各要素は次の 2 形式を受け付ける。
+     * <ul>
+     *   <li>{@code key: MATERIAL_NAME}（省略形式）</li>
+     *   <li>{@code key: { material: MATERIAL_NAME, custom_model_data: 123 }}（詳細形式）</li>
+     * </ul>
+     * 未定義キーは呼び出し元が渡した既定値を保持する。
+     */
+    private Map<String, GuiMaterial> readMaterials(
+            FileConfiguration config, String path, Map<String, GuiMaterial> fallback,
+            String sourceKey) {
+        ConfigurationSection section = config.getConfigurationSection(path);
+        if (section == null) {
+            return fallback;
+        }
+
+        Map<String, GuiMaterial> result = new LinkedHashMap<>(fallback);
+        for (String key : section.getKeys(false)) {
+            GuiMaterial defaultMaterial = fallback.getOrDefault(key, GuiMaterial.STONE);
+            ConfigurationSection entry = section.getConfigurationSection(key);
+            if (entry == null) {
+                // 省略形式（key: MATERIAL_NAME）。数値などは対象外。
+                if (section.isString(key)) {
+                    Material material = cache.material(
+                            sourceKey, section, key, defaultMaterial.material());
+                    result.put(key, new GuiMaterial(
+                            material == null ? defaultMaterial.material() : material,
+                            defaultMaterial.customModelData()));
+                }
+                continue;
+            }
+            Material material = cache.material(
+                    sourceKey, entry, "material", defaultMaterial.material());
+            int customModelData = entry.getInt("custom_model_data", defaultMaterial.customModelData());
+            result.put(key, new GuiMaterial(
+                    material == null ? defaultMaterial.material() : material, customModelData));
+        }
+        return result;
+    }
+
+    /**
+     * {@code names} セクションをキー → 表示テキストへ変換する。
+     * <p>
+     * 文字列以外の値は無視し、未定義キーは呼び出し元が渡した既定値を保持する。
+     */
+    private static Map<String, String> readNames(
             FileConfiguration config, String path, Map<String, String> fallback) {
         ConfigurationSection section = config.getConfigurationSection(path);
         if (section == null) {
             return fallback;
         }
 
-        Map<String, String> result = new LinkedHashMap<>();
+        Map<String, String> result = new LinkedHashMap<>(fallback);
         for (String key : section.getKeys(false)) {
+            if (!section.isString(key)) {
+                continue;
+            }
             String value = section.getString(key);
             if (value != null && !value.isBlank()) {
-                result.put(key, value.trim().toUpperCase(Locale.ROOT));
+                result.put(key, value);
             }
         }
-        return result.isEmpty() ? fallback : result;
+        return result;
     }
 
-    private static Map<String, GuiSound> readSounds(
-            FileConfiguration config, String path, Map<String, GuiSound> fallback) {
+    private Map<String, GuiSound> readSounds(
+            FileConfiguration config, String path, Map<String, GuiSound> fallback,
+            String sourceKey) {
         ConfigurationSection section = config.getConfigurationSection(path);
         if (section == null) {
             return fallback;
@@ -397,7 +503,8 @@ public class GuiConfigService {
         Map<String, GuiSound> result = new LinkedHashMap<>(fallback);
         for (String key : section.getKeys(false)) {
             GuiSound defaultSound = fallback.getOrDefault(key, GuiSound.NONE);
-            GuiSound sound = GuiSound.from(section.getConfigurationSection(key), defaultSound);
+            GuiSound sound = GuiSound.from(
+                    section.getConfigurationSection(key), defaultSound, cache, sourceKey);
             if (sound.isPresent()) {
                 result.put(key, sound);
             }
@@ -405,8 +512,9 @@ public class GuiConfigService {
         return result;
     }
 
-    private static Map<String, GuiIcon> readIcons(
-            FileConfiguration config, String path, Map<String, GuiIcon> fallback) {
+    private Map<String, GuiIcon> readIcons(
+            FileConfiguration config, String path, Map<String, GuiIcon> fallback,
+            String sourceKey) {
         ConfigurationSection section = config.getConfigurationSection(path);
         if (section == null) {
             return fallback;
@@ -414,7 +522,8 @@ public class GuiConfigService {
 
         Map<String, GuiIcon> result = new LinkedHashMap<>(fallback);
         for (String key : section.getKeys(false)) {
-            GuiIcon icon = GuiIcon.from(section.getConfigurationSection(key));
+            GuiIcon icon = GuiIcon.from(
+                    section.getConfigurationSection(key), cache, sourceKey);
             if (icon != null) {
                 result.put(key, icon);
             }

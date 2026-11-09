@@ -170,7 +170,7 @@ public class YamlLoader {
         }
 
         try (Stream<Path> stream = Files.walk(configFolder)) {
-            // ディレクトリ（gui/ や LayerData/ など）自体を YAML として読み込まないよう、
+            // ディレクトリ（GuiData/ や LayerData/ など）自体を YAML として読み込まないよう、
             // File#isFile() で「実ファイル」であることを明示的に検証する。
             List<Path> files = stream
                     .filter(Files::isRegularFile)
@@ -290,7 +290,7 @@ public class YamlLoader {
 
         String key = normalizeKey(path);
         if (isDirectory(key)) {
-            // フォルダ名（gui / LayerData など）は設定ファイルではないためロード対象外。
+            // フォルダ名（GuiData / LayerData など）は設定ファイルではないためロード対象外。
             return null;
         }
 
@@ -427,7 +427,7 @@ public class YamlLoader {
     /**
      * 指定キーが {@code config/} 配下の既存ディレクトリを指しているか判定する。
      * <p>
-     * {@code gui} や {@code LayerData} のようなフォルダ名は設定ファイルではないため、
+     * {@code GuiData} や {@code LayerData} のようなフォルダ名は設定ファイルではないため、
      * {@link #getConfig(String)} では {@code null} を返す。また、配下に YAML が 1 件も
      * 無いフォルダでも「存在するフォルダ」として扱えるよう、ファイルシステムを直接参照する。
      * 大文字小文字を区別するファイルシステムでも {@code LayerData} / {@code layerdata} の

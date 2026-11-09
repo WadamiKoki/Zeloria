@@ -1,0 +1,17 @@
+id: "portal_settings"
+name: "ポータル設定"
+
+portal:
+  cooldown_millis: 5000
+
+  warp_sound:
+    key: "block.amethyst_block.chime"
+    volume: 1.0
+    pitch: 1.0
+
+  particle:
+    type: "END_ROD"
+    view_distance: 32.0
+    ring_points: 8
+    height_offset: 0.1
+    count_per_point: 1

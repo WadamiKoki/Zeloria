@@ -56,6 +56,20 @@ public class LayerData {
      * @return レイヤーデータ
      */
     public static LayerData fromConfig(String sourceKey, FileConfiguration config) {
+        return fromConfig(sourceKey, config, null);
+    }
+
+    /**
+     * YAML 設定からレイヤーデータを生成する。
+     *
+     * @param sourceKey       キャッシュキー（例: {@code LayerData/Hub.yml}）
+     * @param config          設定
+     * @param spawnerSettings スポナーの既定値・クランプ上限（{@code null} の場合は従来の定数）
+     * @return レイヤーデータ
+     */
+    public static LayerData fromConfig(
+            String sourceKey, FileConfiguration config,
+            SpawnerSettings.Spawner spawnerSettings) {
         Objects.requireNonNull(config, "config");
 
         String fallbackId = fallbackId(sourceKey);
@@ -77,7 +91,7 @@ public class LayerData {
         }
 
         return new LayerData(sourceKey, id, name, templateId, maxInstances, shared, display, portals,
-                parseNpcs(config), parseSpawners(config));
+                parseNpcs(config), parseSpawners(config, spawnerSettings));
     }
 
     /**
@@ -101,10 +115,11 @@ public class LayerData {
      * <p>
      * 不正なエントリ（{@code mobId} が空）は読み飛ばす。
      */
-    private static List<SpawnerDefinition> parseSpawners(FileConfiguration config) {
+    private static List<SpawnerDefinition> parseSpawners(
+            FileConfiguration config, SpawnerSettings.Spawner spawnerSettings) {
         List<SpawnerDefinition> spawners = new ArrayList<>();
         for (Map<?, ?> raw : config.getMapList("spawners")) {
-            SpawnerDefinition definition = SpawnerDefinition.fromMap(raw);
+            SpawnerDefinition definition = SpawnerDefinition.fromMap(raw, spawnerSettings);
             if (definition.isValid()) {
                 spawners.add(definition);
             }

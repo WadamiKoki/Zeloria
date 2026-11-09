@@ -18,3 +18,20 @@ max_level: 100
 # クラスレベルが 1 上がるごとに付与するクラスツリーポイント。
 tree_points_per_level: 1
 
+# レベルアップ時の通知演出。
+level_up:
+  sound:
+    key: "entity.player.levelup"
+    volume: 1.0
+    pitch: 1.0
+
+  particle:
+    type: "HAPPY_VILLAGER"
+    count: 30
+    offset_x: 0.5
+    offset_y: 0.8
+    offset_z: 0.5
+    extra: 0.0
+
+  particle_y_offset: 1.0
+

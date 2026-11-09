@@ -50,7 +50,7 @@ public class MenuService {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 効果音キー（{@code gui/menu.yml} / {@code gui/inventory.yml} の {@code sounds}）。 */
+    /** 効果音キー（{@code GuiData/menu.yml} / {@code GuiData/inventory.yml} の {@code sounds}）。 */
     private static final String SOUND_OPEN = "open";
     private static final String SOUND_CLICK = "click";
     private static final String SOUND_EQUIP = "equip";
@@ -70,7 +70,7 @@ public class MenuService {
      * メニュー機能アクション名 → 実行ハンドラ。
      * <p>
      * 今後追加される各種メニュー機能は、ここへハンドラを登録するだけで
-     * {@code gui/menu.yml} の {@code features} から呼び出せる。
+     * {@code GuiData/menu.yml} の {@code features} から呼び出せる。
      */
     private final Map<String, Consumer<Player>> featureActions = new ConcurrentHashMap<>();
 
@@ -88,7 +88,7 @@ public class MenuService {
     /**
      * メニュー機能アクションを登録する。
      * <p>
-     * {@code gui/menu.yml} の {@code features.<id>.action} と同じ名前で登録すると、
+     * {@code GuiData/menu.yml} の {@code features.<id>.action} と同じ名前で登録すると、
      * 対応するボタンのクリック時にハンドラが呼ばれる。
      *
      * @param action  アクション名
@@ -202,12 +202,14 @@ public class MenuService {
         }
 
         String key = guiName.trim();
+        String sourceKey = key.startsWith("GuiData/") ? key : "GuiData/" + key;
         FileConfiguration config = null;
         YamlLoader yamlLoader = plugin.getYamlLoader();
         if (yamlLoader != null) {
-            config = yamlLoader.getConfig(key.startsWith("gui/") ? key : "gui/" + key);
+            config = yamlLoader.getConfig(sourceKey);
             if (config == null) {
-                config = yamlLoader.getConfig(key);
+                sourceKey = key;
+                config = yamlLoader.getConfig(sourceKey);
             }
         }
 
@@ -237,7 +239,7 @@ public class MenuService {
 
         SimpleGui gui;
         try {
-            gui = SimpleGui.from(config, resolvedId);
+            gui = SimpleGui.from(config, resolvedId, plugin.getConfigCache(), sourceKey);
         } catch (RuntimeException e) {
             plugin.getLogger().warning(
                     "GUI の生成に失敗しました: " + guiName + " (" + e.getMessage() + ")");

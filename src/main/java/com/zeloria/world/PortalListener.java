@@ -1,5 +1,6 @@
 package com.zeloria.world;
 
+import com.zeloria.core.EffectSettings;
 import com.zeloria.core.Zeloria;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerData;
@@ -34,28 +35,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * 転送先インスタンスが未生成の場合は {@link LayerManager#getOrCreateInstanceAsync(String)}
  * により非同期で生成し、完了後に転送する（テンプレート複製中は待機メッセージを表示）。
  * <p>
- * 転送音は全ポータル共通で {@code block.amethyst_block.chime}（volume 1.0 / pitch 1.0）に固定する。
+ * 転送音と再発動までのクールダウンは
+ * {@code SystemData/portal_settings.yml} から読み込む。
  * <p>
- * 連続発動を防ぐためプレイヤーごとにクールダウン（5 秒）を設け、
+ * 連続発動を防ぐためプレイヤーごとにクールダウンを設け、
  * クールタイム中の操作には {@code MessageData/gate.yml} のメッセージを表示する。
  * <p>
  * 転移はしゃがんだ瞬間（{@link PlayerToggleSneakEvent}）に開始し、待機 tick は設けない。
  */
 public class PortalListener implements Listener {
 
-    /** ポータル再発動までのクールダウン（ミリ秒）。 */
-    private static final long COOLDOWN_MILLIS = 5_000L;
-
     private static final String MESSAGE_FILE = "gate";
-
-    /** 全ポータル共通の転送音。 */
-    private static final String WARP_SOUND = "block.amethyst_block.chime";
-
-    /** 転送音の音量（全ポータル共通）。 */
-    private static final float WARP_SOUND_VOLUME = 1.0f;
-
-    /** 転送音のピッチ（全ポータル共通）。 */
-    private static final float WARP_SOUND_PITCH = 1.0f;
 
     private final Zeloria plugin;
 
@@ -90,7 +80,8 @@ public class PortalListener implements Listener {
 
         long now = System.currentTimeMillis();
         long last = cooldowns.getOrDefault(player.getUniqueId(), 0L);
-        long remainingMillis = COOLDOWN_MILLIS - (now - last);
+        long cooldownMillis = plugin.getPortalSettings().portal().cooldownMillis();
+        long remainingMillis = cooldownMillis - (now - last);
         if (remainingMillis > 0) {
             if (player.isOnline()) {
                 long remainingSeconds = (remainingMillis + 999L) / 1000L;
@@ -267,9 +258,10 @@ public class PortalListener implements Listener {
             }
         }
 
-        // 転送成功時は全ポータル共通の固定サウンドを再生する。
-        player.playSound(player.getLocation(), WARP_SOUND, SoundCategory.MASTER,
-                WARP_SOUND_VOLUME, WARP_SOUND_PITCH);
+        // 転送成功時は portal_settings.yml で設定した共通サウンドを再生する。
+        EffectSettings.SoundEffect warpSound = plugin.getPortalSettings().portal().warpSound();
+        player.playSound(player.getLocation(), warpSound.sound(), SoundCategory.MASTER,
+                warpSound.volume(), warpSound.pitch());
 
         messageService().actionBar(player, MESSAGE_FILE, "portal.used",
                 Map.of("layer_name", targetName));

@@ -9,22 +9,26 @@ import java.util.concurrent.ThreadLocalRandom;
  * <ol>
  *     <li>命中判定（命中率 - 回避率）</li>
  *     <li>クリティカル判定（ダメージへ {@code criticalDamage%} を加算）</li>
- *     <li>第 1 段階防御力による軽減（{@code 100 / (100 + defense1)}）</li>
+ *     <li>第 1 段階防御力による軽減（{@code c / (c + defense1)}）</li>
  *     <li>防御貫通を適用した第 2 段階防御力による軽減</li>
  * </ol>
- * 防御軽減は {@code d / (d + 100)} の曲線を使うため、防御力が高いほど
- * 1 点あたりの効果は逓減する。
+ * 防御軽減は {@code c / (c + defense)} の曲線を使うため、防御力が高いほど
+ * 1 点あたりの効果は逓減する。定数 {@code c} は
+ * {@code combat_settings.yml} の {@code defense.curve_constant} を使用する。
  * <p>
  * 最低ダメージの保証は行わない。計算結果が 0 以下の場合はそのまま返し、
  * 適用側（{@link CombatService}）が「無効（0 ダメージ）」として HP を減らさない。
  */
 public final class DamageCalculator {
 
+    /** 防御軽減曲線の既定定数（後方互換用）。 */
+    public static final double DEFAULT_CURVE_CONSTANT = 100.0;
+
     private DamageCalculator() {
     }
 
     /**
-     * ダメージを計算する。
+     * 既定の防御軽減曲線でダメージを計算する。
      *
      * @param attackPower       攻撃力
      * @param multiplier        スキル倍率（通常攻撃は 1.0）
@@ -49,6 +53,39 @@ public final class DamageCalculator {
             double defense2,
             double armorPenetration,
             boolean allowCritical) {
+        return calculate(attackPower, multiplier, criticalRate, criticalDamage,
+                accuracy, evasion, defense1, defense2, armorPenetration,
+                allowCritical, DEFAULT_CURVE_CONSTANT);
+    }
+
+    /**
+     * ダメージを計算する。
+     *
+     * @param attackPower       攻撃力
+     * @param multiplier        スキル倍率（通常攻撃は 1.0）
+     * @param criticalRate      クリティカル率（%）
+     * @param criticalDamage    クリティカルダメージ（% 加算）
+     * @param accuracy          命中率（%）
+     * @param evasion           回避率（%）
+     * @param defense1          第 1 段階の防御力
+     * @param defense2          第 2 段階の防御力
+     * @param armorPenetration  防御貫通率（0.0〜1.0。第 2 段階にのみ適用）
+     * @param allowCritical     クリティカルを許可するか
+     * @param curveConstant     防御軽減曲線の定数
+     * @return 計算結果
+     */
+    public static DamageResult calculate(
+            double attackPower,
+            double multiplier,
+            double criticalRate,
+            double criticalDamage,
+            double accuracy,
+            double evasion,
+            double defense1,
+            double defense2,
+            double armorPenetration,
+            boolean allowCritical,
+            double curveConstant) {
 
         double hitChance = clamp(accuracy, 0.0, 100.0) - clamp(evasion, 0.0, 100.0);
         if (randomPercent() >= Math.max(0.0, hitChance)) {
@@ -62,11 +99,11 @@ public final class DamageCalculator {
             damage *= 1.0 + Math.max(0.0, criticalDamage) / 100.0;
         }
 
-        damage *= reductionFactor(defense1);
+        damage *= reductionFactor(defense1, curveConstant);
 
         double penetration = clamp(armorPenetration, 0.0, 1.0);
         double effectiveDefense2 = Math.max(0.0, defense2) * (1.0 - penetration);
-        damage *= reductionFactor(effectiveDefense2);
+        damage *= reductionFactor(effectiveDefense2, curveConstant);
 
         // 最低ダメージは保証しない。0 以下のダメージは適用側で無効として扱う。
         return new DamageResult(damage, critical, false);
@@ -79,8 +116,20 @@ public final class DamageCalculator {
      * @return 軽減係数（0.0〜1.0）
      */
     public static double reductionFactor(double defense) {
+        return reductionFactor(defense, DEFAULT_CURVE_CONSTANT);
+    }
+
+    /**
+     * 防御力 1 点あたりの軽減係数を返す。
+     *
+     * @param defense       防御力
+     * @param curveConstant 軽減曲線の定数
+     * @return 軽減係数（0.0〜1.0）
+     */
+    public static double reductionFactor(double defense, double curveConstant) {
         double value = Math.max(0.0, defense);
-        return 100.0 / (100.0 + value);
+        double constant = Math.max(1.0, curveConstant);
+        return constant / (constant + value);
     }
 
     private static double randomPercent() {

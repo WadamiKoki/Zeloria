@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.ConfigCache;
 import com.zeloria.core.TextComponents;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -13,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code config/gui/*.yml} の汎用定義から生成する読み取り専用 GUI。
+ * {@code config/GuiData/*.yml} の汎用定義から生成する読み取り専用 GUI。
  * <p>
  * {@code rows} / {@code items} を持つシンプルな YAML をそのまま表示する。
  * NPC の {@code interactGui} など、コードを持たない GUI を開くために使用する。
@@ -55,6 +56,23 @@ public final class SimpleGui implements ZeloriaGuiHolder {
      * @return 生成した GUI
      */
     public static SimpleGui from(FileConfiguration config, String fallbackTitle) {
+        return from(config, fallbackTitle, null, "");
+    }
+
+    /**
+     * YAML 設定から GUI を生成する。
+     * <p>
+     * キャッシュキーの衝突を避けるため、{@code sourceKey} には設定ファイルの
+     * 相対パスを渡すこと。
+     *
+     * @param config        GUI 設定
+     * @param fallbackTitle タイトル未指定時に使用する文字列
+     * @param cache         設定キャッシュ（{@code null} の場合は都度解決）
+     * @param sourceKey     設定ファイルの識別子
+     * @return 生成した GUI
+     */
+    public static SimpleGui from(FileConfiguration config, String fallbackTitle,
+                                 ConfigCache cache, String sourceKey) {
         ConfigurationSection gui = config.getConfigurationSection("gui");
 
         String rawTitle = gui == null ? config.getString("title") : gui.getString("title");
@@ -71,14 +89,14 @@ public final class SimpleGui implements ZeloriaGuiHolder {
         rows = Math.max(1, Math.min(MAX_ROWS, rows));
 
         SimpleGui result = new SimpleGui(rows, TextComponents.mini(MINI, rawTitle));
-        result.render(config);
+        result.render(config, cache, sourceKey);
         return result;
     }
 
     /**
      * {@code items} セクションを読み込み、スロットへアイコンを配置する。
      */
-    private void render(FileConfiguration config) {
+    private void render(FileConfiguration config, ConfigCache cache, String sourceKey) {
         ConfigurationSection items = config.getConfigurationSection("items");
         if (items == null) {
             return;
@@ -97,7 +115,7 @@ public final class SimpleGui implements ZeloriaGuiHolder {
                 continue;
             }
 
-            GuiIcon icon = GuiIcon.from(item);
+            GuiIcon icon = GuiIcon.from(item, cache, sourceKey);
             if (icon == null) {
                 continue;
             }

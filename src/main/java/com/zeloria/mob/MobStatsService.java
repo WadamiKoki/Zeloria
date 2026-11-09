@@ -84,7 +84,8 @@ public final class MobStatsService {
         sanitize(entity);
         entity.getPersistentDataContainer().set(
                 mobLevelKey, PersistentDataType.INTEGER, normalizedLevel);
-        stats.put(entity.getUniqueId(), MobStats.from(data, normalizedLevel));
+        stats.put(entity.getUniqueId(), MobStats.from(
+                data, normalizedLevel, plugin.getCombatSettings().levelScaling()));
     }
 
     /**
@@ -150,7 +151,9 @@ public final class MobStatsService {
             return null;
         }
 
-        MobStats created = MobStats.from(found.get(), levelOf(living, found.get()));
+        MobStats created = MobStats.from(
+                found.get(), levelOf(living, found.get()),
+                plugin.getCombatSettings().levelScaling());
         stats.put(living.getUniqueId(), created);
         return created;
     }

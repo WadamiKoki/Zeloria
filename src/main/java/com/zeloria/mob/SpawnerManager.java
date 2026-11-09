@@ -6,6 +6,7 @@ import com.zeloria.world.CollisionManager;
 import com.zeloria.world.LayerConfigService;
 import com.zeloria.world.LayerData;
 import com.zeloria.world.SpawnerDefinition;
+import com.zeloria.world.SpawnerSettings;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -79,24 +80,6 @@ public final class SpawnerManager implements Listener {
 
     /** デバッグ用パーティクル表示の実行間隔（tick）。 */
     private static final int DEBUG_INTERVAL_TICKS = 20;
-
-    /** デバッグ用パーティクルを表示する管理者からの距離（ブロック）。 */
-    private static final double DEBUG_PARTICLE_RADIUS = 64.0;
-
-    /** デバッグ用パーティクルの表示数。 */
-    private static final int DEBUG_PARTICLE_COUNT = 2;
-
-    /** デバッグ用パーティクルをスポナー座標から上へずらす量（ブロック）。 */
-    private static final double DEBUG_PARTICLE_Y_OFFSET = 1.0;
-
-    /** 奈落と判定する Y 座標。これ以下へ落ちたモブは消滅させる。 */
-    private static final double VOID_DESPAWN_Y = -65.0;
-
-    /** 水平ズレ座標の再抽選回数。全滅した場合はその周期のスポーンを見送る。 */
-    private static final int SPAWN_ATTEMPTS = 10;
-
-    /** 複数スポナーの初回判定をずらす最大 tick 数。 */
-    private static final int MAX_STAGGER_TICKS = 200;
 
     private static final String DEBUG_PREFIX = "[SpawnerDebug] ";
 
@@ -201,7 +184,8 @@ public final class SpawnerManager implements Listener {
         }
 
         Location location = new Location(world, definition.x(), definition.y(), definition.z());
-        long offset = (long) (layer.spawners.size() * TICK_INTERVAL) % MAX_STAGGER_TICKS;
+        long offset = (long) (layer.spawners.size() * TICK_INTERVAL)
+                % spawnerSettings().maxStaggerTicks();
         layer.spawners.add(new ActiveSpawner(definition, location, tickCounter + offset));
         ensureTask();
 
@@ -285,8 +269,8 @@ public final class SpawnerManager implements Listener {
     /**
      * スポナー位置のデバッグ表示モードを切り替える。
      * <p>
-     * ON の間は {@link #renderDebugParticles()} が毎秒、管理者から 64 ブロック以内の
-     * スポナーへパーティクルを送信する。
+     * ON の間は {@link #renderDebugParticles()} が毎秒、管理者から設定された
+     * 表示距離以内のスポナーへパーティクルを送信する。
      *
      * @param player 対象の管理者
      * @return 切り替え後の状態（{@code true} で ON）
@@ -362,8 +346,8 @@ public final class SpawnerManager implements Listener {
      * デバッグ表示モードが ON の管理者へスポナー位置のパーティクルを送信する。
      * <p>
      * 現在のワールドの {@code LayerData} から {@code spawners} を取得し、
-     * 管理者から {@value #DEBUG_PARTICLE_RADIUS} ブロック以内（二乗距離で判定）の
-     * スポナー座標（Y + 1）へ {@link Particle#HAPPY_VILLAGER} を表示する。
+     * 管理者から {@code spawner_settings.yml} の {@code debug.radius} 以内
+     * （二乗距離で判定）のスポナー座標へデバッグ用パーティクルを表示する。
      * {@link Player#spawnParticle(Particle, Location, int, double, double, double, double)}
      * はそのプレイヤーのクライアントにのみパケットを送るため、他のプレイヤーには見えない。
      */
@@ -378,7 +362,8 @@ public final class SpawnerManager implements Listener {
             return;
         }
 
-        double maxDistanceSquared = DEBUG_PARTICLE_RADIUS * DEBUG_PARTICLE_RADIUS;
+        SpawnerSettings.Debug debug = spawnerSettings().debug();
+        double maxDistanceSquared = debug.radius() * debug.radius();
 
         for (UUID playerId : new ArrayList<>(debugPlayers.keySet())) {
             Player player = Bukkit.getPlayer(playerId);
@@ -396,13 +381,13 @@ public final class SpawnerManager implements Listener {
             Location playerLocation = player.getLocation();
             for (SpawnerDefinition definition : layer.get().getSpawners()) {
                 Location location = new Location(player.getWorld(),
-                        definition.x(), definition.y() + DEBUG_PARTICLE_Y_OFFSET, definition.z());
-                // sqrt を避けるため二乗距離で 64 ブロック以内か判定する。
+                        definition.x(), definition.y() + debug.yOffset(), definition.z());
+                // sqrt を避けるため二乗距離で判定する。
                 if (playerLocation.distanceSquared(location) > maxDistanceSquared) {
                     continue;
                 }
-                player.spawnParticle(Particle.HAPPY_VILLAGER, location,
-                        DEBUG_PARTICLE_COUNT, 0.3, 0.3, 0.3, 0.0);
+                player.spawnParticle(debug.particle(), location,
+                        debug.count(), debug.offset(), debug.offset(), debug.offset(), 0.0);
             }
         }
 
@@ -478,7 +463,7 @@ public final class SpawnerManager implements Listener {
         double baseZ = definition.z();
         double range = definition.spawnRange();
 
-        for (int attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
+        for (int attempt = 0; attempt < spawnerSettings().spawnAttempts(); attempt++) {
             double offsetX = range <= 0.0 ? 0.0 : random.nextDouble(-range, range);
             double offsetZ = range <= 0.0 ? 0.0 : random.nextDouble(-range, range);
             double x = clamp(baseX + offsetX, baseX - range, baseX + range);
@@ -562,7 +547,10 @@ public final class SpawnerManager implements Listener {
             return;
         }
         double scaled = Math.max(1.0,
-                data.maxHp() * MobStats.levelMultiplier(data.baseLevel(), normalizedLevel));
+                data.maxHp() * MobStats.levelMultiplier(
+                        data.baseLevel(), normalizedLevel,
+                        plugin.getCombatSettings().levelScaling().perLevel(),
+                        plugin.getCombatSettings().levelScaling().minMultiplier()));
         maxHealth.setBaseValue(scaled);
         living.setHealth(Math.min(scaled, maxHealth.getValue()));
     }
@@ -678,7 +666,7 @@ public final class SpawnerManager implements Listener {
             }
 
             Location location = living.getLocation();
-            if (location.getY() <= VOID_DESPAWN_Y
+            if (location.getY() <= spawnerSettings().voidDespawnY()
                     || location.getBlock().getType() == Material.LAVA
                     || (collisionManager != null && isInsideWall(location, collisionManager))) {
                 removeManagedMob(living);
@@ -777,6 +765,10 @@ public final class SpawnerManager implements Listener {
         }
 
         stopTaskIfIdle();
+    }
+
+    private SpawnerSettings.Spawner spawnerSettings() {
+        return plugin.getSpawnerSettings().spawner();
     }
 
     private void debug(String message) {

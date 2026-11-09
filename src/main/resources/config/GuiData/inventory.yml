@@ -1,0 +1,41 @@
+equipment:
+  slots:
+    tool_1: 19
+    tool_2: 20
+    helmet: 21
+    chestplate: 22
+    main_weapon: 25
+
+sounds:
+  open:
+    key: BLOCK_ENDER_CHEST_OPEN
+    volume: 0.8
+    pitch: 1.0
+  click:
+    key: UI_BUTTON_CLICK
+    volume: 0.7
+    pitch: 1.2
+  error:
+    key: BLOCK_NOTE_BLOCK_BASS
+    volume: 0.7
+    pitch: 0.8
+
+materials:
+  empty_weapon: BARRIER
+  empty_armor: OAK_BUTTON
+  hotbar_tool: GRAY_STAINED_GLASS_PANE
+  menu_button: BOOK
+  scroll: ARROW
+  tab_equipment: CHEST
+  tab_storage: ENDER_CHEST
+  skill_idle: BLACK_STAINED_GLASS_PANE
+
+names:
+  tool_slot: "ツールスロット"
+  free_slot: "フリースロット"
+  menu_button: "メニュー"
+  tab_equipment: "装備ストレージ"
+  tab_storage: "ストレージ"
+  tab_switch: "タブ切り替え"
+  scroll_up: "▲ 上へスクロール"
+  scroll_down: "▼ 下へスクロール"

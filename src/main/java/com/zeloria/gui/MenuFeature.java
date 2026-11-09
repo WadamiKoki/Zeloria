@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
  * {@code /menu} に配置する「メニュー機能」の定義。
  * <p>
  * 独自メニュー GUI の責務を「装備の着脱」と「各種メニュー機能呼び出しの基盤」に
- * 限定するため、個々の機能は {@code gui/menu.yml} の {@code features} セクションで
+ * 限定するため、個々の機能は {@code GuiData/menu.yml} の {@code features} セクションで
  * スロット・アイコン・アクション名を宣言する。実際の処理は {@link MenuService} へ
  * 登録されたアクションハンドラ（{@link MenuService#registerFeatureAction}）が担う。
  * <p>

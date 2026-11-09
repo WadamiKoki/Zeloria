@@ -431,7 +431,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
                 return List.of();
             }
             YamlLoader loader = plugin.getYamlLoader();
-            return loader == null ? List.of() : partial(args[1], idsOf(loader, "gui"));
+            return loader == null ? List.of() : partial(args[1], idsOf(loader, "GuiData"));
         }
 
         if (BUILD.equalsIgnoreCase(args[0])) {
@@ -596,6 +596,14 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
 
         int count = yamlLoader.loadAllConfigs();
 
+        // 必須の SystemData 設定を再読込する。ここで ConfigCache も破棄・再解決される。
+        // 欠落している場合は各サービスを更新せず、旧設定のまま動作を継続する。
+        if (!plugin.reloadSystemSettings()) {
+            send(sender, PREFIX + "<red>必須YAMLが見つからないため再読み込みを中止しました。"
+                    + "サーバー側の config/SystemData/ に配置してください。</red>");
+            return;
+        }
+
         // LayerData / SystemData / MessageData / EntityData/mob / GUI のキャッシュも最新化する。
         if (plugin.getLayerConfigService() != null) {
             plugin.getLayerConfigService().reload();
@@ -638,6 +646,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         }
         if (plugin.getClassSelectGUI() != null) {
             plugin.getClassSelectGUI().reload();
+        }
+        if (plugin.getClassTreeGUI() != null) {
+            plugin.getClassTreeGUI().reload();
         }
         if (plugin.getSpawnerManager() != null) {
             plugin.getSpawnerManager().reload();
@@ -2784,7 +2795,7 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        // 引数が 1 つでもフォルダ名（gui / gui/ / LayerData など）なら
+        // 引数が 1 つでもフォルダ名（GuiData / GuiData/ / LayerData など）なら
         // 設定ファイルとして解決せず、フォルダ配下の件数サマリーを表示する。
         if (rest.length == 1) {
             String folderKey = normalizeFolder(rest[0]);

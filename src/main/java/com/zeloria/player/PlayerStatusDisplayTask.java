@@ -2,6 +2,7 @@ package com.zeloria.player;
 
 import com.zeloria.combat.CombatActionBarTask;
 import com.zeloria.combat.CombatService;
+import com.zeloria.combat.CombatSettings;
 import com.zeloria.core.Zeloria;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -66,20 +67,11 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 頭上表示の縦位置（旧 0.15 から 0.2 ブロック上げる）。 */
-    private static final float DISPLAY_Y_OFFSET = 0.35f;
-
-    /** 頭上表示の拡大率（旧 0.5 の 1.5 倍）。 */
-    private static final float DISPLAY_SCALE = 0.75f;
-
     /** ゲージを描画する等幅フォントの開始タグ。 */
     private static final String FONT_OPEN = "<font:minecraft:uniform>";
 
     /** 等幅フォントの終了タグ。 */
     private static final String FONT_CLOSE = "</font>";
-
-    /** ゲージのマス数（HP・MP で共通）。 */
-    private static final int GAUGE_LENGTH = 20;
 
     /** ゲージの塗りつぶし文字（等幅フォントで描画する ASCII 文字）。 */
     private static final char GAUGE_FILLED = '#';
@@ -244,10 +236,11 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
         display.setGravity(false);
 
         // passenger として乗せた状態でも頭と重ならないよう、表示位置を頭上へ持ち上げる。
+        CombatSettings.StatusDisplay settings = plugin.getCombatSettings().statusDisplay();
         display.setTransformation(new Transformation(
-                new Vector3f(0.0f, DISPLAY_Y_OFFSET, 0.0f),
+                new Vector3f(0.0f, settings.yOffset(), 0.0f),
                 new Quaternionf(),
-                new Vector3f(DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE),
+                new Vector3f(settings.scale(), settings.scale(), settings.scale()),
                 new Quaternionf()));
 
         if (!player.addPassenger(display)) {
@@ -332,15 +325,16 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     }
 
     /**
-     * 割合を 20 個のブロックで表現したゲージ文字列を返す。
+     * 割合を {@code status_display.gauge_length} 個のブロックで表現したゲージ文字列を返す。
      * <p>
      * 等幅フォントで同じ幅になるよう、ASCII の {@code #} と {@code -} のみを使用する。
      */
-    private static String gauge(double ratio) {
-        int filled = (int) Math.round(ratio * GAUGE_LENGTH);
-        filled = Math.max(0, Math.min(GAUGE_LENGTH, filled));
+    private String gauge(double ratio) {
+        int length = plugin.getCombatSettings().statusDisplay().gaugeLength();
+        int filled = (int) Math.round(ratio * length);
+        filled = Math.max(0, Math.min(length, filled));
         return String.valueOf(GAUGE_FILLED).repeat(filled)
-                + String.valueOf(GAUGE_EMPTY).repeat(GAUGE_LENGTH - filled);
+                + String.valueOf(GAUGE_EMPTY).repeat(length - filled);
     }
 
     private boolean isAwaitingRespawn(Player player) {

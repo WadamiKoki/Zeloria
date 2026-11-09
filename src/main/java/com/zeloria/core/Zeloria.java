@@ -3,10 +3,8 @@ package com.zeloria.core;
 import com.zeloria.command.AdminCommand;
 import com.zeloria.command.MenuCommand;
 import com.zeloria.combat.CombatService;
+import com.zeloria.combat.CombatSettings;
 import com.zeloria.combat.DamageIndicatorService;
-import com.zeloria.core.YamlLoader;
-import com.zeloria.core.DatabaseManager;
-import com.zeloria.core.DatabaseService;
 import com.zeloria.item.EquipmentListener;
 import com.zeloria.item.EquipmentService;
 import com.zeloria.item.CustomItemCraftListener;
@@ -35,8 +33,6 @@ import com.zeloria.party.PartyManager;
 import com.zeloria.gui.SimpleGuiListener;
 import com.zeloria.skill.LevelService;
 import com.zeloria.gathering.GatheringService;
-import com.zeloria.core.LoggerService;
-import com.zeloria.core.MessageService;
 import com.zeloria.mob.MobConfigService;
 import com.zeloria.mob.MobRewardListener;
 import com.zeloria.mob.MobStatsService;
@@ -52,7 +48,6 @@ import com.zeloria.gui.ClassSelectGUI;
 import com.zeloria.combat.CombatListener;
 import com.zeloria.combat.CombatModeListener;
 import com.zeloria.combat.CombatStateListener;
-import com.zeloria.core.ListenerRegistrar;
 import com.zeloria.skill.SkillSlotListener;
 import com.zeloria.skill.ClassManager;
 import com.zeloria.skill.ClassTreeManager;
@@ -72,9 +67,12 @@ import com.zeloria.skill.SkillCooldownHotbarTask;
 import com.zeloria.skill.SkillSlotService;
 import com.zeloria.world.PortalListener;
 import com.zeloria.world.PortalParticleTask;
+import com.zeloria.world.PortalSettings;
+import com.zeloria.world.SpawnerSettings;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -108,8 +106,24 @@ public final class Zeloria extends JavaPlugin {
             "LayerData",
             "SystemData",
             "MessageData",
-            "gui"
+            "GuiData"
     );
+
+    /**
+     * 起動時に存在を確認する必須 YAML（共有設定フォルダからの相対パス）。
+     * <p>
+     * これらはコード内の既定値へフォールバックせず、未配置の場合は
+     * プラグインを無効化する。
+     */
+    private static final List<String> REQUIRED_CONFIG_FILES = List.of(
+            CombatSettings.SETTINGS_KEY,
+            PortalSettings.SETTINGS_KEY,
+            SpawnerSettings.SETTINGS_KEY
+    );
+
+    /** 必須 YAML が見つからない場合にログへ添える配置先の案内。 */
+    private static final String MISSING_CONFIG_GUIDE =
+            "サーバー側の config/SystemData/ に配置してください。";
 
     /** サーバー固有のチャンネル設定（{@code plugins/Zeloria/channel.yml}）。 */
     private ChannelConfig channelConfig;
@@ -143,6 +157,18 @@ public final class Zeloria extends JavaPlugin {
     private LayerEffectService layerEffectService;
     private GuiConfigService guiConfigService;
     private MenuService menuService;
+    /** Material / Sound / Particle の解決結果キャッシュ（リロード時に {@link ConfigCache#clear()}）。 */
+    private ConfigCache configCache;
+
+    /** {@code SystemData/combat_settings.yml} の戦闘・表示設定。 */
+    private CombatSettings combatSettings;
+
+    /** {@code SystemData/portal_settings.yml} のポータル設定。 */
+    private PortalSettings portalSettings;
+
+    /** {@code SystemData/spawner_settings.yml} のスポナー設定。 */
+    private SpawnerSettings spawnerSettings;
+
     private ItemService itemService;
     private EquipmentService equipmentService;
 
@@ -278,12 +304,21 @@ public final class Zeloria extends JavaPlugin {
         // 空の設定で動作してしまうため、ここで検出してプラグインを停止する。
         String missingPath = findMissingConfig();
         if (missingPath != null) {
-            getLogger().severe("必須YAMLが見つかりません: " + missingPath);
+            getLogger().severe("必須YAMLが見つかりません: " + missingPath
+                    + " - " + MISSING_CONFIG_GUIDE);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
         this.yamlLoader.loadAll();
+
+        // ConfigCache は Sound / Particle を含む設定より先に生成する。
+        // 各設定クラスはここで 1 回だけ YAML を解析し、毎 tick の参照では再利用する。
+        this.configCache = new ConfigCache(this);
+        if (!reloadSystemSettings()) {
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
 
         this.loggerService = new LoggerService(this);
         this.loggerService.log(LoggerService.Category.SYSTEM, "プラグインを有効化しています。");
@@ -297,7 +332,7 @@ public final class Zeloria extends JavaPlugin {
         this.mobStatsService = new MobStatsService(this);
         this.combatService = new CombatService(this);
         this.damageIndicatorService = new DamageIndicatorService(this);
-        this.guiConfigService = new GuiConfigService(this, this.yamlLoader);
+        this.guiConfigService = new GuiConfigService(this, this.yamlLoader, this.configCache);
         this.itemService = new ItemService(this, this.yamlLoader);
         this.equipmentService = new EquipmentService(this, this.itemService);
         this.virtualInventoryService = new VirtualInventoryService(this);
@@ -327,7 +362,7 @@ public final class Zeloria extends JavaPlugin {
         this.playerRepository = new PlayerRepository(this.databaseManager);
         this.playerService = new PlayerService(this, this.playerRepository);
         this.menuService = new MenuService(this);
-        this.classSelectGUI = new ClassSelectGUI(this, this.classManager);
+        this.classSelectGUI = new ClassSelectGUI(this, this.classManager, this.configCache);
         this.classTreeGUI = new ClassTreeGUI(this);
         this.deathListener = new DeathListener(this);
         registerMenuFeatures();
@@ -574,6 +609,60 @@ public final class Zeloria extends JavaPlugin {
     }
 
     /**
+     * 必須の SystemData 設定を読み直す。
+     * <p>
+     * 3 ファイルはいずれも必須であり、コード内の既定値へはフォールバックしない。
+     * 読み込めない場合は警告を出し、プラグインを安全に停止させるため
+     * {@code false} を返す。起動時と {@code /admin reload} の双方から呼ぶ。
+     *
+     * @return すべて読み込めた場合は {@code true}
+     */
+    public boolean reloadSystemSettings() {
+        if (this.yamlLoader == null) {
+            getLogger().severe("必須YAMLの再読み込みに失敗しました: YamlLoader が未初期化です。");
+            return false;
+        }
+
+        FileConfiguration combatConfig = this.yamlLoader.getConfig(CombatSettings.SETTINGS_KEY);
+        FileConfiguration portalConfig = this.yamlLoader.getConfig(PortalSettings.SETTINGS_KEY);
+        FileConfiguration spawnerConfig = this.yamlLoader.getConfig(SpawnerSettings.SETTINGS_KEY);
+
+        boolean missing = false;
+        if (combatConfig == null) {
+            getLogger().severe("必須YAMLが見つかりません: " + CombatSettings.SETTINGS_KEY
+                    + " - " + MISSING_CONFIG_GUIDE);
+            missing = true;
+        }
+        if (portalConfig == null) {
+            getLogger().severe("必須YAMLが見つかりません: " + PortalSettings.SETTINGS_KEY
+                    + " - " + MISSING_CONFIG_GUIDE);
+            missing = true;
+        }
+        if (spawnerConfig == null) {
+            getLogger().severe("必須YAMLが見つかりません: " + SpawnerSettings.SETTINGS_KEY
+                    + " - " + MISSING_CONFIG_GUIDE);
+            missing = true;
+        }
+        if (missing) {
+            return false;
+        }
+
+        // 再読み込み時は解決済み Enum を破棄し、新しいファイル内容で解決し直す。
+        if (this.configCache != null) {
+            this.configCache.clear();
+        }
+
+        CombatSettings loadedCombat = CombatSettings.fromConfig(combatConfig);
+        PortalSettings loadedPortal = PortalSettings.fromConfig(portalConfig, this.configCache);
+        SpawnerSettings loadedSpawner = SpawnerSettings.fromConfig(spawnerConfig, this.configCache);
+
+        this.combatSettings = loadedCombat;
+        this.portalSettings = loadedPortal;
+        this.spawnerSettings = loadedSpawner;
+        return true;
+    }
+
+    /**
      * 必須 YAML の配置状況を確認し、最初に不足しているパスを返す。
      * <p>
      * ディレクトリ自体が存在しない場合に加え、ディレクトリ内に YAML が 1 つも
@@ -588,6 +677,12 @@ public final class Zeloria extends JavaPlugin {
             Path path = configFolder.resolve(directory);
             if (!Files.isDirectory(path) || !containsYaml(path)) {
                 return directory;
+            }
+        }
+        for (String file : REQUIRED_CONFIG_FILES) {
+            Path path = configFolder.resolve(file);
+            if (!Files.isRegularFile(path)) {
+                return file;
             }
         }
         return null;
@@ -793,7 +888,7 @@ public final class Zeloria extends JavaPlugin {
     /**
      * メニュー GUI の機能アクションを登録する。
      * <p>
-     * {@code config/gui/menu.yml} の {@code features} で定義した
+     * {@code config/GuiData/menu.yml} の {@code features} で定義した
      * {@code action} 名とハンドラを対応付ける。現在は
      * {@code class_select}（クラス選択）と {@code class_tree}（クラスツリー）を登録し、
      * クリック時にそれぞれの GUI を開く。
@@ -963,6 +1058,42 @@ public final class Zeloria extends JavaPlugin {
      */
     public LayerEffectService getLayerEffectService() {
         return layerEffectService;
+    }
+
+    /**
+     * Material / Sound / Particle の解決結果キャッシュを取得する。
+     *
+     * @return プラグイン共通の ConfigCache（onEnable 前は null）
+     */
+    public ConfigCache getConfigCache() {
+        return configCache;
+    }
+
+    /**
+     * 戦闘・表示設定を取得する。
+     *
+     * @return {@code SystemData/combat_settings.yml} の設定
+     */
+    public CombatSettings getCombatSettings() {
+        return combatSettings;
+    }
+
+    /**
+     * ポータル設定を取得する。
+     *
+     * @return {@code SystemData/portal_settings.yml} の設定
+     */
+    public PortalSettings getPortalSettings() {
+        return portalSettings;
+    }
+
+    /**
+     * スポナー設定を取得する。
+     *
+     * @return {@code SystemData/spawner_settings.yml} の設定
+     */
+    public SpawnerSettings getSpawnerSettings() {
+        return spawnerSettings;
     }
 
     /**

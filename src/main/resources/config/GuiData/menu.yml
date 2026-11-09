@@ -6,8 +6,26 @@ gui:
   rows: 6
   # 右上に表示するプレイヤー情報ヘッド（未使用は -1）
   player_head_slot: 8
-filler:
-  equipment: "LIGHT"
+# GUI で使用するマテリアル（起動時に解決してキャッシュ）。
+# custom_model_data はリソースパックのカスタムモデルを使う場合に指定します（省略可）。
+materials:
+  decoration:
+    material: "GRAY_STAINED_GLASS_PANE"
+  empty_armor:
+    material: "BARRIER"
+  empty_tool:
+    material: "ITEM_FRAME"
+  player_head:
+    material: "PLAYER_HEAD"
+  toggle_on:
+    material: "LIME_DYE"
+  toggle_off:
+    material: "GRAY_DYE"
+  feature_fallback:
+    material: "PAPER"
+  close_fallback:
+    material: "BARRIER"
+
 equipment_slots:
   # 自由枠。tool_1 は装備エリア中央、tool_2 は上段右側に配置する。
   # ここで装備した内容がホットバー slot 6 / 7 にそのまま表示される。

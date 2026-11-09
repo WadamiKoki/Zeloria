@@ -1,5 +1,7 @@
 package com.zeloria.mob;
 
+import com.zeloria.combat.CombatSettings;
+
 /**
  * スポーン済みカスタムモブの戦闘ステータス。
  * <p>
@@ -92,13 +94,31 @@ public record MobStats(
      * @return 実行時ステータス
      */
     public static MobStats from(MobData data, int level) {
+        return from(data, level, null);
+    }
+
+    /**
+     * {@link MobData} の定義値とスポーンレベルから実行時ステータスを生成する。
+     * <p>
+     * レベル補正の係数は {@code combat_settings.yml} の {@code level_scaling} を使用する。
+     *
+     * @param data    モブ定義
+     * @param level   スポーンレベル（{@code baseLevel} との差で補正する）
+     * @param scaling レベル補正設定（{@code null} の場合は既定値）
+     * @return 実行時ステータス
+     */
+    public static MobStats from(
+            MobData data, int level, CombatSettings.LevelScaling scaling) {
         if (data == null) {
             return new MobStats("", 1.0, 0.0, 0.0, DEFAULT_ATTACK_POWER,
                     DEFAULT_CRITICAL_RATE, DEFAULT_CRITICAL_DAMAGE,
                     DEFAULT_ACCURACY, DEFAULT_EVASION);
         }
 
-        double factor = levelMultiplier(data.baseLevel(), level);
+        double factor = scaling == null
+                ? levelMultiplier(data.baseLevel(), level)
+                : levelMultiplier(data.baseLevel(), level,
+                        scaling.perLevel(), scaling.minMultiplier());
         return new MobStats(
                 data.id(),
                 (data.maxHp() > 0.0 ? data.maxHp() : 1.0) * factor,
@@ -121,8 +141,22 @@ public record MobStats(
      * @param spawnedLevel スポーン時のレベル（1 未満は 1 として扱う）
      */
     public static double levelMultiplier(int baseLevel, int spawnedLevel) {
+        return levelMultiplier(baseLevel, spawnedLevel,
+                LEVEL_SCALING_PER_LEVEL, MIN_LEVEL_MULTIPLIER);
+    }
+
+    /**
+     * スポーンレベルと基準レベルの差に応じたステータス倍率を返す。
+     *
+     * @param baseLevel     ステータス定義の基準レベル（1 未満は 1 として扱う）
+     * @param spawnedLevel  スポーン時のレベル（1 未満は 1 として扱う）
+     * @param perLevel      レベル差 1 あたりの倍率加算
+     * @param minMultiplier 倍率の下限
+     */
+    public static double levelMultiplier(
+            int baseLevel, int spawnedLevel, double perLevel, double minMultiplier) {
         int diff = Math.max(1, spawnedLevel) - Math.max(1, baseLevel);
-        return Math.max(MIN_LEVEL_MULTIPLIER, 1.0 + LEVEL_SCALING_PER_LEVEL * diff);
+        return Math.max(minMultiplier, 1.0 + perLevel * diff);
     }
 
     private static double clampPercent(double value) {

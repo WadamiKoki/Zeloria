@@ -3,8 +3,6 @@ package com.zeloria.skill;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.VirtualItem;
-import com.zeloria.skill.CooldownService;
-import com.zeloria.skill.Skill;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;

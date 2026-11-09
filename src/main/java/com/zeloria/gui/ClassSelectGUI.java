@@ -1,5 +1,6 @@
 package com.zeloria.gui;
 
+import com.zeloria.core.ConfigCache;
 import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.EquipmentService;
@@ -39,7 +40,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * {@code config/gui/class_select.yml} を読み込み、クラス選択 GUI を生成する。
+ * {@code config/GuiData/class_select.yml} を読み込み、クラス選択 GUI を生成する。
  * <p>
  * GUI のタイトル・クラスアイコンの表示名・状態テキストはすべて Adventure の
  * {@link Component} で扱い、MiniMessage を YAML から解決する。
@@ -52,7 +53,7 @@ import java.util.Set;
 public final class ClassSelectGUI implements Listener {
 
     /** GUI 設定ファイル（{@code config/} からの相対パス）。 */
-    private static final String CONFIG_PATH = "gui/class_select.yml";
+    private static final String CONFIG_PATH = "GuiData/class_select.yml";
 
     /** クラス ID を格納する PDC キー。 */
     private static final String PDC_CLASS_ID = "class_id";
@@ -77,7 +78,8 @@ public final class ClassSelectGUI implements Listener {
             new GuiSound("entity.villager.no", 0.8f, 1.0f);
 
     /** クラスアイコンの下に並べる成長率表示アイテムの既定 Material（アイテムフレーム）。 */
-    private static final Material DEFAULT_GROWTH_MATERIAL = Material.ITEM_FRAME;
+    private static final GuiMaterial DEFAULT_GROWTH_MATERIAL =
+            new GuiMaterial(Material.ITEM_FRAME, 0);
 
     private static final String DEFAULT_GROWTH_NAME =
             "<light_purple>{class}</light_purple> <gray>のレベル成長率</gray>";
@@ -90,14 +92,16 @@ public final class ClassSelectGUI implements Listener {
     private final Zeloria plugin;
     private final ClassManager classManager;
     private final NamespacedKey classIdKey;
+    private final ConfigCache cache;
 
     /** 現在のレイアウト設定（差し替え式）。 */
     private volatile Layout layout;
 
-    public ClassSelectGUI(Zeloria plugin, ClassManager classManager) {
+    public ClassSelectGUI(Zeloria plugin, ClassManager classManager, ConfigCache cache) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.classManager = Objects.requireNonNull(classManager, "classManager");
         this.classIdKey = new NamespacedKey(plugin, PDC_CLASS_ID);
+        this.cache = Objects.requireNonNull(cache, "cache");
         reload();
     }
 
@@ -149,16 +153,19 @@ public final class ClassSelectGUI implements Listener {
         }
 
         ConfigurationSection sounds = config.getConfigurationSection("sounds");
-        GuiSound openSound = GuiSound.from(section(sounds, "open"), DEFAULT_OPEN);
-        GuiSound clickSound = GuiSound.from(section(sounds, "click"), DEFAULT_CLICK);
-        GuiSound errorSound = GuiSound.from(section(sounds, "error"), DEFAULT_ERROR);
+        GuiSound openSound = GuiSound.from(
+                section(sounds, "open"), DEFAULT_OPEN, cache, CONFIG_PATH);
+        GuiSound clickSound = GuiSound.from(
+                section(sounds, "click"), DEFAULT_CLICK, cache, CONFIG_PATH);
+        GuiSound errorSound = GuiSound.from(
+                section(sounds, "error"), DEFAULT_ERROR, cache, CONFIG_PATH);
 
         ConfigurationSection status = config.getConfigurationSection("status");
         Component selectedLore = parseStatus(status, "selected", DEFAULT_SELECTED);
         Component unlockedLore = parseStatus(status, "unlocked", DEFAULT_UNLOCKED);
         Component lockedLore = parseStatus(status, "locked", DEFAULT_LOCKED);
 
-        GrowthDisplay growth = parseGrowth(config.getConfigurationSection("growth"));
+        GrowthDisplay growth = parseGrowth(config);
 
         return new Layout(title, rows, Map.copyOf(classSlots),
                 openSound, clickSound, errorSound,
@@ -184,23 +191,22 @@ public final class ClassSelectGUI implements Listener {
      * <p>
      * セクションが無い場合は既定値（アイテムフレーム＋主要ステータス）を使用する。
      */
-    private GrowthDisplay parseGrowth(ConfigurationSection section) {
+    private GrowthDisplay parseGrowth(FileConfiguration config) {
+        ConfigurationSection section = config.getConfigurationSection("growth");
         if (section == null) {
             return GrowthDisplay.defaults();
         }
 
         boolean enabled = section.getBoolean("enabled", true);
-        Material material = DEFAULT_GROWTH_MATERIAL;
-        String rawMaterial = section.getString("material");
-        if (rawMaterial != null && !rawMaterial.isBlank()) {
-            Material resolved = Material.matchMaterial(rawMaterial.trim().toUpperCase(Locale.ROOT));
-            if (resolved == null || resolved.isAir()) {
-                plugin.getLogger().warning(
-                        "成長率表示の material が不正です: " + rawMaterial + " - 既定値を使用します。");
-            } else {
-                material = resolved;
-            }
+        ConfigurationSection materialSection = config.getConfigurationSection("materials.growth");
+        if (materialSection == null) {
+            materialSection = section;
         }
+        Material material = cache.material(
+                CONFIG_PATH, materialSection, "material", DEFAULT_GROWTH_MATERIAL.material());
+        GuiMaterial growthMaterial = new GuiMaterial(
+                material == null ? DEFAULT_GROWTH_MATERIAL.material() : material,
+                materialSection.getInt("custom_model_data", 0));
 
         String name = section.getString("name", DEFAULT_GROWTH_NAME);
         String line = section.getString("line", DEFAULT_GROWTH_LINE);
@@ -221,7 +227,7 @@ public final class ClassSelectGUI implements Listener {
             stats.addAll(GrowthDisplay.DEFAULT_STATS);
         }
 
-        return new GrowthDisplay(enabled, material,
+        return new GrowthDisplay(enabled, growthMaterial,
                 name == null || name.isBlank() ? DEFAULT_GROWTH_NAME : name,
                 line == null || line.isBlank() ? DEFAULT_GROWTH_LINE : line,
                 empty == null || empty.isBlank() ? DEFAULT_GROWTH_EMPTY : empty,
@@ -262,7 +268,7 @@ public final class ClassSelectGUI implements Listener {
      * 成長率表示アイテム（アイテムフレーム）の設定。
      *
      * @param enabled  表示するか
-     * @param material 表示に使用する Material
+     * @param material 表示に使用するマテリアル
      * @param name     表示名（MiniMessage、{@code {class}} はクラス表示名に置換）
      * @param line     1 ステータス分の lore（MiniMessage、{@code {label}} / {@code {value}} を置換）
      * @param empty    成長率がすべて 0 のときの lore（MiniMessage）
@@ -270,7 +276,7 @@ public final class ClassSelectGUI implements Listener {
      */
     private record GrowthDisplay(
             boolean enabled,
-            Material material,
+            GuiMaterial material,
             String name,
             String line,
             String empty,
@@ -447,7 +453,7 @@ public final class ClassSelectGUI implements Listener {
      * {@code growth.empty} の文言を 1 行表示する。
      */
     private ItemStack createGrowthItem(ZeloriaClass definition, GrowthDisplay growth) {
-        ItemStack item = new ItemStack(growth.material());
+        ItemStack item = growth.material().createItem();
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return item;

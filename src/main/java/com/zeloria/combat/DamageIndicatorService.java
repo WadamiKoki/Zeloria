@@ -27,29 +27,15 @@ import java.util.UUID;
 /**
  * ダメージ確定時に被弾エンティティの頭上へ数値を表示するフローティングダメージテキスト。
  * <p>
- * {@link TextDisplay} を 10 tick（0.5 秒）だけ表示し、自動で削除する。
- * 負荷対策として 1 tick あたりの生成数を {@value #MAX_PER_TICK} 個に制限し、
- * 生成した表示は {@link UUID} で追跡して確実に削除する。
+ * {@link TextDisplay} を {@code SystemData/combat_settings.yml} の
+ * {@code damage_indicator.lifetime_ticks} だけ表示し、自動で削除する。
+ * 負荷対策として 1 tick あたりの生成数を {@code damage_indicator.max_per_tick}
+ * に制限し、生成した表示は {@link UUID} で追跡して確実に削除する。
  * <p>
  * 表示はメインスレッド専用。メインスレッド以外から呼ばれた場合は
  * 次の tick にメインスレッドで実行するよう予約する。
  */
 public final class DamageIndicatorService {
-
-    /** 1 tick あたりに生成するダメージインジケーターの上限。 */
-    private static final int MAX_PER_TICK = 10;
-
-    /** 表示を維持する tick 数（0.5 秒）。 */
-    private static final long LIFETIME_TICKS = 10L;
-
-    /** テキストの拡大率（以前の 4 倍）。 */
-    private static final float SCALE = 2.4f;
-
-    /** 水平方向のばらつき幅（-0.8 〜 +0.8）。 */
-    private static final double HORIZONTAL_SPREAD = 1.6;
-
-    /** エンティティ上端からの表示オフセット。 */
-    private static final double Y_OFFSET = 0.3;
 
     /** PDC のキー（zeloria:damage_indicator）。 */
     private static final String PDC_KEY = "damage_indicator";
@@ -90,14 +76,15 @@ public final class DamageIndicatorService {
             return;
         }
 
+        CombatSettings.DamageIndicator indicator = plugin.getCombatSettings().damageIndicator();
         World world = target.getWorld();
         BoundingBox box = target.getBoundingBox();
         double topY = box.getMaxY();
-        double offsetX = (Math.random() - 0.5) * HORIZONTAL_SPREAD;
-        double offsetZ = (Math.random() - 0.5) * HORIZONTAL_SPREAD;
+        double offsetX = (Math.random() - 0.5) * indicator.horizontalSpread();
+        double offsetZ = (Math.random() - 0.5) * indicator.horizontalSpread();
         Location spawnLoc = new Location(world,
                 target.getLocation().getX() + offsetX,
-                topY + Y_OFFSET,
+                topY + indicator.yOffset(),
                 target.getLocation().getZ() + offsetZ);
 
         TextDisplay display;
@@ -120,13 +107,13 @@ public final class DamageIndicatorService {
         display.setTransformation(new Transformation(
                 new Vector3f(0.0f, 0.0f, 0.0f),
                 new Quaternionf(),
-                new Vector3f(SCALE, SCALE, SCALE),
+                new Vector3f(indicator.scale(), indicator.scale(), indicator.scale()),
                 new Quaternionf()));
         display.getPersistentDataContainer().set(indicatorKey, PersistentDataType.BYTE, (byte) 1);
 
         UUID id = display.getUniqueId();
         activeDisplays.add(id);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> remove(id), LIFETIME_TICKS);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> remove(id), indicator.lifetimeTicks());
     }
 
     /**
@@ -158,7 +145,7 @@ public final class DamageIndicatorService {
     }
 
     private boolean reserveSlot() {
-        if (spawnedThisTick >= MAX_PER_TICK) {
+        if (spawnedThisTick >= plugin.getCombatSettings().damageIndicator().maxPerTick()) {
             return false;
         }
         spawnedThisTick++;

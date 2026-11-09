@@ -42,7 +42,7 @@ public class LevelService {
         if (config == null) {
             config = yamlLoader.getConfig("level_settings");
         }
-        this.settings = LevelSettings.fromConfig(config);
+        this.settings = LevelSettings.fromConfig(config, plugin.getConfigCache());
         plugin.getLogger().info(
                 "レベル設定を読み込みました (base_exp=" + settings.baseExp()
                         + ", max_level=" + settings.maxLevel()

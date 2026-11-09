@@ -50,6 +50,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * ノードの位置とアイコンは {@code config/ClassData/tree/tree.yml}（{@link TreeData}）、
  * 表示名・説明・コスト・解放条件・効果は
  * {@code config/ClassData/tree/<classId>.yml}（{@link ClassTreeData}）から取得する。
+ * 表示用マテリアル・効果音・タイトルのフォールバックは
+ * {@code config/GuiData/class_tree.yml}（{@link ClassTreeSettings}）から取得する。
  * 進行状況は {@link PlayerData} のクラス別データへ即時反映し、DB への保存は
  * 退出時の {@link PlayerService} に任せる。
  * <p>
@@ -64,9 +66,6 @@ public final class ClassTreeGUI implements Listener {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 固定ボタン列を埋める背景アイテム。 */
-    private static final Material FILLER_MATERIAL = Material.GRAY_STAINED_GLASS_PANE;
-
     /** 固定装飾として常に灰色ガラスを配置する列。 */
     private static final int FIXED_UI_COLUMN = 7;
 
@@ -79,12 +78,13 @@ public final class ClassTreeGUI implements Listener {
     /** リセット確認 GUI の「キャンセル」スロット。 */
     private static final int RESET_CONFIRM_CANCEL_SLOT = 15;
 
-    private static final GuiSound SOUND_OPEN =
-            new GuiSound("block.ender_chest.open", 0.8f, 1.2f);
-    private static final GuiSound SOUND_CLICK =
-            new GuiSound("ui.button.click", 0.6f, 1.4f);
-    private static final GuiSound SOUND_ERROR =
-            new GuiSound("entity.villager.no", 0.7f, 1.0f);
+    /** クラスツリー GUI の表示設定（{@code /admin reload} で差し替える）。 */
+    private volatile ClassTreeSettings settings = ClassTreeSettings.defaults();
+
+    /** 設定ファイルから差し替える効果音。 */
+    private volatile GuiSound soundOpen = settings.sound("open");
+    private volatile GuiSound soundClick = settings.sound("click");
+    private volatile GuiSound soundError = settings.sound("error");
 
     private final Zeloria plugin;
     private final TreeDataService treeDataService;
@@ -104,6 +104,29 @@ public final class ClassTreeGUI implements Listener {
         this.classTreeService = Objects.requireNonNull(
                 plugin.getClassTreeService(), "classTreeService");
         this.nodeIdKey = new NamespacedKey(plugin, PDC_NODE_ID);
+        reload();
+    }
+
+    /**
+     * GUI 設定を再読み込みする（{@code /admin reload} 用）。
+     * <p>
+     * {@code GuiData/class_tree.yml} のタイトル・マテリアル・効果音だけを更新する。
+     * ノードの位置や親子関係は {@code TreeDataService} / {@code ClassTreeManager} が
+     * 管理しており、ここでは触れない。
+     */
+    public void reload() {
+        GuiConfigService guiConfigService = plugin.getGuiConfigService();
+        ClassTreeSettings loaded = guiConfigService == null
+                ? ClassTreeSettings.defaults()
+                : guiConfigService.getClassTree();
+        if (loaded == null) {
+            loaded = ClassTreeSettings.defaults();
+        }
+
+        this.settings = loaded;
+        this.soundOpen = loaded.sound("open");
+        this.soundClick = loaded.sound("click");
+        this.soundError = loaded.sound("error");
     }
 
     /* ------------------------------------------------------------------
@@ -162,14 +185,14 @@ public final class ClassTreeGUI implements Listener {
 
         String classId = data.getClassData().currentClassIdOrNull();
         if (classId == null || classId.isBlank()) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>先にクラスを選択してください。</red>");
             return;
         }
 
         ClassTreeData classTree = classTreeManager.find(classId).orElse(null);
         if (classTree == null) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>このクラスのツリーは設定されていません。</red>");
             return;
         }
@@ -180,9 +203,14 @@ public final class ClassTreeGUI implements Listener {
                 0, tree.maxScrollOffset());
         scrollOffsets.put(player.getUniqueId(), offset);
 
+        ClassTreeSettings currentSettings = settings;
+        String configuredTitle = currentSettings == null ? null : currentSettings.title();
+        String fallbackTitle = configuredTitle == null || configuredTitle.isBlank()
+                ? tree.title()
+                : configuredTitle;
         Component title = classTree.title() != null
                 ? TextComponents.noItalic(classTree.title())
-                : TextComponents.mini(MINI, tree.title());
+                : TextComponents.mini(MINI, fallbackTitle);
 
         Holder holder = new Holder(this);
         Inventory inventory = Bukkit.createInventory(holder, tree.totalSlots(), title);
@@ -190,7 +218,7 @@ public final class ClassTreeGUI implements Listener {
         render(inventory, data, classId, classTree, tree, offset);
 
         player.openInventory(inventory);
-        SOUND_OPEN.play(player);
+        soundOpen.play(player);
     }
 
 
@@ -252,7 +280,8 @@ public final class ClassTreeGUI implements Listener {
     }
 
     private ItemStack createFiller() {
-        ItemStack item = new ItemStack(FILLER_MATERIAL);
+        ItemStack item = new ItemStack(
+                material("filler", GuiMaterial.GRAY_PANE).material());
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(Component.empty());
@@ -260,6 +289,14 @@ public final class ClassTreeGUI implements Listener {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    /**
+     * 設定名から表示用マテリアルを取得する。
+     */
+    private GuiMaterial material(String name, GuiMaterial fallback) {
+        ClassTreeSettings current = settings;
+        return current == null ? fallback : current.material(name, fallback);
     }
 
     /**
@@ -273,7 +310,11 @@ public final class ClassTreeGUI implements Listener {
                                      ClassTreeNode node, TreeShapeNode shape) {
         AllocationStatus status = classTreeService.status(data, classId, node.id());
 
-        ItemStack item = new ItemStack(shape.icon());
+        Material icon = shape.icon();
+        if (icon == null || icon.isAir()) {
+            icon = material("fallback", new GuiMaterial(Material.PAPER, 0)).material();
+        }
+        ItemStack item = new ItemStack(icon);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return item;
@@ -382,7 +423,9 @@ public final class ClassTreeGUI implements Listener {
     }
 
     private ItemStack createResetButton(int points, int level) {
-        return createButton(Material.BARRIER, "<red><bold>ツリーをリセット</bold></red>",
+        return createButton(
+                material("reset", new GuiMaterial(Material.BARRIER, 0)).material(),
+                "<red><bold>ツリーをリセット</bold></red>",
                 List.of(
                         "<gray>クリックで確認画面を開き、解放済みノードをすべて戻して</gray>",
                         "<gray>消費したツリーポイントを返還します。</gray>",
@@ -393,7 +436,8 @@ public final class ClassTreeGUI implements Listener {
 
     private ItemStack createScrollButton(boolean up, int offset, int maxOffset) {
         String label = up ? "上へスクロール" : "下へスクロール";
-        Material material = Material.ARROW;
+        Material scrollMaterial = material(
+                "scroll", new GuiMaterial(Material.ARROW, 0)).material();
 
         boolean enabled = up ? offset > 0 : offset < maxOffset;
         List<String> lore = new ArrayList<>();
@@ -403,14 +447,16 @@ public final class ClassTreeGUI implements Listener {
                 ? "<aqua>クリックでスクロールします。</aqua>"
                 : "<dark_gray>これ以上スクロールできません。</dark_gray>");
 
-        return createButton(material == null ? Material.PAPER : material,
+        return createButton(scrollMaterial == null ? Material.PAPER : scrollMaterial,
                 (enabled ? "<aqua>" : "<dark_gray>") + label
                         + (enabled ? "</aqua>" : "</dark_gray>"),
                 lore);
     }
 
     private ItemStack createCloseButton() {
-        return createButton(Material.COMPASS, "<red>閉じる</red>",
+        return createButton(
+                material("close", new GuiMaterial(Material.COMPASS, 0)).material(),
+                "<red>閉じる</red>",
                 List.of("<gray>クリックでメニューを閉じます。</gray>"));
     }
 
@@ -477,7 +523,7 @@ public final class ClassTreeGUI implements Listener {
 
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         if (data == null) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>プレイヤーデータが読み込まれていません。</red>");
             return;
         }
@@ -488,7 +534,7 @@ public final class ClassTreeGUI implements Listener {
                 ? null
                 : classTreeManager.find(classId).orElse(null);
         if (classId == null || classTree == null) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>クラスツリーを表示できません。</red>");
             return;
         }
@@ -502,7 +548,7 @@ public final class ClassTreeGUI implements Listener {
             return;
         }
         if (slot == tree.closeSlot()) {
-            SOUND_CLICK.play(player);
+            soundClick.play(player);
             player.closeInventory();
             return;
         }
@@ -526,7 +572,7 @@ public final class ClassTreeGUI implements Listener {
      * リセット確認 GUI を開く。
      */
     private void handleReset(Player player, PlayerData data, String classId) {
-        SOUND_CLICK.play(player);
+        soundClick.play(player);
 
         int allocated = data.getAllocatedClassNodes(classId).size();
         Holder holder = new Holder(this, HolderMode.RESET_CONFIRM);
@@ -543,14 +589,14 @@ public final class ClassTreeGUI implements Listener {
         }
 
         inventory.setItem(RESET_CONFIRM_ACCEPT_SLOT, createButton(
-                Material.RED_CONCRETE,
+                material("accept", new GuiMaterial(Material.RED_CONCRETE, 0)).material(),
                 "<red><bold>リセットする</bold></red>",
                 List.of(
                         "<gray>解放済みノード: <yellow>" + allocated + "</yellow></gray>",
                         "<gray>消費したツリーポイントをすべて返還します。</gray>",
                         "<dark_red>この操作は取り消せません。</dark_red>")));
         inventory.setItem(RESET_CONFIRM_CANCEL_SLOT, createButton(
-                Material.LIME_CONCRETE,
+                material("cancel", new GuiMaterial(Material.LIME_CONCRETE, 0)).material(),
                 "<green><bold>キャンセル</bold></green>",
                 List.of("<gray>ツリー画面に戻ります。</gray>")));
 
@@ -562,7 +608,7 @@ public final class ClassTreeGUI implements Listener {
      */
     private void handleResetConfirm(Player player, int slot) {
         if (slot == RESET_CONFIRM_CANCEL_SLOT) {
-            SOUND_CLICK.play(player);
+            soundClick.play(player);
             PlayerData data = PlayerData.getCached(player.getUniqueId());
             player.closeInventory();
             reopenTree(player, data);
@@ -574,7 +620,7 @@ public final class ClassTreeGUI implements Listener {
 
         PlayerData data = PlayerData.getCached(player.getUniqueId());
         if (data == null) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>プレイヤーデータが読み込まれていません。</red>");
             player.closeInventory();
             return;
@@ -582,14 +628,14 @@ public final class ClassTreeGUI implements Listener {
 
         String classId = data.getClassData().currentClassIdOrNull();
         if (classId == null || classId.isBlank()) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>クラスが選択されていません。</red>");
             player.closeInventory();
             return;
         }
 
         if (data.getAllocatedClassNodes(classId).isEmpty()) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<gray>リセットするノードがありません。</gray>");
             player.closeInventory();
             reopenTree(player, data);
@@ -602,7 +648,7 @@ public final class ClassTreeGUI implements Listener {
             statsService.apply(player);
         }
 
-        SOUND_CLICK.play(player);
+        soundClick.play(player);
         notify(player, "<green>ツリーをリセットしました。</green> <gray>返還: <yellow>"
                 + refund + "</yellow></gray>");
         player.closeInventory();
@@ -628,13 +674,13 @@ public final class ClassTreeGUI implements Listener {
                               int offset, int delta) {
         int next = clamp(offset + delta, 0, tree.maxScrollOffset());
         if (next == offset) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<dark_gray>これ以上スクロールできません。</dark_gray>");
             return;
         }
 
         scrollOffsets.put(player.getUniqueId(), next);
-        SOUND_CLICK.play(player);
+        soundClick.play(player);
         render(top, data, classId, classTree, tree, next);
     }
     private void handleNodeClick(Player player, Inventory top, PlayerData data,
@@ -642,7 +688,7 @@ public final class ClassTreeGUI implements Listener {
                                  int offset, String nodeId) {
         ClassTreeNode node = classTree.node(nodeId);
         if (node == null) {
-            SOUND_ERROR.play(player);
+            soundError.play(player);
             notify(player, "<red>不明なノードです。</red>");
             return;
         }
@@ -650,22 +696,22 @@ public final class ClassTreeGUI implements Listener {
         AllocationStatus status = classTreeService.status(data, classId, node.id());
         switch (status) {
             case ALLOCATED -> {
-                SOUND_CLICK.play(player);
+                soundClick.play(player);
                 notify(player, "<gray>すでに解放済みです。</gray>");
             }
             case INSUFFICIENT_POINTS -> {
-                SOUND_ERROR.play(player);
+                soundError.play(player);
                 notify(player, "<red>ツリーポイントが足りません。</red>");
             }
             case PREREQUISITE -> {
-                SOUND_ERROR.play(player);
+                soundError.play(player);
                 notify(player, "<red>前提条件を満たしていません。</red>");
             }
             case UNLOCKABLE -> {
                 AllocationResult result = classTreeService.allocate(
                         data, classId, node.id());
                 if (result == AllocationResult.SUCCESS) {
-                    SOUND_CLICK.play(player);
+                    soundClick.play(player);
                     PlayerStatsService statsService = plugin.getPlayerStatsService();
                     if (statsService != null) {
                         statsService.apply(player);
@@ -675,12 +721,12 @@ public final class ClassTreeGUI implements Listener {
                             .append(node.displayName()));
                     render(top, data, classId, classTree, tree, offset);
                 } else {
-                    SOUND_ERROR.play(player);
+                    soundError.play(player);
                     notify(player, resultMessage(result));
                 }
             }
             case UNKNOWN, NO_CLASS -> {
-                SOUND_ERROR.play(player);
+                soundError.play(player);
                 notify(player, "<red>このノードは解放できません。</red>");
             }
         }

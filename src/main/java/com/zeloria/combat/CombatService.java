@@ -56,15 +56,6 @@ public final class CombatService {
     private static final double VANILLA_MAX_HEALTH = 20.0;
 
     /**
-     * 同じモブから同一プレイヤーへのダメージ受付間隔（ミリ秒）。
-     * <p>
-     * 1 回の攻撃で {@code EntityDamageByEntityEvent} が複数回発火する環境でも
-     * 二段ヒットにならないよう、モブごとに短いクールダウンを設ける。
-     * プレイヤーの {@code noDamageTicks} には依存しない。
-     */
-    private static final long MOB_ATTACK_COOLDOWN_MILLIS = 500L;
-
-    /**
      * 被ダメージ音のサウンド ID（レジストリキー形式）。
      * <p>
      * プレイヤー・モブの区別なく、すべての被ダメージで本サウンドを共通使用する。
@@ -143,7 +134,8 @@ public final class CombatService {
                 target.defense1(),
                 target.defense2(),
                 totalArmorPenetration,
-                true);
+                true,
+                plugin.getCombatSettings().defense().curveConstant());
 
         markCombat(attacker);
         if (!result.evaded() && result.damage() > 0.0) {
@@ -172,13 +164,14 @@ public final class CombatService {
             return null;
         }
 
-        // 同じモブから同一プレイヤーへの連続ヒットを 0.5 秒間隔で遮断する。
+        // 同じモブから同一プレイヤーへの連続ヒットを設定された間隔で遮断する。
         // 2 回目以降もイベント自体は「処理済み」としてキャンセルさせるため、
         // 0 ダメージの結果を返す（フォールバックの環境ダメージへ流さない）。
         String cooldownKey = attacker.getUniqueId() + ":" + victim.getUniqueId();
         long now = System.currentTimeMillis();
+        long cooldownMillis = plugin.getCombatSettings().mobAttackCooldownMillis();
         Long lastHitAt = mobAttackCooldowns.get(cooldownKey);
-        if (lastHitAt != null && now - lastHitAt < MOB_ATTACK_COOLDOWN_MILLIS) {
+        if (lastHitAt != null && now - lastHitAt < cooldownMillis) {
             return DamageResult.NONE;
         }
         mobAttackCooldowns.put(cooldownKey, now);
@@ -194,7 +187,8 @@ public final class CombatService {
                 victimStats.getDefense1(),
                 victimStats.getDefense2(),
                 0.0,
-                true);
+                true,
+                plugin.getCombatSettings().defense().curveConstant());
 
         markCombat(victim);
         if (!result.evaded()) {
@@ -333,7 +327,8 @@ public final class CombatService {
 
         DamageResult result = DamageCalculator.calculate(
                 raw, 1.0, 0.0, 0.0, 100.0, 0.0,
-                target.defense1(), target.defense2(), 0.0, false);
+                target.defense1(), target.defense2(), 0.0, false,
+                plugin.getCombatSettings().defense().curveConstant());
 
         if (victim instanceof Player player) {
             markCombat(player);
@@ -453,8 +448,9 @@ public final class CombatService {
         if (mobAttackCooldowns.size() < 1024) {
             return;
         }
+        long cooldownMillis = plugin.getCombatSettings().mobAttackCooldownMillis();
         mobAttackCooldowns.entrySet().removeIf(
-                entry -> now - entry.getValue() > MOB_ATTACK_COOLDOWN_MILLIS * 10L);
+                entry -> now - entry.getValue() > cooldownMillis * 10L);
     }
 
     /**

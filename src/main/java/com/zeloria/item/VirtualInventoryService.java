@@ -3,6 +3,9 @@ package com.zeloria.item;
 import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.core.MessageService;
+import com.zeloria.gui.GuiConfigService;
+import com.zeloria.gui.GuiMaterial;
+import com.zeloria.gui.InventorySettings;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.player.EquipSlot;
 import com.zeloria.player.PlayerData;
@@ -136,15 +139,9 @@ public class VirtualInventoryService {
 
     /** 空きスロット表示の共通文言（斜体は無効化する）。 */
     private static final MiniMessage MINI = MiniMessage.miniMessage();
-    private static final String EMPTY_SLOT_NAME = "<!italic><gray>空きスロット</gray>";
+    private static final String DEFAULT_EMPTY_SLOT_NAME = "空きスロット";
     private static final String EMPTY_SLOT_LORE =
             "<!italic><dark_gray>装備するとここに表示されます</dark_gray>";
-
-    /** メインハンドが空のときに表示するバリア。 */
-    private static final ItemStack EMPTY_WEAPON_DISPLAY = createPlaceholder(Material.BARRIER);
-
-    /** 防具スロットが空のときに表示する木のボタン。 */
-    private static final ItemStack EMPTY_ARMOR_DISPLAY = createPlaceholder(Material.OAK_BUTTON);
 
     /**
      * 空きスロット表示用のアイテムを生成する。
@@ -152,11 +149,13 @@ public class VirtualInventoryService {
      * PDC マーカーを付与して仮想アイテムとして扱い、プレイヤーの実アイテムと
      * 区別できるようにする。
      */
-    private static ItemStack createPlaceholder(Material material) {
+    private ItemStack createPlaceholder(Material material) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(TextComponents.mini(MINI, EMPTY_SLOT_NAME));
+            meta.displayName(TextComponents.mini(MINI,
+                    "<!italic><gray>" + name("free_slot", DEFAULT_EMPTY_SLOT_NAME)
+                            + "</gray>"));
             meta.lore(List.of(TextComponents.mini(MINI, EMPTY_SLOT_LORE)));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
@@ -180,6 +179,66 @@ public class VirtualInventoryService {
 
     public VirtualInventoryService(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
+    }
+
+    /**
+     * {@code GuiData/inventory.yml} の表示用マテリアルを取得する。
+     * <p>
+     * 設定が未読み込み・未定義の場合は、従来のハードコード値と同じ
+     * {@code fallback} を返す。
+     *
+     * @param name     マテリアル名（例: {@code menu_button}）
+     * @param fallback 未定義の場合の代替値
+     * @return 解決済みマテリアル
+     */
+    private Material material(String name, Material fallback) {
+        GuiConfigService guiConfigService = plugin.getGuiConfigService();
+        InventorySettings settings = guiConfigService == null
+                ? null
+                : guiConfigService.getInventory();
+        if (settings == null) {
+            return fallback;
+        }
+
+        GuiMaterial configured = settings.material(name, new GuiMaterial(fallback, 0));
+        if (configured == null || configured.material() == null) {
+            return fallback;
+        }
+        return configured.material();
+    }
+
+    /**
+     * {@code GuiData/inventory.yml} の固定表示名を取得する。
+     * <p>
+     * 設定が未読み込み・未定義の場合は {@code fallback} を返す。
+     *
+     * @param name     表示名のキー（例: {@code menu_button}）
+     * @param fallback 未定義の場合の代替値
+     * @return 表示テキスト
+     */
+    private String name(String name, String fallback) {
+        GuiConfigService guiConfigService = plugin.getGuiConfigService();
+        InventorySettings settings = guiConfigService == null
+                ? null
+                : guiConfigService.getInventory();
+        if (settings == null) {
+            return fallback;
+        }
+        return settings.name(name, fallback);
+    }
+
+    /**
+     * メインハンドが空のときに表示するアイテムを生成する。
+     */
+    private ItemStack emptyWeaponDisplay() {
+        return createPlaceholder(material("empty_weapon", Material.BARRIER));
+    }
+
+    /**
+     * 防具スロットが空のときに表示するアイテムを生成する。
+     */
+    private ItemStack emptyArmorDisplay() {
+        return createPlaceholder(material("empty_armor", Material.OAK_BUTTON));
     }
 
     /* ------------------------------------------------------------------
@@ -382,8 +441,10 @@ public class VirtualInventoryService {
      * ドロップ・移動・拾得の対象にはならない。既に同じ表示がある場合は再生成しない。
      */
     private void applyHotbarPanels(PlayerInventory inventory, PlayerData data) {
-        applyToolSlot(inventory, TOOL_1_HOTBAR_SLOT, data.getEquipment(EquipSlot.TOOL_1));
-        applyToolSlot(inventory, TOOL_2_HOTBAR_SLOT, data.getEquipment(EquipSlot.TOOL_2));
+        applyToolSlot(inventory, TOOL_1_HOTBAR_SLOT,
+                data.getEquipment(EquipSlot.TOOL_1), "tool_slot", "ツールスロット");
+        applyToolSlot(inventory, TOOL_2_HOTBAR_SLOT,
+                data.getEquipment(EquipSlot.TOOL_2), "free_slot", "フリースロット");
 
         ItemStack menuButton = createMenuButton();
         if (!menuButton.isSimilar(inventory.getItem(MENU_BUTTON_SLOT))) {
@@ -393,8 +454,15 @@ public class VirtualInventoryService {
 
     /**
      * ホットバーのツール表示枠へ、装備中のツールまたは空きスロット表示を配置する。
+     *
+     * @param inventory    対象インベントリ
+     * @param slot         配置先スロット
+     * @param equipped     装備中のツール（未装備の場合は {@code null}）
+     * @param nameKey      未装備時プレースホルダーの表示名キー
+     * @param fallbackName 未装備時プレースホルダーの表示名フォールバック
      */
-    private void applyToolSlot(PlayerInventory inventory, int slot, ItemStack equipped) {
+    private void applyToolSlot(PlayerInventory inventory, int slot, ItemStack equipped,
+                               String nameKey, String fallbackName) {
         ItemStack current = inventory.getItem(slot);
         ItemStack display = displayOrEmpty(equipped, null);
         if (display != null) {
@@ -403,22 +471,39 @@ public class VirtualInventoryService {
             }
             return;
         }
-        if (VirtualItem.isPlaceholder(current)
-                && current.getType() == Material.GRAY_STAINED_GLASS_PANE) {
+        Material panelMaterial = material("hotbar_tool", Material.GRAY_STAINED_GLASS_PANE);
+        ItemStack placeholder = createToolPlaceholder(panelMaterial, nameKey, fallbackName);
+        if (matchesDisplay(current, placeholder)) {
             return;
         }
-        inventory.setItem(slot, VirtualItem.markPlaceholder(
-                new ItemStack(Material.GRAY_STAINED_GLASS_PANE)));
+        inventory.setItem(slot, placeholder);
+    }
+
+    /**
+     * 未装備のツール表示枠へ配置する、表示名付きガラスパネルを生成する。
+     */
+    private ItemStack createToolPlaceholder(Material panelMaterial,
+                                            String nameKey, String fallbackName) {
+        ItemStack item = new ItemStack(panelMaterial);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(TextComponents.mini(MINI,
+                    "<!italic><gray>" + name(nameKey, fallbackName) + "</gray>"));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+            item.setItemMeta(meta);
+        }
+        return VirtualItem.markPlaceholder(item);
     }
 
     /**
      * ホットバー右端に配置するメニュー本を生成する。
      */
-    private static ItemStack createMenuButton() {
-        ItemStack item = new ItemStack(Material.BOOK);
+    private ItemStack createMenuButton() {
+        ItemStack item = new ItemStack(material("menu_button", Material.BOOK));
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(TextComponents.mini(MINI, "<!italic><white>メニュー</white>"));
+            meta.displayName(TextComponents.mini(MINI,
+                    "<!italic><white>" + name("menu_button", "メニュー") + "</white>"));
             meta.lore(List.of(TextComponents.mini(MINI,
                     "<!italic><gray>クリックで装備メニューを開きます</gray>")));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
@@ -434,7 +519,10 @@ public class VirtualInventoryService {
      */
     private void applySlot(PlayerInventory inventory, int slot, ItemStack equipped) {
         ItemStack current = inventory.getItem(slot);
-        ItemStack display = displayOrEmpty(equipped, EMPTY_WEAPON_DISPLAY);
+        ItemStack emptyDisplay = equipped == null || equipped.isEmpty()
+                ? emptyWeaponDisplay()
+                : null;
+        ItemStack display = displayOrEmpty(equipped, emptyDisplay);
         if (matchesDisplay(current, display)) {
             return;
         }
@@ -448,7 +536,10 @@ public class VirtualInventoryService {
      */
     private void applyArmor(PlayerInventory inventory, EquipSlot slot, ItemStack equipped) {
         ItemStack current = armorItem(inventory, slot);
-        ItemStack display = displayOrEmpty(equipped, EMPTY_ARMOR_DISPLAY);
+        ItemStack emptyDisplay = equipped == null || equipped.isEmpty()
+                ? emptyArmorDisplay()
+                : null;
+        ItemStack display = displayOrEmpty(equipped, emptyDisplay);
         if (matchesDisplay(current, display)) {
             return;
         }
@@ -972,8 +1063,10 @@ public class VirtualInventoryService {
         }
 
         int used = entries.size();
-        inventory.setItem(SCROLL_UP_SLOT, scrollButton("up", "▲ 上へスクロール", offset, maxScroll));
-        inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down", "▼ 下へスクロール", offset, maxScroll));
+        inventory.setItem(SCROLL_UP_SLOT, scrollButton("up",
+                name("scroll_up", "▲ 上へスクロール"), offset, maxScroll));
+        inventory.setItem(SCROLL_DOWN_SLOT, scrollButton("down",
+                name("scroll_down", "▼ 下へスクロール"), offset, maxScroll));
         inventory.setItem(TAB_SWITCH_SLOT, tabButton(tab, offset, maxScroll, used));
     }
 
@@ -1091,9 +1184,9 @@ public class VirtualInventoryService {
         stack.setItemMeta(meta);
     }
 
-    private static ItemStack scrollButton(String direction, String label,
-                                          int offset, int maxScroll) {
-        ItemStack item = new ItemStack(Material.ARROW);
+    private ItemStack scrollButton(String direction, String label,
+                                   int offset, int maxScroll) {
+        ItemStack item = new ItemStack(material("scroll", Material.ARROW));
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             int page = offset / BAG_SCROLL_STEP + 1;
@@ -1110,21 +1203,31 @@ public class VirtualInventoryService {
         return VirtualItem.mark(item);
     }
 
-    private static ItemStack tabButton(VirtualInventoryTab tab, int offset, int maxScroll,
-                                       int used) {
-        Material material = tab == VirtualInventoryTab.EQUIPMENT_STORAGE
-                ? Material.CHEST
-                : Material.ENDER_CHEST;
-        ItemStack item = new ItemStack(material);
+    /**
+     * タブの表示名を {@code inventory.yml} の {@code names} から解決する。
+     */
+    private String tabName(VirtualInventoryTab tab) {
+        return switch (tab) {
+            case EQUIPMENT_STORAGE -> name("tab_equipment", tab.displayName());
+            case STORAGE -> name("tab_storage", tab.displayName());
+        };
+    }
+
+    private ItemStack tabButton(VirtualInventoryTab tab, int offset, int maxScroll,
+                                int used) {
+        Material icon = tab == VirtualInventoryTab.EQUIPMENT_STORAGE
+                ? material("tab_equipment", Material.CHEST)
+                : material("tab_storage", Material.ENDER_CHEST);
+        ItemStack item = new ItemStack(icon);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             int page = offset / BAG_SCROLL_STEP + 1;
             int maxPage = maxScroll / BAG_SCROLL_STEP + 1;
             meta.displayName(TextComponents.mini(MINI,
-                    "<!italic><white>タブ切り替え</white>"));
+                    "<!italic><white>" + name("tab_switch", "タブ切り替え") + "</white>"));
             meta.lore(List.of(
                     TextComponents.mini(MINI, "<!italic><gray>現在のタブ: <white>"
-                            + tab.displayName() + "</white></gray>"),
+                            + tabName(tab) + "</white></gray>"),
                     TextComponents.mini(MINI, "<!italic><gray>使用枠: <white>" + used
                             + "</white>/<white>" + BAG_MAX_ENTRIES + "</white></gray>"),
                     TextComponents.mini(MINI, "<!italic><gray>表示位置: <white>" + page

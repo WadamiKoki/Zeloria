@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code config/gui/menu.yml} を表す {@code /menu} GUI のレイアウト設定。
+ * {@code config/GuiData/menu.yml} を表す {@code /menu} GUI のレイアウト設定。
  * <p>
  * {@code /menu} は「装備の着脱」と「今後追加される各種メニュー機能の呼び出し」だけを
  * 受け持つ。
@@ -21,9 +21,9 @@ import java.util.Map;
  * @param rows           GUI の行数（1〜6）
  * @param closeSlot      閉じるボタンのスロット番号（未使用は {@code -1}）
  * @param playerHeadSlot プレイヤー情報ヘッドのスロット番号（未使用は {@code -1}）
- * @param fillers        背景ガラス（キー → Material 名）
+ * @param materials      GUI 内で使うマテリアル（キー → 解決済み Material）
  * @param equipmentSlots 仮想装備枠のスロット番号（装備種別 → GUI スロット）
- * @param decorations    装飾専用アイテム（GUI スロット → Material 名）
+ * @param decorations    装飾専用アイテム（GUI スロット → 解決済み Material）
  * @param sounds         効果音（キー → 効果音設定）
  * @param icons          ボタンアイコン（キー → アイコン設定）
  * @param features       メニュー機能（スロット・アイコン・アクション）
@@ -33,9 +33,9 @@ public record MenuLayout(
         int rows,
         int closeSlot,
         int playerHeadSlot,
-        Map<String, String> fillers,
+        Map<String, GuiMaterial> materials,
         Map<EquipSlot, Integer> equipmentSlots,
-        Map<Integer, String> decorations,
+        Map<Integer, GuiMaterial> decorations,
         Map<String, GuiSound> sounds,
         Map<String, GuiIcon> icons,
         List<MenuFeature> features
@@ -54,7 +54,7 @@ public record MenuLayout(
     public MenuLayout {
         title = title == null || title.isBlank() ? DEFAULT_TITLE : title;
         rows = Math.max(1, Math.min(6, rows));
-        fillers = fillers == null ? Map.of() : Map.copyOf(fillers);
+        materials = materials == null ? Map.of() : Map.copyOf(materials);
 
         EnumMap<EquipSlot, Integer> equipmentCopy = new EnumMap<>(EquipSlot.class);
         if (equipmentSlots != null) {
@@ -66,11 +66,11 @@ public record MenuLayout(
         }
         equipmentSlots = Map.copyOf(equipmentCopy);
 
-        Map<Integer, String> decorationCopy = new LinkedHashMap<>();
+        Map<Integer, GuiMaterial> decorationCopy = new LinkedHashMap<>();
         if (decorations != null) {
             decorations.forEach((slot, material) -> {
-                if (slot != null && slot >= 0 && material != null && !material.isBlank()) {
-                    decorationCopy.put(slot, material.trim().toUpperCase(java.util.Locale.ROOT));
+                if (slot != null && slot >= 0 && material != null) {
+                    decorationCopy.put(slot, material);
                 }
             });
         }
@@ -97,9 +97,11 @@ public record MenuLayout(
         equipment.put(EquipSlot.LEGGINGS, 34);
         equipment.put(EquipSlot.BOOTS, 43);
 
-        Map<Integer, String> decorations = new LinkedHashMap<>();
+        Map<Integer, GuiMaterial> decorations = new LinkedHashMap<>();
+        GuiMaterial decorationMaterial =
+                new GuiMaterial(org.bukkit.Material.GRAY_STAINED_GLASS_PANE, 0);
         for (int slot : new int[]{5, 14, 23, 32, 41, 50}) {
-            decorations.put(slot, DEFAULT_DECORATION_MATERIAL);
+            decorations.put(slot, decorationMaterial);
         }
 
         return new MenuLayout(
@@ -107,7 +109,7 @@ public record MenuLayout(
                 DEFAULT_ROWS,
                 53,
                 8,
-                Map.of("equipment", "LIGHT_BLUE_STAINED_GLASS_PANE"),
+                defaultMaterials(),
                 equipment,
                 decorations,
                 Map.of(
@@ -122,6 +124,23 @@ public record MenuLayout(
                                 "class_select", "zeloria.player")
                 )
         );
+    }
+
+    /**
+     * 既定の GUI マテリアル。YAML の {@code materials:} が無い場合に使用する。
+     */
+    public static Map<String, GuiMaterial> defaultMaterials() {
+        Map<String, GuiMaterial> values = new LinkedHashMap<>();
+        values.put("decoration",
+                new GuiMaterial(org.bukkit.Material.GRAY_STAINED_GLASS_PANE, 0));
+        values.put("empty_armor", new GuiMaterial(org.bukkit.Material.BARRIER, 0));
+        values.put("empty_tool", new GuiMaterial(org.bukkit.Material.ITEM_FRAME, 0));
+        values.put("player_head", new GuiMaterial(org.bukkit.Material.PLAYER_HEAD, 0));
+        values.put("toggle_on", new GuiMaterial(org.bukkit.Material.LIME_DYE, 0));
+        values.put("toggle_off", new GuiMaterial(org.bukkit.Material.GRAY_DYE, 0));
+        values.put("feature_fallback", new GuiMaterial(org.bukkit.Material.PAPER, 0));
+        values.put("close_fallback", new GuiMaterial(org.bukkit.Material.BARRIER, 0));
+        return Map.copyOf(values);
     }
 
     /**
@@ -152,15 +171,6 @@ public record MenuLayout(
     }
 
     /**
-     * 指定スロットの装飾専用アイテムの Material 名を取得する。
-     *
-     * @return Material 名。未定義の場合は {@code null}
-     */
-    public String decorationMaterial(int slot) {
-        return decorations.get(slot);
-    }
-
-    /**
      * 指定スロットに配置されたメニュー機能を取得する。
      *
      * @param slot GUI スロット番号
@@ -176,17 +186,6 @@ public record MenuLayout(
     }
 
     /**
-     * スロット番号をキーとした機能マップを取得する（重複時は先勝ち）。
-     */
-    public Map<Integer, MenuFeature> featuresBySlot() {
-        Map<Integer, MenuFeature> result = new LinkedHashMap<>();
-        for (MenuFeature feature : features) {
-            result.putIfAbsent(feature.slot(), feature);
-        }
-        return Map.copyOf(result);
-    }
-
-    /**
      * 指定名の効果音を取得する。
      *
      * @param name 効果音名（例: {@code click}）
@@ -197,6 +196,20 @@ public record MenuLayout(
             return GuiSound.NONE;
         }
         return sounds.getOrDefault(name, GuiSound.NONE);
+    }
+
+    /**
+     * 指定名の GUI マテリアルを取得する。
+     *
+     * @param name     マテリアル名（例: {@code empty_tool}）
+     * @param fallback 未定義の場合の代替値
+     * @return 解決済みマテリアル
+     */
+    public GuiMaterial material(String name, GuiMaterial fallback) {
+        if (name == null) {
+            return fallback;
+        }
+        return materials.getOrDefault(name, fallback);
     }
 
     /**

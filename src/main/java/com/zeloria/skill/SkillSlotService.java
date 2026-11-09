@@ -3,6 +3,9 @@ package com.zeloria.skill;
 import com.zeloria.core.TextComponents;
 import com.zeloria.core.Zeloria;
 import com.zeloria.combat.CombatModeService;
+import com.zeloria.gui.GuiConfigService;
+import com.zeloria.gui.GuiMaterial;
+import com.zeloria.gui.InventorySettings;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.skill.ClassManager;
@@ -33,7 +36,9 @@ import java.util.Optional;
  * ホットバー slot 1〜5（数字キー 2〜6）に、現在のクラスのスキルを表示する。
  * 通常レイヤーでは slot 1〜5 が常に仮想表示で埋まるため、実アイテムの退避・返却は行わない。
  * 戦闘モード ON 時はスキルアイコン、OFF 時は割り当ての無いスロットを含めて
- * 灰色ガラス板を配置する。スキル表示アイテムは
+ * 空きスロット表示を配置する。表示 Material は
+ * {@code GuiData/inventory.yml} の {@code materials.skill_idle} を使用する。
+ * スキル表示アイテムは
  * {@link VirtualItem#markSkillSlot(ItemStack)} で仮想アイテムとして扱うため、
  * ドロップ・移動・死亡時ドロップの保護対象になる。
  * <p>
@@ -55,14 +60,20 @@ public final class SkillSlotService {
     /** スキルアイコンの最大スタック数（クールダウン秒数の表示上限）。 */
     private static final int ICON_MAX_STACK = 64;
 
-    /** スキル未割り当て時に表示する黒色ガラス板（空きスキルスロット）。 */
-    private static final ItemStack IDLE_ICON = createIdleIcon();
+    /** 空きスキルスロット表示の設定キー。 */
+    private static final String IDLE_MATERIAL_KEY = "skill_idle";
+
+    /** 設定が未定義の場合に使用する空きスキルスロット表示 Material。 */
+    private static final Material DEFAULT_IDLE_MATERIAL =
+            Material.BLACK_STAINED_GLASS_PANE;
 
     /**
      * スキル未割り当て時のスキルスロット表示アイテムを生成する。
+     *
+     * @param material 表示に使用する Material
      */
-    private static ItemStack createIdleIcon() {
-        ItemStack item = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
+    private static ItemStack createIdleIcon(Material material) {
+        ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(Component.text("スキルスロット", NamedTextColor.DARK_GRAY)
@@ -80,9 +91,34 @@ public final class SkillSlotService {
     }
 
     /**
+     * {@code GuiData/inventory.yml} の {@code materials.skill_idle} を取得する。
+     * <p>
+     * 設定が未読み込み・未定義の場合は
+     * {@link #DEFAULT_IDLE_MATERIAL} を返す。
+     *
+     * @return 空きスキルスロット表示に使用する Material
+     */
+    private Material idleMaterial() {
+        GuiConfigService guiConfigService = plugin.getGuiConfigService();
+        InventorySettings settings = guiConfigService == null
+                ? null
+                : guiConfigService.getInventory();
+        if (settings == null) {
+            return DEFAULT_IDLE_MATERIAL;
+        }
+
+        GuiMaterial configured = settings.material(IDLE_MATERIAL_KEY,
+                new GuiMaterial(DEFAULT_IDLE_MATERIAL, 0));
+        if (configured == null || configured.material() == null) {
+            return DEFAULT_IDLE_MATERIAL;
+        }
+        return configured.material();
+    }
+
+    /**
      * スキルスロットの表示を開始する（表示済みの場合は内容を更新する）。
      * <p>
-     * 割り当てられていないスキルスロットには灰色ガラス板を配置し、
+     * 割り当てられていないスキルスロットには空きスロット表示を配置し、
      * スロットの見た目を統一する。
      *
      * @param player 対象プレイヤー
@@ -142,15 +178,16 @@ public final class SkillSlotService {
         }
 
         PlayerInventory inventory = player.getInventory();
+        Material idle = idleMaterial();
         for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
             int slot = FIRST_SKILL_SLOT + index;
             ItemStack current = inventory.getItem(slot);
-            if (isIdleIcon(current)) {
+            if (isIdleIcon(current, idle)) {
                 continue;
             }
             if (current == null || current.getType().isAir()
                     || VirtualItem.isVirtual(current)) {
-                inventory.setItem(slot, IDLE_ICON.clone());
+                inventory.setItem(slot, createIdleIcon(idle));
             }
         }
     }
@@ -265,7 +302,7 @@ public final class SkillSlotService {
     /**
      * プラグイン無効化時に、オンラインプレイヤーの仮想スキル表示を解除する。
      * <p>
-     * 無効化中は空きスロット表示（灰色ガラス）も配置しない。
+     * 無効化中は空きスロット表示も配置しない。
      */
     public void shutdown() {
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -275,6 +312,7 @@ public final class SkillSlotService {
 
     private void applyIcons(Player player, List<Skill> skills) {
         PlayerInventory inventory = player.getInventory();
+        Material idle = idleMaterial();
         for (int index = 0; index < SKILL_SLOT_COUNT; index++) {
             int slot = FIRST_SKILL_SLOT + index;
             ItemStack current = inventory.getItem(slot);
@@ -284,7 +322,7 @@ public final class SkillSlotService {
 
             Skill skill = index < skills.size() ? skills.get(index) : null;
             ItemStack desired = skill == null
-                    ? IDLE_ICON.clone()
+                    ? createIdleIcon(idle)
                     : createIcon(skill, slot);
             if (current != null && !current.getType().isAir()) {
                 // isSimilar は個数を比較しないが、クールダウン表示の個数を
@@ -325,11 +363,15 @@ public final class SkillSlotService {
     }
 
     /**
-     * アイテムが戦闘モード OFF 時用の灰色ガラス板か判定する。
+     * アイテムが空きスキルスロット表示か判定する。
+     *
+     * @param item     判定対象
+     * @param material 空きスキルスロット表示に使用する Material
+     * @return 空きスキルスロット表示の場合は {@code true}
      */
-    private static boolean isIdleIcon(ItemStack item) {
+    private static boolean isIdleIcon(ItemStack item, Material material) {
         return item != null
-                && item.getType() == Material.GRAY_STAINED_GLASS_PANE
+                && item.getType() == material
                 && VirtualItem.isPlaceholder(item);
     }
 

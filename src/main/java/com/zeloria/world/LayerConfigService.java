@@ -55,6 +55,11 @@ public class LayerConfigService {
         byId.clear();
         byTemplate.clear();
 
+        SpawnerSettings spawnerSettings = plugin.getSpawnerSettings();
+        SpawnerSettings.Spawner spawnerDefaults = spawnerSettings == null
+                ? null
+                : spawnerSettings.spawner();
+
         for (String key : yamlLoader.getKeys()) {
             if (!key.startsWith(KEY_PREFIX)) {
                 continue;
@@ -67,7 +72,7 @@ public class LayerConfigService {
 
             LayerData data;
             try {
-                data = LayerData.fromConfig(key, config);
+                data = LayerData.fromConfig(key, config, spawnerDefaults);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "LayerData の解析に失敗しました: " + key + " (" + e.getMessage() + ")");

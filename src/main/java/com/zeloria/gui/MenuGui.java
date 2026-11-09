@@ -45,9 +45,6 @@ public final class MenuGui implements ZeloriaGuiHolder {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** 機能アイコンのフォールバック Material。 */
-    private static final Material FEATURE_FALLBACK_MATERIAL = Material.PAPER;
-
     /** 自分のレベルアップ通知を切り替えるメニューアクション。 */
     public static final String ACTION_CHAT_LOG_SELF = "chat_log_self";
 
@@ -72,8 +69,8 @@ public final class MenuGui implements ZeloriaGuiHolder {
      * メニュー GUI を生成する。
      *
      * @param player   対象プレイヤー
-     * @param layout   {@code gui/menu.yml} のレイアウト設定（装備枠・装飾枠の位置を参照）
-     * @param settings {@code gui/inventory.yml} の設定（menu.yml に装備枠定義が無い場合の既定値）
+     * @param layout   {@code GuiData/menu.yml} のレイアウト設定（装備枠・装飾枠の位置を参照）
+     * @param settings {@code GuiData/inventory.yml} の設定（menu.yml に装備枠定義が無い場合の既定値）
      * @param levelService 必要経験値の表示に使用するレベルサービス
      * @param gatheringService 採取レベルの表示に使用するギャザリングサービス
      * @param classManager クラス一覧の取得に使用するクラスマネージャー
@@ -166,14 +163,14 @@ public final class MenuGui implements ZeloriaGuiHolder {
      * 表示専用で、クリックしても何も起きない（{@link MenuService} 側で無視する）。
      */
     private void renderDecorations() {
-        for (Map.Entry<Integer, String> entry : layout.decorations().entrySet()) {
+        for (Map.Entry<Integer, GuiMaterial> entry : layout.decorations().entrySet()) {
             int guiSlot = entry.getKey();
             if (!isValidSlot(guiSlot)) {
                 continue;
             }
-            Material material = matchMaterial(entry.getValue());
-            inventory.setItem(guiSlot, new ItemStack(
-                    material == null ? Material.LIGHT : material));
+            GuiMaterial material = entry.getValue();
+            GuiMaterial fallback = layout.material("decoration", GuiMaterial.GRAY_PANE);
+            inventory.setItem(guiSlot, (material == null ? fallback : material).createItem());
         }
     }
 
@@ -219,7 +216,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
 
             GuiIcon icon = layout.icon(feature.icon());
             ItemStack item = icon == null
-                    ? simpleItem(FEATURE_FALLBACK_MATERIAL,
+                    ? simpleItem(layout.material("feature_fallback", GuiMaterial.STONE),
                     "<!italic><white>" + feature.id() + "</white>")
                     : icon.createItem(Map.of("id", feature.id(), "action", feature.action()));
             inventory.setItem(guiSlot, item);
@@ -241,7 +238,11 @@ public final class MenuGui implements ZeloriaGuiHolder {
 
         PlayerSettings settings = data.getSettings();
         boolean enabled = self ? settings.chatLogSelf() : settings.chatLogOthers();
-        ItemStack item = new ItemStack(enabled ? Material.LIME_DYE : Material.GRAY_DYE);
+        GuiMaterial toggleMaterial = layout.material(
+                enabled ? "toggle_on" : "toggle_off",
+                enabled ? new GuiMaterial(Material.LIME_DYE, 0)
+                        : new GuiMaterial(Material.GRAY_DYE, 0));
+        ItemStack item = toggleMaterial.createItem();
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             String title = self ? "自分のレベルアップログ" : "他人のレベルアップログ";
@@ -285,7 +286,8 @@ public final class MenuGui implements ZeloriaGuiHolder {
                 : "<white>" + formatLong(classExp) + "</white>/<white>"
                         + formatLong(requiredExp) + "</white>";
 
-        ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+        ItemStack item = layout.material("player_head",
+                new GuiMaterial(Material.PLAYER_HEAD, 0)).createItem();
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             if (meta instanceof SkullMeta skullMeta) {
@@ -401,7 +403,8 @@ public final class MenuGui implements ZeloriaGuiHolder {
      */
     private void renderCloseButton() {
         setIfValid(layout.closeSlot(), icon("close", Map.of(),
-                Material.BARRIER, "<!italic><red>閉じる</red>"));
+                layout.material("close_fallback", new GuiMaterial(Material.BARRIER, 0)),
+                "<!italic><red>閉じる</red>"));
     }
 
     /* ------------------------------------------------------------------
@@ -413,7 +416,10 @@ public final class MenuGui implements ZeloriaGuiHolder {
      */
     private ItemStack createEmptySlotItem(EquipSlot slot) {
         boolean toolSlot = slot != null && slot.isToolSlot();
-        ItemStack item = new ItemStack(toolSlot ? Material.ITEM_FRAME : Material.BARRIER);
+        GuiMaterial emptyMaterial = toolSlot
+                ? layout.material("empty_tool", new GuiMaterial(Material.ITEM_FRAME, 0))
+                : layout.material("empty_armor", new GuiMaterial(Material.BARRIER, 0));
+        ItemStack item = emptyMaterial.createItem();
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(toolSlot
@@ -454,7 +460,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
      * 設定されたアイコンを生成する。未定義の場合は代替アイテムを返す。
      */
     private ItemStack icon(String key, Map<String, String> placeholders,
-                           Material fallbackMaterial, String fallbackName) {
+                           GuiMaterial fallbackMaterial, String fallbackName) {
         GuiIcon icon = layout.icon(key);
         if (icon != null) {
             return icon.createItem(placeholders);
@@ -462,19 +468,8 @@ public final class MenuGui implements ZeloriaGuiHolder {
         return simpleItem(fallbackMaterial, fallbackName);
     }
 
-    /**
-     * Material 名を解決する。不正な名前・アイテム以外の場合は {@code null} を返す。
-     */
-    private static Material matchMaterial(String name) {
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        Material material = Material.matchMaterial(name.trim());
-        return material == null || !material.isItem() ? null : material;
-    }
-
-    private ItemStack simpleItem(Material material, String displayName) {
-        ItemStack stack = new ItemStack(material == null ? Material.STONE : material);
+    private ItemStack simpleItem(GuiMaterial material, String displayName) {
+        ItemStack stack = (material == null ? GuiMaterial.STONE : material).createItem();
         ItemMeta meta = stack.getItemMeta();
         if (meta != null) {
             meta.displayName(TextComponents.mini(MINI, displayName));

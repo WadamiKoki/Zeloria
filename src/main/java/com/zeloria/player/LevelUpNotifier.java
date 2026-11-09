@@ -1,15 +1,17 @@
 package com.zeloria.player;
 
+import com.zeloria.core.EffectSettings;
 import com.zeloria.core.Zeloria;
 import com.zeloria.gathering.GatheringType;
 import com.zeloria.skill.ClassManager;
+import com.zeloria.skill.LevelService;
+import com.zeloria.skill.LevelSettings;
 import com.zeloria.world.LayerManager;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
-import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 
 /**
@@ -20,12 +22,11 @@ import org.bukkit.entity.Player;
  * 他プレイヤーへの通知は {@link PlayerSettings#chatLogOthers()} で制御する。
  * これらのトグルは<b>チャットメッセージのみ</b>を制御し、パーティクルと効果音は
  * トグルの状態に関わらず常に発生させる。
- * 効果音はレジストリキー（{@code entity.player.levelup}）で再生する。
+ * 効果音とパーティクルは {@code SystemData/level_settings.yml} の
+ * {@code level_up} セクションから読み込む。
  * 通知範囲は同じレイヤーインスタンス内に限定し、別レイヤーのプレイヤーには送らない。
  */
 public final class LevelUpNotifier {
-
-    private static final Key LEVEL_UP_SOUND = Key.key("entity.player.levelup");
 
     private LevelUpNotifier() {
     }
@@ -72,6 +73,13 @@ public final class LevelUpNotifier {
             return;
         }
 
+        LevelSettings.LevelUpSettings levelUp = levelUpSettings(plugin);
+        EffectSettings.SoundEffect sound = levelUp.sound();
+        Key soundKey = sound.sound() == null
+                ? Key.key(sound.key())
+                : Key.key(sound.sound().getKey().getNamespace(),
+                        sound.sound().getKey().getKey());
+
         // チャットのみトグルで制御する。パーティクルと効果音は常に発生させる。
         boolean selfEnabled = data.getSettings().chatLogSelf();
         if (selfEnabled && source.isOnline()) {
@@ -79,7 +87,7 @@ public final class LevelUpNotifier {
         }
         if (source.isOnline()) {
             source.playSound(Sound.sound(
-                    LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
+                    soundKey, Sound.Source.PLAYER, sound.volume(), sound.pitch()));
         }
 
         for (Player recipient : Bukkit.getOnlinePlayers()) {
@@ -96,15 +104,26 @@ public final class LevelUpNotifier {
             }
             // 他人用トグルはチャットのみを制御し、効果音は常に再生する。
             recipient.playSound(Sound.sound(
-                    LEVEL_UP_SOUND, Sound.Source.PLAYER, 1.0f, 1.0f));
+                    soundKey, Sound.Source.PLAYER, sound.volume(), sound.pitch()));
         }
 
         // 自分用トグルの状態に関わらず、レベルアップのパーティクルは常に表示する。
         if (source.isOnline()) {
-            source.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
-                    source.getLocation().add(0.0, 1.0, 0.0),
-                    30, 0.5, 0.8, 0.5, 0.0);
+            EffectSettings.ParticleEffect particle = levelUp.particle();
+            source.getWorld().spawnParticle(particle.particle(),
+                    source.getLocation().add(0.0, levelUp.particleYOffset(), 0.0),
+                    particle.count(),
+                    particle.offsetX(), particle.offsetY(), particle.offsetZ(),
+                    particle.extra());
         }
+    }
+
+    private static LevelSettings.LevelUpSettings levelUpSettings(Zeloria plugin) {
+        LevelService levelService = plugin.getLevelService();
+        if (levelService == null) {
+            return LevelSettings.LevelUpSettings.DEFAULT;
+        }
+        return levelService.getSettings().levelUp();
     }
 
     private static PlayerSettings settingsOf(Player player) {
