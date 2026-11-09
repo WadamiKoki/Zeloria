@@ -95,6 +95,11 @@ public final class PlayerStatsService {
         refreshClassStats(data);
 
         PlayerStats stats = data.getStats();
+        // 初回参加（DB 新規作成）時は既定値の現在 MP が 0 のため、クラス基礎値の
+        // 反映後に HP / MP を最大値へ揃える。既存プレイヤーは DB の値を維持する。
+        if (data.consumeNewPlayer()) {
+            stats.restoreVitals();
+        }
         // 死亡状態で保存されたデータ（HP 0）を読み込んだ場合、バニラ側で生存していれば
         // 上限まで回復させる。死亡中・独自死亡の待機中（スペクテイター）には干渉しない。
         if (!player.isDead() && !isAwaitingRespawn(player) && stats.getCurrentHealth() <= 0.0) {

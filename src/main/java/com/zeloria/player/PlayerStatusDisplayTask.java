@@ -67,17 +67,44 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
 
-    /** ゲージを描画する等幅フォントの開始タグ。 */
-    private static final String FONT_OPEN = "<font:minecraft:uniform>";
+    /** ゲージを描画するバニラ標準フォントの開始タグ。 */
+    private static final String FONT_OPEN = "<font:minecraft:default>";
 
-    /** 等幅フォントの終了タグ。 */
+    /** 標準フォントの終了タグ。 */
     private static final String FONT_CLOSE = "</font>";
 
-    /** ゲージの塗りつぶし文字（等幅フォントで描画する ASCII 文字）。 */
-    private static final char GAUGE_FILLED = '#';
+    /**
+     * ゲージ 1 マス分のブロック文字（U+2588 FULL BLOCK）。
+     * <p>
+     * バニラ標準フォント（{@code minecraft:default}）に含まれる四角いブロックで、
+     * 満タン部分・空き部分の両方に使用する。色だけを変えて塗り分ける。
+     */
+    private static final char GAUGE_BLOCK = '█';
 
-    /** ゲージの残り文字（等幅フォントで描画する ASCII 文字）。 */
-    private static final char GAUGE_EMPTY = '-';
+    /** ゲージの既定マス数（設定が不正な場合のフォールバック）。 */
+    private static final int DEFAULT_GAUGE_LENGTH = 20;
+
+    /** HP の満タン部分が緑になる割合の下限。 */
+    private static final double HP_GREEN_THRESHOLD = 0.75;
+
+    /** HP の満タン部分が黄になる割合の下限。 */
+    private static final double HP_YELLOW_THRESHOLD = 0.50;
+
+    /** HP の満タン部分が橙になる割合の下限（これ未満は赤）。 */
+    private static final double HP_ORANGE_THRESHOLD = 0.25;
+
+    /**
+     * HP の橙のカラーコード。
+     * <p>
+     * MiniMessage の名前付き色には橙が無いため 16 進カラーを使用する。
+     */
+    private static final String HP_ORANGE_COLOR = "#FFA500";
+
+    /** MP の満タン部分の色（青）。 */
+    private static final String MP_COLOR = "#00BFFF";
+
+    /** ゲージの空き部分の色（灰色）。 */
+    private static final String GAUGE_EMPTY_COLOR = "dark_gray";
 
     private final Zeloria plugin;
 
@@ -302,16 +329,21 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
      * ステータスから表示用の MiniMessage を組み立てる。
      * <p>
      * 1 行目が HP、2 行目が MP。数値は表示せず、ゲージのみを表示する。
-     * 等幅フォント（{@code minecraft:uniform}）を使用し、どちらの行も
-     * 同じ文字数の ASCII ゲージで構成することで、HP バーと MP バーの
-     * 表示幅を完全に揃える。
+     * バニラ標準フォント（{@code minecraft:default}）と四角いブロック文字
+     * （{@code █}）を隙間なく並べて描画する。満タン部分と空き部分は
+     * スペースを挟まず、色の切り替わりだけで表現する。どちらの行も常に
+     * 同じマス数（満タン＋空き＝20 マス）のため、HP / MP の増減で表示幅は変化しない。
      */
     private Component format(PlayerStats stats) {
-        String hpGauge = gauge(ratio(stats.getCurrentHealth(), stats.getMaxHealth()));
-        String mpGauge = gauge(ratio(stats.getCurrentMana(), stats.getMaxMana()));
+        double hpRatio = ratio(stats.getCurrentHealth(), stats.getMaxHealth());
+        double mpRatio = ratio(stats.getCurrentMana(), stats.getMaxMana());
 
-        String hpLine = FONT_OPEN + "<red>HP " + hpGauge + "</red>" + FONT_CLOSE;
-        String mpLine = FONT_OPEN + "<aqua>MP " + mpGauge + "</aqua>" + FONT_CLOSE;
+        String hpLine = FONT_OPEN + "<gray>HP [</gray>"
+                + gauge(hpRatio, hpColor(hpRatio))
+                + "<gray>]</gray>" + FONT_CLOSE;
+        String mpLine = FONT_OPEN + "<gray>MP [</gray>"
+                + gauge(mpRatio, MP_COLOR)
+                + "<gray>]</gray>" + FONT_CLOSE;
 
         return MINI.deserialize(hpLine + "\n" + mpLine);
     }
@@ -325,16 +357,59 @@ public class PlayerStatusDisplayTask extends BukkitRunnable implements Listener 
     }
 
     /**
-     * 割合を {@code status_display.gauge_length} 個のブロックで表現したゲージ文字列を返す。
+     * 割合を {@code status_display.gauge_length} マス（既定 20 マス）のゲージへ変換する。
      * <p>
-     * 等幅フォントで同じ幅になるよう、ASCII の {@code #} と {@code -} のみを使用する。
+     * 満タン部分と空き部分の両方を {@code █} で隙間なく描画し、色だけで塗り分ける。
+     * 満タン部分と空き部分の境界にもスペースは入れない。マス数は HP / MP の値に
+     * 関係なく常に一定のため、増減しても表示幅は変化しない。
+     *
+     * @param ratio       0.0〜1.0 の割合
+     * @param filledColor 満タン部分のカラー（MiniMessage 形式。例: {@code green},
+     *                    {@code #00BFFF}）
+     * @return MiniMessage 形式のゲージ文字列
      */
-    private String gauge(double ratio) {
+    private String gauge(double ratio, String filledColor) {
         int length = plugin.getCombatSettings().statusDisplay().gaugeLength();
+        if (length <= 0) {
+            length = DEFAULT_GAUGE_LENGTH;
+        }
         int filled = (int) Math.round(ratio * length);
         filled = Math.max(0, Math.min(length, filled));
-        return String.valueOf(GAUGE_FILLED).repeat(filled)
-                + String.valueOf(GAUGE_EMPTY).repeat(length - filled);
+
+        return blockRun(filledColor, filled) + blockRun(GAUGE_EMPTY_COLOR, length - filled);
+    }
+
+    /**
+     * 指定した色で {@code █} を指定マス数分、隙間なく並べた MiniMessage の断片を返す。
+     *
+     * @param color MiniMessage 形式のカラー（例: {@code green}, {@code #00BFFF}）
+     * @param count マス数（0 以下の場合は空文字）
+     * @return 色付けされたゲージ断片
+     */
+    private static String blockRun(String color, int count) {
+        if (count <= 0) {
+            return "";
+        }
+        return "<color:" + color + ">" + String.valueOf(GAUGE_BLOCK).repeat(count) + "</color>";
+    }
+
+    /**
+     * HP 残量に応じた満タン部分の色を返す（緑 → 黄 → 橙 → 赤）。
+     *
+     * @param ratio 0.0〜1.0 の HP 割合
+     * @return MiniMessage 形式のカラー
+     */
+    private static String hpColor(double ratio) {
+        if (ratio >= HP_GREEN_THRESHOLD) {
+            return "green";
+        }
+        if (ratio >= HP_YELLOW_THRESHOLD) {
+            return "yellow";
+        }
+        if (ratio >= HP_ORANGE_THRESHOLD) {
+            return HP_ORANGE_COLOR;
+        }
+        return "red";
     }
 
     private boolean isAwaitingRespawn(Player player) {

@@ -177,6 +177,13 @@ public class PlayerStats {
      */
     public synchronized void restoreVitals() {
         this.currentHealth = getMaxHealth();
+        restoreMana();
+    }
+
+    /**
+     * 現在 MP を最大 MP まで回復する（クラス変更時などに使用）。
+     */
+    public synchronized void restoreMana() {
         this.currentMana = getMaxMana();
     }
 

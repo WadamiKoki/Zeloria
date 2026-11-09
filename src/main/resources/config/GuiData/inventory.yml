@@ -8,15 +8,15 @@ equipment:
 
 sounds:
   open:
-    key: BLOCK_ENDER_CHEST_OPEN
+    key: "block.ender_chest.open"
     volume: 0.8
     pitch: 1.0
   click:
-    key: UI_BUTTON_CLICK
+    key: "ui.button.click"
     volume: 0.7
     pitch: 1.2
   error:
-    key: BLOCK_NOTE_BLOCK_BASS
+    key: "block.note_block.bass"
     volume: 0.7
     pitch: 0.8
 

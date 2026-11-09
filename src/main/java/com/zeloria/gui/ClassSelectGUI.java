@@ -606,6 +606,8 @@ public final class ClassSelectGUI implements Listener {
             case SELECTED -> {
                 current.clickSound().play(player);
                 // クラス変更後の基礎ステータス（baseStats × レベル成長率）を即時反映する。
+                // 現在 HP / MP は変更しない（初回参加時のみ PlayerStatsService#apply 側で
+                // 最大値へ揃える）。
                 PlayerStatsService statsService = plugin.getPlayerStatsService();
                 if (statsService != null) {
                     statsService.apply(player, data);

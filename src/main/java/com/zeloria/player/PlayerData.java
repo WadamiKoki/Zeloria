@@ -59,6 +59,16 @@ public class PlayerData {
     /** RPG ステータス（HP / MP・攻撃力・クリティカル・リジェネなど）。 */
     private final PlayerStats stats = new PlayerStats();
 
+    /**
+     * DB に新規作成された直後のプレイヤーかどうか（<b>永続化しない</b>）。
+     * <p>
+     * 初回参加時は DB 既定値の現在 MP が 0 のため、クラス基礎値の反映後に
+     * HP / MP を最大値へ揃える必要がある。
+     * {@code PlayerStatsService#apply(org.bukkit.entity.Player, PlayerData)} が
+     * {@link #consumeNewPlayer()} で一度だけ参照する。
+     */
+    private volatile boolean newPlayer;
+
     /** 装備中アイテム（防具 4 部位 + メイン武器 + 自由枠 2 枠）。 */
     private final Map<EquipSlot, ItemStack> equippedItems = new EnumMap<>(EquipSlot.class);
 
@@ -729,6 +739,29 @@ public class PlayerData {
      */
     public PlayerStats getStats() {
         return stats;
+    }
+
+    /**
+     * 初回参加（DB 新規作成）のプレイヤーとしてマークする。
+     * <p>
+     * フラグは永続化せず、ログイン時の {@code PlayerStatsService#apply} が
+     * HP / MP を最大値へ揃えるために一度だけ使用する。
+     */
+    public void markNewPlayer() {
+        this.newPlayer = true;
+    }
+
+    /**
+     * 初回参加フラグを取得し、クリアする。
+     * <p>
+     * HP / MP の初期化が二重に実行されないよう、参照と同時にフラグを下ろす。
+     *
+     * @return 初回参加（DB 新規作成）の場合は {@code true}
+     */
+    public synchronized boolean consumeNewPlayer() {
+        boolean value = newPlayer;
+        newPlayer = false;
+        return value;
     }
 
     /**

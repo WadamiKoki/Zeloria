@@ -117,7 +117,7 @@ public class PlayerService {
             }
 
             return repository.load(uuid, playerName)
-                    .thenApply(snapshot -> fromSnapshot(snapshot))
+                    .thenApply(result -> fromSnapshot(result.snapshot(), result.created()))
                     .thenApply(data -> {
                         PlayerData.cache(data);
                         loadedPlayers.add(uuid);
@@ -182,17 +182,27 @@ public class PlayerService {
 
     /**
      * スナップショットから {@link PlayerData} を復元する。
+     *
+     * @param snapshot  読み込んだスナップショット
+     * @param newPlayer DB に新規作成された（初回参加の）プレイヤーの場合は {@code true}
      */
-    private PlayerData fromSnapshot(PlayerSnapshot snapshot) {
+    private PlayerData fromSnapshot(PlayerSnapshot snapshot, boolean newPlayer) {
         PlayerData data = applyClassDefaults(PlayerData.fromSnapshot(snapshot));
         // 初回参加（DB 既定値）や旧データでクラス未選択の場合のみ Vanguard を設定する。
         applyDefaultClass(data);
+        if (newPlayer) {
+            // 初回参加時は DB 既定値の現在 MP が 0 のため、ログイン時のステータス反映後
+            // （PlayerStatsService#apply）に HP / MP を最大値へ揃える。
+            data.markNewPlayer();
+        }
         return data;
     }
 
     private PlayerData createDefault(UUID uuid, String name) {
         PlayerData data = applyClassDefaults(new PlayerData(uuid, name));
         applyDefaultClass(data);
+        // DB 読み込みに失敗した場合も新規データとして HP / MP を最大値から開始する。
+        data.markNewPlayer();
         return data;
     }
 

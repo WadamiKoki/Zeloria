@@ -22,6 +22,15 @@ import java.util.concurrent.CompletionException;
  */
 public class PlayerRepository {
 
+    /**
+     * 読み込み結果。
+     *
+     * @param snapshot 読み込んだスナップショット
+     * @param created  DB に新規レコードを作成した場合は {@code true}（初回参加）
+     */
+    public record LoadResult(PlayerSnapshot snapshot, boolean created) {
+    }
+
     private static final String TABLE_NAME = DatabaseManager.PLAYERS_TABLE;
 
     /** 取得・保存対象のカラム（{@code last_updated} は DB 側で自動更新する）。 */
@@ -133,9 +142,9 @@ public class PlayerRepository {
      *
      * @param uuid プレイヤー UUID
      * @param name プレイヤー名（新規作成時の初期値）
-     * @return 読み込んだスナップショット
+     * @return 読み込んだスナップショットと、新規作成かどうかの判定
      */
-    public CompletableFuture<PlayerSnapshot> load(UUID uuid, String name) {
+    public CompletableFuture<LoadResult> load(UUID uuid, String name) {
         Objects.requireNonNull(uuid, "uuid");
         String playerName = name == null ? "" : name;
 
@@ -144,12 +153,12 @@ public class PlayerRepository {
                     try (Connection connection = databaseManager.getConnection()) {
                         PlayerSnapshot existing = findById(connection, uuid);
                         if (existing != null) {
-                            return existing;
+                            return new LoadResult(existing, false);
                         }
 
                         PlayerSnapshot created = PlayerSnapshot.defaults(uuid, playerName);
                         insert(connection, created);
-                        return created;
+                        return new LoadResult(created, true);
                     } catch (SQLException e) {
                         throw new CompletionException(
                                 "プレイヤーデータの読み込みに失敗しました: " + uuid, e);
