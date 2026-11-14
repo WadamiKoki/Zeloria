@@ -343,14 +343,14 @@ public final class ClassTreeGUI implements Listener {
             if (!lore.isEmpty()) {
                 lore.add(Component.empty());
             }
-            lore.add(MINI.deserialize("<gray>効果</gray>"));
+            lore.add(TextComponents.mini(MINI, "<gray>効果</gray>"));
             lore.addAll(node.effectLore());
         }
 
         lore.add(Component.empty());
-        lore.add(MINI.deserialize(
+        lore.add(TextComponents.mini(MINI,
                 "<gray>必要ポイント: <yellow>" + node.cost() + "</yellow></gray>"));
-        lore.add(MINI.deserialize(
+        lore.add(TextComponents.mini(MINI,
                 "<gray>残りポイント: <yellow>" + points + "</yellow></gray>"));
         lore.add(Component.empty());
         appendStatusLore(lore, data, classId, classTree, node, status);
@@ -370,19 +370,20 @@ public final class ClassTreeGUI implements Listener {
                                   ClassTreeData classTree, ClassTreeNode node,
                                   AllocationStatus status) {
         switch (status) {
-            case ALLOCATED -> lore.add(MINI.deserialize("<green>✔ 解放済み</green>"));
-            case UNLOCKABLE -> lore.add(MINI.deserialize(
+            case ALLOCATED -> lore.add(TextComponents.mini(MINI, "<green>✔ 解放済み</green>"));
+            case UNLOCKABLE -> lore.add(TextComponents.mini(MINI,
                     "<yellow>▶ クリックで解放</yellow>"));
-            case INSUFFICIENT_POINTS -> lore.add(MINI.deserialize(
+            case INSUFFICIENT_POINTS -> lore.add(TextComponents.mini(MINI,
                     "<red>✖ ツリーポイントが足りません</red>"));
             case PREREQUISITE -> {
-                lore.add(MINI.deserialize("<red>✖ 前提条件を満たしていません</red>"));
+                lore.add(TextComponents.mini(MINI,
+                        "<red>✖ 前提条件を満たしていません</red>"));
 
                 List<String> missing = classTreeService.missingRequirements(
                         data, classId, node);
                 if (!missing.isEmpty()) {
                     lore.add(Component.empty()
-                            .append(MINI.deserialize("<gray>必要: </gray>"))
+                            .append(TextComponents.mini(MINI, "<gray>必要: </gray>"))
                             .append(joinNodeNames(missing, classTree)));
                 }
 
@@ -390,12 +391,13 @@ public final class ClassTreeGUI implements Listener {
                         data, classId, node);
                 if (!missingAny.isEmpty()) {
                     lore.add(Component.empty()
-                            .append(MINI.deserialize("<gray>いずれか: </gray>"))
+                            .append(TextComponents.mini(MINI, "<gray>いずれか: </gray>"))
                             .append(joinNodeNames(missingAny, classTree)));
                 }
             }
-            case UNKNOWN -> lore.add(MINI.deserialize("<dark_red>不明なノード</dark_red>"));
-            case NO_CLASS -> lore.add(MINI.deserialize(
+            case UNKNOWN -> lore.add(TextComponents.mini(MINI,
+                    "<dark_red>不明なノード</dark_red>"));
+            case NO_CLASS -> lore.add(TextComponents.mini(MINI,
                     "<red>クラスが選択されていません</red>"));
         }
     }
@@ -404,7 +406,7 @@ public final class ClassTreeGUI implements Listener {
         Component result = Component.empty();
         for (int i = 0; i < ids.size(); i++) {
             if (i > 0) {
-                result = result.append(MINI.deserialize("<gray>, </gray>"));
+                result = result.append(TextComponents.mini(MINI, "<gray>, </gray>"));
             }
             ClassTreeNode node = classTree.node(ids.get(i));
             result = result.append(node == null
@@ -416,9 +418,9 @@ public final class ClassTreeGUI implements Listener {
 
     private static Component statusPrefix(AllocationStatus status) {
         return switch (status) {
-            case ALLOCATED -> MINI.deserialize("<green>✔ </green>");
-            case UNLOCKABLE -> MINI.deserialize("<yellow>▶ </yellow>");
-            default -> MINI.deserialize("<dark_gray>✖ </dark_gray>");
+            case ALLOCATED -> TextComponents.mini(MINI, "<green>✔ </green>");
+            case UNLOCKABLE -> TextComponents.mini(MINI, "<yellow>▶ </yellow>");
+            default -> TextComponents.mini(MINI, "<dark_gray>✖ </dark_gray>");
         };
     }
 

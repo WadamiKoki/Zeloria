@@ -217,7 +217,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
             GuiIcon icon = layout.icon(feature.icon());
             ItemStack item = icon == null
                     ? simpleItem(layout.material("feature_fallback", GuiMaterial.STONE),
-                    "<!italic><white>" + feature.id() + "</white>")
+                    "<white>" + feature.id() + "</white>")
                     : icon.createItem(Map.of("id", feature.id(), "action", feature.action()));
             inventory.setItem(guiSlot, item);
         }
@@ -246,15 +246,16 @@ public final class MenuGui implements ZeloriaGuiHolder {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             String title = self ? "自分のレベルアップログ" : "他人のレベルアップログ";
-            meta.displayName(MINI.deserialize("<!italic><white>" + title + ": "
+            meta.displayName(TextComponents.mini(MINI, "<white>" + title + ": "
                     + (enabled ? "<green>ON</green>" : "<red>OFF</red>")));
-            meta.lore(List.of(
-                    MINI.deserialize("<!italic><gray>クリックで ON / OFF を切り替えます</gray>"),
-                    MINI.deserialize("<!italic><dark_gray>"
+            meta.lore(TextComponents.noItalic(List.of(
+                    TextComponents.mini(MINI,
+                            "<gray>クリックで ON / OFF を切り替えます</gray>"),
+                    TextComponents.mini(MINI, "<dark_gray>"
                             + (self
                             ? "自分のレベルアップ通知をチャットに表示します"
                             : "他のプレイヤーのレベルアップ通知をチャットに表示します")
-                            + "</dark_gray>")));
+                            + "</dark_gray>"))));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
@@ -293,36 +294,38 @@ public final class MenuGui implements ZeloriaGuiHolder {
             if (meta instanceof SkullMeta skullMeta) {
                 skullMeta.setOwningPlayer(player);
             }
-            meta.displayName(MINI.deserialize("<!italic><white>" + player.getName() + "</white>"));
+            meta.displayName(TextComponents.mini(MINI,
+                    "<white>" + player.getName() + "</white>"));
             List<Component> lore = new ArrayList<>();
-            lore.add(MINI.deserialize("<!italic><gray>レベル: <yellow>" + classLevel
+            lore.add(TextComponents.mini(MINI, "<gray>レベル: <yellow>" + classLevel
                     + "</yellow> <dark_gray>|</dark_gray> <gray>EXP: "
                     + expDisplay + "</gray>"));
             Component currentClass = classManager == null
-                    ? MINI.deserialize("<!italic><gray>未選択</gray>")
+                    ? TextComponents.mini(MINI, "<gray>未選択</gray>")
                     : classManager.current(data.getClassData())
-                            .map(definition -> definition.displayName())
-                            .orElseGet(() -> MINI.deserialize("<!italic><gray>未選択</gray>"));
-            lore.add(MINI.deserialize("<!italic><gray>クラス: </gray>").append(currentClass));
-            lore.add(MINI.deserialize("<!italic><gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
+                            .map(definition -> TextComponents.noItalic(definition.displayName()))
+                            .orElseGet(() -> TextComponents.mini(MINI, "<gray>未選択</gray>"));
+            lore.add(TextComponents.mini(MINI, "<gray>クラス: </gray>").append(currentClass));
+            lore.add(TextComponents.mini(MINI,
+                    "<gray>HP: <red>" + formatDouble(stats.getCurrentHealth())
                     + "</red>/<white>" + formatDouble(stats.getMaxHealth()) + "</white>"
                     + " <dark_gray>|</dark_gray> <gray>MP: <blue>"
                     + formatDouble(stats.getCurrentMana()) + "</blue>/<white>"
                     + formatDouble(stats.getMaxMana()) + "</white></gray>"));
-            lore.add(MINI.deserialize("<!italic><gray>攻撃力: <white>"
+            lore.add(TextComponents.mini(MINI, "<gray>攻撃力: <white>"
                     + formatDouble(stats.getAttackPower()) + "</white> <dark_gray>|</dark_gray> "
                     + "<gray>防御力: <white>" + formatDouble(stats.getDefense2()) + "</white></gray>"));
-            lore.add(MINI.deserialize("<!italic><gray>会心率: <white>"
+            lore.add(TextComponents.mini(MINI, "<gray>会心率: <white>"
                     + formatDouble(stats.getCriticalRate()) + "%</white> <dark_gray>|</dark_gray> "
                     + "<gray>回避率: <white>" + formatDouble(stats.getEvasion())
                     + "%</white></gray>"));
-            lore.add(MINI.deserialize("<!italic><gray>移動速度: <white>"
+            lore.add(TextComponents.mini(MINI, "<gray>移動速度: <white>"
                     + formatDouble(stats.getMoveSpeed()
                     / PlayerStats.DEFAULT_MOVE_SPEED * 100.0)
                     + "%</white></gray>"));
             appendClassLore(lore, data);
             appendGatheringLore(lore, data);
-            meta.lore(lore);
+            meta.lore(TextComponents.noItalic(lore));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
@@ -361,7 +364,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
                         : Math.round((double) data.getClassExp(classId) / (double) required * 100.0);
                 progress = Math.max(0L, Math.min(100L, percent)) + "%";
             }
-            lore.add(MINI.deserialize("<!italic><gray>"
+            lore.add(TextComponents.mini(MINI, "<gray>"
                     + classId.toLowerCase(Locale.ROOT)
                     + " </gray><yellow>Lv." + level + "</yellow> <white>("
                     + progress + ")</white>"));
@@ -384,7 +387,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
             String progress = level >= gatheringService.maxLevel(type)
                     ? "MAX"
                     : gatheringService.getProgressPercent(data, type) + "%";
-            lore.add(MINI.deserialize("<!italic><gray>" + type.displayName()
+            lore.add(TextComponents.mini(MINI, "<gray>" + type.displayName()
                     + "</gray> <yellow>Lv." + level + "</yellow> <white>("
                     + progress + ")</white>"));
         }
@@ -404,7 +407,7 @@ public final class MenuGui implements ZeloriaGuiHolder {
     private void renderCloseButton() {
         setIfValid(layout.closeSlot(), icon("close", Map.of(),
                 layout.material("close_fallback", new GuiMaterial(Material.BARRIER, 0)),
-                "<!italic><red>閉じる</red>"));
+                "<red>閉じる</red>"));
     }
 
     /* ------------------------------------------------------------------
@@ -423,11 +426,11 @@ public final class MenuGui implements ZeloriaGuiHolder {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(toolSlot
-                    ? MINI.deserialize("<!italic><gray>" + slot.getDisplayName() + "</gray>")
-                    : MINI.deserialize("<!italic><gray>空きスロット</gray>"));
-            meta.lore(List.of(MINI.deserialize(toolSlot
-                    ? "<!italic><dark_gray>採取ツールを装着できます</dark_gray>"
-                    : "<!italic><dark_gray>装備するとここに表示されます</dark_gray>")));
+                    ? TextComponents.mini(MINI, "<gray>" + slot.getDisplayName() + "</gray>")
+                    : TextComponents.mini(MINI, "<gray>空きスロット</gray>"));
+            meta.lore(TextComponents.noItalic(List.of(TextComponents.mini(MINI, toolSlot
+                    ? "<dark_gray>採取ツールを装着できます</dark_gray>"
+                    : "<dark_gray>装備するとここに表示されます</dark_gray>"))));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }
@@ -448,10 +451,12 @@ public final class MenuGui implements ZeloriaGuiHolder {
         if (meta.lore() != null) {
             lore.addAll(meta.lore());
         }
-        lore.add(MINI.deserialize("<!italic><dark_gray>" + slot.getDisplayName() + "</dark_gray>"));
-        lore.add(MINI.deserialize("<!italic><gray>クリックで外す</gray>"));
-        lore.add(MINI.deserialize("<!italic><dark_gray>カーソル装備でクリックすると入れ替え</dark_gray>"));
-        meta.lore(lore);
+        lore.add(TextComponents.mini(MINI,
+                "<dark_gray>" + slot.getDisplayName() + "</dark_gray>"));
+        lore.add(TextComponents.mini(MINI, "<gray>クリックで外す</gray>"));
+        lore.add(TextComponents.mini(MINI,
+                "<dark_gray>カーソル装備でクリックすると入れ替え</dark_gray>"));
+        meta.lore(TextComponents.noItalic(lore));
         display.setItemMeta(meta);
         return display;
     }

@@ -15,7 +15,6 @@ import com.zeloria.player.PlayerData;
 import com.zeloria.player.ZeloriaClass;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -76,8 +75,8 @@ public final class SkillSlotService {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(Component.text("スキルスロット", NamedTextColor.DARK_GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
+            meta.displayName(TextComponents.noItalic(
+                    Component.text("スキルスロット", NamedTextColor.DARK_GRAY)));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
             item.setItemMeta(meta);
         }

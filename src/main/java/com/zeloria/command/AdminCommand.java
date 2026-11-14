@@ -626,6 +626,9 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
         if (plugin.getGuiConfigService() != null) {
             plugin.getGuiConfigService().reload();
         }
+        if (plugin.getShopConfigService() != null) {
+            plugin.getShopConfigService().reload();
+        }
         if (plugin.getClassManager() != null) {
             plugin.getClassManager().reload();
         }
@@ -1878,7 +1881,26 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        giveItem(player, found.get(), amount);
+        ItemData definition = found.get();
+        // 武器・防具・採取ツールは仮想インベントリ上でも 1 枠 1 個のため、
+        // 素材以外（または素材でも重ねられないマテリアル）は付与数を 1 に制限する。
+        boolean singleStack = definition.category() == ItemCategory.ARMOR
+                || definition.category() == ItemCategory.WEAPON
+                || definition.category() == ItemCategory.TOOL
+                || definition.material().getMaxStackSize() <= 1;
+        if (singleStack && amount > 1L) {
+            long requested = amount;
+            amount = 1L;
+            send(player, message("give.single_only", Map.of(
+                            "item_id", definition.id(),
+                            "item_name", MINI.stripTags(definition.name()),
+                            "requested", String.valueOf(requested)),
+                    "<yellow>{item_name}</yellow> <gray>は重ねられないため、付与数を</gray> "
+                            + "<white>1</white> <gray>に制限しました。</gray> "
+                            + "<dark_gray>(指定: {requested})</dark_gray>"));
+        }
+
+        giveItem(player, definition, amount);
     }
 
     /**

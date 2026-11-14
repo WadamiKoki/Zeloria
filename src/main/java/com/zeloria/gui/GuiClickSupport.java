@@ -2,6 +2,7 @@ package com.zeloria.gui;
 
 import org.bukkit.event.Event;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 
 /**
  * GUI 操作用の共通ヘルパー。
@@ -20,6 +21,16 @@ public final class GuiClickSupport {
      * @param event 対象のクリックイベント
      */
     public static void deny(InventoryClickEvent event) {
+        event.setCancelled(true);
+        event.setResult(Event.Result.DENY);
+    }
+
+    /**
+     * ドラッグイベントをキャンセルし、結果も {@link Event.Result#DENY} に固定する。
+     *
+     * @param event 対象のドラッグイベント
+     */
+    public static void deny(InventoryDragEvent event) {
         event.setCancelled(true);
         event.setResult(Event.Result.DENY);
     }

@@ -237,6 +237,18 @@ public class MenuService {
             return true;
         }
 
+        if ("shop_buy".equals(normalized)) {
+            // 買取屋の売却 GUI は仮想ストレージの予約管理を行う専用実装を使う。
+            ShopBuyGui.open(plugin, player, config);
+            return true;
+        }
+
+        if ("shop_sell".equals(normalized)) {
+            // 販売屋の購入 GUI は ShopData の商品を仮想表示する専用実装を使う。
+            ShopSellGui.open(plugin, player);
+            return true;
+        }
+
         SimpleGui gui;
         try {
             gui = SimpleGui.from(config, resolvedId, plugin.getConfigCache(), sourceKey);

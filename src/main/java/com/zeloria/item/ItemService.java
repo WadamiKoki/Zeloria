@@ -526,8 +526,6 @@ public class ItemService {
             bonus = weapon.statBonus();
             lines.add("<gray>武器種別: <white>" + String.join(", ", weapon.weaponTypes()) + "</white></gray>");
             lines.add("<gray>攻撃速度: <white>" + seconds(weapon.attackSpeedTicks()) + "秒</white></gray>");
-            addStat(lines, "攻撃範囲", weapon.attackRange());
-            addStat(lines, "攻撃角度", weapon.attackAngle());
         } else if (data instanceof ToolData tool) {
             lore.add(Component.empty());
             lore.add(component("<red>必要採取レベル: <white>" + tool.requiredLevel() + "</white></red>"));

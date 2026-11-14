@@ -8,9 +8,9 @@ sell_price: 0
 weaponTypes: [STAFF]
 # 武器種共通の通常攻撃パラメータ
 attackSpeedTicks: 32
-attackRange: 8.0
+attackRange: 10.0
 attackAngle: 0.0
-attackParticle: FLAME
+attackParticle: DUST
 attackSound: "entity.blaze.shoot"
 requiredLevel: 0
 stats:

@@ -31,6 +31,9 @@ import com.zeloria.npc.NpcManager;
 import com.zeloria.party.PartyCommand;
 import com.zeloria.party.PartyManager;
 import com.zeloria.gui.SimpleGuiListener;
+import com.zeloria.gui.ShopBuyListener;
+import com.zeloria.gui.ShopConfigService;
+import com.zeloria.gui.ShopSellListener;
 import com.zeloria.skill.LevelService;
 import com.zeloria.gathering.GatheringService;
 import com.zeloria.mob.MobConfigService;
@@ -156,6 +159,7 @@ public final class Zeloria extends JavaPlugin {
     private LayerConfigService layerConfigService;
     private LayerEffectService layerEffectService;
     private GuiConfigService guiConfigService;
+    private ShopConfigService shopConfigService;
     private MenuService menuService;
     /** Material / Sound / Particle の解決結果キャッシュ（リロード時に {@link ConfigCache#clear()}）。 */
     private ConfigCache configCache;
@@ -333,6 +337,7 @@ public final class Zeloria extends JavaPlugin {
         this.combatService = new CombatService(this);
         this.damageIndicatorService = new DamageIndicatorService(this);
         this.guiConfigService = new GuiConfigService(this, this.yamlLoader, this.configCache);
+        this.shopConfigService = new ShopConfigService(this, this.yamlLoader, this.configCache);
         this.itemService = new ItemService(this, this.yamlLoader);
         this.equipmentService = new EquipmentService(this, this.itemService);
         this.virtualInventoryService = new VirtualInventoryService(this);
@@ -797,6 +802,8 @@ public final class Zeloria extends JavaPlugin {
         this.listenerRegistrar.register(new PlayerListener(this));
         this.listenerRegistrar.register(new MenuListener(this));
         this.listenerRegistrar.register(new SimpleGuiListener(this));
+        this.listenerRegistrar.register(new ShopBuyListener());
+        this.listenerRegistrar.register(new ShopSellListener());
         this.listenerRegistrar.register(new GuiCursorListener());
         this.listenerRegistrar.register(new NpcInteractListener(this));
         this.listenerRegistrar.register(new NpcDamageListener(this));
@@ -1103,6 +1110,15 @@ public final class Zeloria extends JavaPlugin {
      */
     public GuiConfigService getGuiConfigService() {
         return guiConfigService;
+    }
+
+    /**
+     * ShopConfigService を取得する。
+     *
+     * @return プラグインの ShopConfigService（onEnable 前は null）
+     */
+    public ShopConfigService getShopConfigService() {
+        return shopConfigService;
     }
 
     /**

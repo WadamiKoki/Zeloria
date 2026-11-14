@@ -11,9 +11,11 @@ import com.zeloria.player.PlayerStats;
 import com.zeloria.player.PlayerStatusDisplayTask;
 import com.zeloria.world.CollisionManager;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.AbstractArrow;
@@ -25,14 +27,13 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.entity.SmallFireball;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -70,6 +71,32 @@ public final class CombatService {
 
     /** 被ダメージ時の赤色化アニメーションへ渡す向き（0 で正面扱い）。 */
     private static final float HURT_ANIMATION_YAW = 0.0f;
+
+    /** 杖の最大射程（ブロック）。 */
+    private static final double STAFF_MAX_RANGE = 10.0;
+
+    /** 杖の投射物速度（ブロック / tick）。0.25 は 5 m/s。 */
+    private static final double STAFF_SPEED = 0.25;
+
+    /** 杖の着弾地点からダメージを与える半径（ブロック）。 */
+    private static final double STAFF_AOE_RADIUS = 2.0;
+
+    /**
+     * 近接武器の軌跡パーティクル。
+     * <p>
+     * Bedrock（Geyser）でも表示される {@link Particle#DUST} を使用し、武器種ごとに
+     * 色とサイズを変える。{@code SWEEP_ATTACK} は Bedrock で描画されないため使用しない。
+     */
+    private static final Particle.DustOptions SWORD_DUST =
+            new Particle.DustOptions(Color.fromRGB(0x66D9FF), 1.8f);
+    private static final Particle.DustOptions AXE_DUST =
+            new Particle.DustOptions(Color.fromRGB(0xFF8A1E), 2.0f);
+    private static final Particle.DustOptions DAGGER_DUST =
+            new Particle.DustOptions(Color.fromRGB(0xFFE24A), 1.5f);
+    private static final Particle.DustOptions STAFF_DUST =
+            new Particle.DustOptions(Color.fromRGB(0xB05CFF), 1.6f);
+    private static final Particle.DustOptions BOW_DUST =
+            new Particle.DustOptions(Color.fromRGB(0x8CFF8C), 1.4f);
 
     private final Zeloria plugin;
 
@@ -239,7 +266,7 @@ public final class CombatService {
         switch (type) {
             case SWORD -> strikeCone(player, weapon, eye, direction, false);
             case DAGGER -> strikeCone(player, weapon, eye, direction, true);
-            case AXE -> strikeLine(player, weapon, eye, direction);
+            case AXE -> strikeAxe(player, weapon, eye, direction);
             case STAFF -> launchProjectile(player, weapon, eye, direction, true);
             case BOW -> launchProjectile(player, weapon, eye, direction, false);
             default -> strikeCone(player, weapon, eye, direction, false);
@@ -263,8 +290,7 @@ public final class CombatService {
     /**
      * 通常攻撃の投射物が着弾したときの処理。
      * <p>
-     * 着弾地点でパーティクルを再生し（弓の矢は着弾音を再生しない）、
-     * カスタムMOBへ {@link #playerAttack} 経由のダメージを適用する。
+     * 杖は着弾地点を中心とした範囲攻撃、弓は直撃した MOB のみへダメージを与える。
      * バニラの投射物ダメージは {@code CombatListener} 側でキャンセルされる。
      *
      * @param event 投射物の着弾イベント
@@ -275,31 +301,17 @@ public final class CombatService {
         }
 
         Projectile projectile = event.getEntity();
-        UUID projectileId = projectile.getUniqueId();
-        ProjectileAttack attack = customProjectiles.get(projectileId);
+        ProjectileAttack attack = customProjectiles.get(projectile.getUniqueId());
         if (attack == null || attack.handled()) {
             return;
         }
-        attack.markHandled();
-        cancelProjectileTask(projectileId);
 
         Entity hitEntity = event.getHitEntity();
-        Location impact = hitEntity == null
+        LivingEntity directHit = hitEntity instanceof LivingEntity living ? living : null;
+        Location impact = directHit == null
                 ? projectile.getLocation()
-                : hitEntity.getLocation().add(0.0, hitEntity.getHeight() * 0.5, 0.0);
-        playImpactEffects(attack.weapon(), impact);
-
-        if (hitEntity instanceof LivingEntity living
-                && living != attack.owner()
-                && !(living instanceof Player)
-                && isCustomTarget(living)) {
-            playerAttack(attack.owner(), living, 1.0, 0.0, 0.0);
-        }
-
-        projectile.remove();
-        // バニラの EntityDamageByEntityEvent が着弾後に発火する場合も二重ヒットを
-        // 防げるよう、追跡解除は次 tick に行う。
-        Bukkit.getScheduler().runTask(plugin, () -> customProjectiles.remove(projectileId));
+                : directHit.getLocation().add(0.0, directHit.getHeight() * 0.5, 0.0);
+        applyProjectileImpact(attack, projectile, directHit, impact);
     }
 
     /**
@@ -594,37 +606,59 @@ public final class CombatService {
     }
 
     /**
-     * レイキャストによる直線攻撃（AXE）。
+     * 斧の広範囲攻撃（AXE）。
      * <p>
-     * 最初に当たった地点を中心に半径 1.5 ブロック以内の MOB 全てへダメージを与える。
+     * 視線方向を中心に、左右へ広く・上方向へさらに広い扇状の判定を行う。
+     * 従来のレイキャストでは視点の上下に追従できなかったため、視線の
+     * ローカル座標（前・右・上）へ対象を射影して判定する。
      */
-    private void strikeLine(Player player, WeaponData weapon, Location eye, Vector direction) {
+    private void strikeAxe(Player player, WeaponData weapon, Location eye, Vector direction) {
         double range = Math.max(0.1, weapon.attackRange());
-        RayTraceResult result = player.getWorld().rayTraceEntities(
-                eye,
-                direction,
-                range,
-                0.5,
-                entity -> entity instanceof LivingEntity living
-                        && !(living instanceof Player)
-                        && isCustomTarget(living));
+        Vector forward = normalizeDirection(direction, eye);
+        ViewBasis basis = viewBasis(forward, eye.getYaw());
+        Vector origin = eye.toVector();
 
-        if (result == null || result.getHitPosition() == null) {
-            playAttackEffects(weapon, eye, direction, range);
-            return;
-        }
+        double horizontalHalf = Math.toRadians(55.0);
+        double upwardHalf = Math.toRadians(75.0);
+        double downwardHalf = Math.toRadians(35.0);
 
-        Vector hitPosition = result.getHitPosition();
-        Location impact = hitPosition.toLocation(player.getWorld());
-        double radius = 1.5;
-        for (Entity entity : player.getWorld().getNearbyEntities(impact, radius, radius, radius)) {
-            if (entity instanceof LivingEntity living && isAttackableMob(player, living)) {
-                damageTarget(player, living);
+        for (Entity entity : player.getWorld().getNearbyEntities(eye, range, range, range)) {
+            if (!(entity instanceof LivingEntity living) || !isAttackableMob(player, living)) {
+                continue;
             }
+
+            Vector toTarget = aimPoint(living).subtract(origin);
+            double distance = toTarget.length();
+            if (distance <= 0.0 || distance > range) {
+                continue;
+            }
+
+            double forwardDistance = toTarget.dot(basis.forward());
+            if (forwardDistance <= 0.0) {
+                continue;
+            }
+
+            double lateral = toTarget.dot(basis.right());
+            double vertical = toTarget.dot(basis.up());
+            double maxLateral = Math.max(0.8, forwardDistance * Math.tan(horizontalHalf));
+            double maxUp = Math.max(1.2, forwardDistance * Math.tan(upwardHalf));
+            double maxDown = Math.max(0.4, forwardDistance * Math.tan(downwardHalf));
+            if (Math.abs(lateral) > maxLateral) {
+                continue;
+            }
+            if (vertical > maxUp || vertical < -maxDown) {
+                continue;
+            }
+
+            // 壁越しに斧が届かないよう、目の位置から対象の胴体中央までを確認する。
+            Location targetCenter = aimPoint(living).toLocation(player.getWorld());
+            if (isSolidBetween(eye, targetCenter)) {
+                continue;
+            }
+            damageTarget(player, living);
         }
 
-        double hitDistance = Math.min(range, eye.toVector().distance(hitPosition));
-        playAttackEffects(weapon, eye, direction, hitDistance);
+        playAttackEffects(weapon, eye, forward, range);
     }
 
     /* ------------------------------------------------------------------
@@ -633,33 +667,41 @@ public final class CombatService {
 
     /**
      * 武器種に応じた投射物を発射する（STAFF / BOW）。
+     * <p>
+     * 杖は 0.25 ブロック / tick（5 m/s）の固定速度で発射し、射程は 10 ブロック。
+     * 速度を毎 tick 上書きすることで、バニラの空気抵抗による減速を打ち消す。
      */
     private void launchProjectile(Player player, WeaponData weapon, Location eye,
                                   Vector direction, boolean staff) {
+        Vector normalized = normalizeDirection(direction, eye);
         if (staff) {
+            Vector velocity = normalized.clone().multiply(STAFF_SPEED);
             SmallFireball fireball = player.launchProjectile(
-                    SmallFireball.class, direction.clone().multiply(6.0));
+                    SmallFireball.class, velocity.clone());
             fireball.setIsIncendiary(false);
             fireball.setYield(0.0f);
-            trackProjectile(player, weapon, fireball);
+            fireball.setGravity(false);
+            trackProjectile(player, weapon, fireball, velocity);
         } else {
             Arrow arrow = player.launchProjectile(
-                    Arrow.class, direction.clone().multiply(8.0));
+                    Arrow.class, normalized.clone().multiply(8.0));
             arrow.setDamage(0.0);
             arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
-            trackProjectile(player, weapon, arrow);
+            trackProjectile(player, weapon, arrow, null);
         }
 
-        playAttackEffects(weapon, eye, direction, Math.min(weapon.attackRange(), 3.0));
+        playAttackEffects(weapon, eye, normalized, Math.min(weapon.attackRange(), 3.0));
     }
 
     /**
-     * 投射物を追跡対象へ登録し、毎 tick の壁判定を開始する。
+     * 投射物を追跡対象へ登録し、毎 tick の壁・敵判定を開始する。
      */
-    private void trackProjectile(Player owner, WeaponData weapon, Projectile projectile) {
+    private void trackProjectile(Player owner, WeaponData weapon, Projectile projectile,
+                                 Vector velocity) {
         UUID projectileId = projectile.getUniqueId();
+        Location origin = projectile.getLocation().clone();
         customProjectiles.put(projectileId,
-                new ProjectileAttack(owner, weapon, projectile, projectile.getLocation()));
+                new ProjectileAttack(owner, weapon, projectile, origin, velocity));
 
         BukkitTask task = Bukkit.getScheduler().runTaskTimer(
                 plugin, () -> checkProjectileCollision(projectileId), 1L, 1L);
@@ -670,9 +712,11 @@ public final class CombatService {
     }
 
     /**
-     * 投射物が壁ブロックへ入っていないか毎 tick 確認する。
+     * 投射物の移動経路・射程・壁を毎 tick 確認する。
      * <p>
-     * 前 tick からの移動経路も分割して判定し、高速移動時の壁抜けを防ぐ。
+     * 前 tick からの移動経路を 0.1 ブロック間隔で走査し、MOB の
+     * {@link BoundingBox} と交差した時点で命中させる。杖は 10 ブロックで
+     * 強制的に着弾し、着弾地点から 2 ブロック以内へ範囲ダメージを与える。
      */
     private void checkProjectileCollision(UUID projectileId) {
         ProjectileAttack attack = customProjectiles.get(projectileId);
@@ -687,14 +731,143 @@ public final class CombatService {
             return;
         }
 
+        WeaponType type = WeaponType.primary(attack.weapon().weaponTypes());
+        if (type == WeaponType.STAFF && attack.velocity() != null) {
+            // 杖は常に一定速度を維持する（バニラの減速を打ち消す）。
+            projectile.setVelocity(attack.velocity().clone());
+        }
+
         Location current = projectile.getLocation();
+        if (type == WeaponType.STAFF
+                && attack.origin().getWorld() != null
+                && current.getWorld() != null
+                && attack.origin().getWorld().equals(current.getWorld())
+                && attack.origin().distanceSquared(current) >= STAFF_MAX_RANGE * STAFF_MAX_RANGE) {
+            applyProjectileImpact(attack, projectile, null, current);
+            return;
+        }
+
+        LivingEntity directHit = findEntityOnPath(attack, attack.lastLocation(), current);
+        if (directHit != null) {
+            Location impact = aimPoint(directHit).toLocation(current.getWorld());
+            applyProjectileImpact(attack, projectile, directHit, impact);
+            return;
+        }
+
         if (isSolidAt(current) || isSolidBetween(attack.lastLocation(), current)) {
-            forgetProjectile(projectileId);
-            projectile.remove();
+            applyProjectileImpact(attack, projectile, null, current);
             return;
         }
         attack.setLastLocation(current);
     }
+
+    /**
+     * 前 tick から現在位置までの移動経路に重なっている MOB を探す。
+     * <p>
+     * 弾の中心点だけでなく、MOB の体全体の {@link BoundingBox} との交差で判定する。
+     */
+    private LivingEntity findEntityOnPath(ProjectileAttack attack, Location from, Location to) {
+        if (to == null || to.getWorld() == null) {
+            return null;
+        }
+
+        LivingEntity nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (Entity entity : to.getWorld().getNearbyEntities(to, 2.0, 2.0, 2.0)) {
+            if (!(entity instanceof LivingEntity living)
+                    || !isAttackableMob(attack.owner(), living)) {
+                continue;
+            }
+            if (!intersectsPath(living.getBoundingBox(), from, to)) {
+                continue;
+            }
+
+            double distance = living.getLocation().distanceSquared(to);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearest = living;
+            }
+        }
+        return nearest;
+    }
+
+    /**
+     * 移動経路が {@link BoundingBox} と交差するか判定する。
+     */
+    private static boolean intersectsPath(BoundingBox box, Location from, Location to) {
+        if (box == null || from == null || to == null
+                || from.getWorld() == null || to.getWorld() == null
+                || !from.getWorld().equals(to.getWorld())) {
+            return false;
+        }
+
+        // 高速移動時の取りこぼしを防ぐため、MOB の当たり判定を少し広げる。
+        BoundingBox expanded = box.clone().expand(0.15);
+        Vector start = from.toVector();
+        Vector delta = to.toVector().subtract(start);
+        double distance = delta.length();
+        if (distance <= 0.0) {
+            return expanded.contains(start);
+        }
+
+        int steps = Math.max(1, (int) Math.ceil(distance / 0.1));
+        for (int i = 0; i <= steps; i++) {
+            Vector point = start.clone().add(delta.clone().multiply((double) i / steps));
+            if (expanded.contains(point)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * 投射物の着弾を確定し、ダメージ・パーティクル・追跡解除をまとめて行う。
+     */
+    private void applyProjectileImpact(ProjectileAttack attack, Projectile projectile,
+                                       LivingEntity directHit, Location impact) {
+        if (attack == null || projectile == null || attack.handled()) {
+            return;
+        }
+        attack.markHandled();
+
+        UUID projectileId = projectile.getUniqueId();
+        cancelProjectileTask(projectileId);
+
+        Location center = directHit == null
+                ? (impact == null ? projectile.getLocation() : impact.clone())
+                : directHit.getLocation().add(0.0, directHit.getHeight() * 0.5, 0.0);
+        playImpactEffects(attack.weapon(), center);
+
+        WeaponType type = WeaponType.primary(attack.weapon().weaponTypes());
+        World world = center.getWorld();
+        if (type == WeaponType.STAFF && world != null) {
+            List<LivingEntity> targets = new ArrayList<>();
+            for (Entity entity : world.getNearbyEntities(
+                    center, STAFF_AOE_RADIUS, STAFF_AOE_RADIUS, STAFF_AOE_RADIUS)) {
+                if (!(entity instanceof LivingEntity living)
+                        || !isAttackableMob(attack.owner(), living)) {
+                    continue;
+                }
+                if (aimPoint(living).distanceSquared(center.toVector())
+                        > STAFF_AOE_RADIUS * STAFF_AOE_RADIUS) {
+                    continue;
+                }
+                targets.add(living);
+            }
+            for (LivingEntity target : targets) {
+                damageTarget(attack.owner(), target);
+            }
+        } else if (directHit != null && isAttackableMob(attack.owner(), directHit)) {
+            damageTarget(attack.owner(), directHit);
+        }
+
+        projectile.remove();
+        // バニラの EntityDamageByEntityEvent が着弾後に発火する場合も二重ヒットを
+        // 防げるよう、追跡解除は次 tick に行う。
+        Bukkit.getScheduler().runTask(plugin, () -> customProjectiles.remove(projectileId));
+    }
+
 
     private void forgetProjectile(UUID projectileId) {
         customProjectiles.remove(projectileId);
@@ -773,42 +946,175 @@ public final class CombatService {
     }
 
     /**
-     * 攻撃方向へパーティクルを発生させ、武器の攻撃音を再生する。
+     * 攻撃方向へ武器種ごとの軌跡を描き、武器の攻撃音を再生する。
      * <p>
      * Display Entity は Geyser 経由の Bedrock プレイヤーに表示されないため、
-     * 武器エフェクトは {@link org.bukkit.World#spawnParticle} によるパーティクルで統一する。
+     * 武器エフェクトは {@link org.bukkit.World#spawnParticle} による
+     * Bedrock 互換の {@link Particle#DUST} で統一する。軌跡は視線の
+     * ローカル座標（前・右・上）へ展開するため、上下左右を向いても追従する。
      */
     private void playAttackEffects(WeaponData weapon, Location origin, Vector direction, double reach) {
-        Particle particle = parseParticle(weapon.attackParticle());
-        if (particle != null && origin.getWorld() != null) {
-            double length = Math.max(1.0, Math.min(reach, 6.0));
-            int points = Math.max(3, Math.min(12, (int) Math.ceil(length)));
-            for (int i = 1; i <= points; i++) {
-                Location point = origin.clone()
-                        .add(direction.clone().multiply(length * i / points));
-                origin.getWorld().spawnParticle(
-                        particle, point, 1, 0.1, 0.1, 0.1, 0.0);
-            }
+        if (origin.getWorld() == null) {
+            return;
+        }
+        World world = origin.getWorld();
+        Vector forward = normalizeDirection(direction, origin);
+        ViewBasis basis = viewBasis(forward, origin.getYaw());
+
+        switch (WeaponType.primary(weapon.weaponTypes())) {
+            case AXE -> drawAxeArc(world, origin, basis);
+            case DAGGER -> drawDaggerArc(world, origin, basis);
+            case STAFF -> drawMuzzle(world, origin, forward, STAFF_DUST, true);
+            case BOW -> drawMuzzle(world, origin, forward, BOW_DUST, false);
+            default -> drawSwordArc(world, origin, basis);
         }
         playWeaponSound(weapon, origin);
     }
 
     /**
-     * 着弾地点でパーティクルを拡散させ、弓以外の武器の攻撃音を再生する。
+     * 剣の横薙ぎ。水色の DUST で前方 3〜4 ブロックの弧を描く。
+     */
+    private static void drawSwordArc(World world, Location origin, ViewBasis basis) {
+        int points = 15;
+        for (int i = 0; i < points; i++) {
+            double t = (double) i / (points - 1);
+            double angle = Math.toRadians(-58.0 + 116.0 * t);
+            double forward = 1.6 + 1.5 * Math.cos(angle);
+            double lateral = 1.85 * Math.sin(angle);
+            double sag = -0.25 * Math.sin(Math.PI * t);
+            Location point = arcPoint(origin, basis, forward, lateral, sag);
+            spawnDust(world, point, SWORD_DUST);
+            if (i % 3 == 0) {
+                spawnParticle(world, Particle.ENCHANTED_HIT, point, 1, 0.04);
+            }
+            if (i % 5 == 0) {
+                spawnParticle(world, Particle.CRIT, point, 1, 0.04);
+            }
+        }
+    }
+
+    /**
+     * 斧の振り上げ。オレンジの DUST で地面付近から前方上方向へ弧を描く。
+     */
+    private static void drawAxeArc(World world, Location origin, ViewBasis basis) {
+        int points = 16;
+        for (int i = 0; i < points; i++) {
+            double t = (double) i / (points - 1);
+            double forward = 0.9 + 2.9 * t;
+            double lateral = 1.35 * Math.sin(Math.PI * t);
+            double rise = -1.1 + 2.7 * t + 0.25 * Math.sin(Math.PI * t);
+            Location point = arcPoint(origin, basis, forward, lateral, rise);
+            spawnDust(world, point, AXE_DUST);
+            if (i % 2 == 0) {
+                spawnParticle(world, Particle.CRIT, point, 1, 0.05);
+            }
+        }
+    }
+
+    /**
+     * 短剣の小さな弧。黄色の DUST で前方 1.5〜2 ブロックを描く。
+     */
+    private static void drawDaggerArc(World world, Location origin, ViewBasis basis) {
+        int points = 10;
+        for (int i = 0; i < points; i++) {
+            double t = (double) i / (points - 1);
+            double angle = Math.toRadians(-50.0 + 100.0 * t);
+            double forward = 0.5 + 1.1 * Math.cos(angle);
+            double lateral = 0.85 * Math.sin(angle);
+            double sag = -0.08 * Math.sin(Math.PI * t);
+            Location point = arcPoint(origin, basis, forward, lateral, sag);
+            spawnDust(world, point, DAGGER_DUST);
+            if (i % 2 == 0) {
+                spawnParticle(world, Particle.CRIT, point, 1, 0.04);
+            }
+        }
+    }
+
+    /**
+     * 杖・弓の発射口に短い軌跡を描く。
+     */
+    private static void drawMuzzle(World world, Location origin, Vector forward,
+                                   Particle.DustOptions dust, boolean flame) {
+        for (int i = 1; i <= 6; i++) {
+            double distance = 0.35 + i * 0.16;
+            Location point = origin.clone().add(forward.clone().multiply(distance));
+            spawnDust(world, point, dust);
+            if (flame && i % 2 == 0) {
+                spawnParticle(world, Particle.FLAME, point, 1, 0.03);
+            }
+        }
+    }
+
+    /**
+     * 着弾地点で武器種ごとのパーティクルを拡散させ、弓以外の武器の攻撃音を再生する。
      * <p>
      * 弓の矢はブロック・エンティティのどちらに当たっても着弾音を再生しない。
      * エンティティへ当たった際の被ダメージ音は {@link #applyDamage} 側で共通再生する。
      */
     private void playImpactEffects(WeaponData weapon, Location impact) {
-        Particle particle = parseParticle(weapon.attackParticle());
-        if (particle != null && impact.getWorld() != null) {
-            impact.getWorld().spawnParticle(
-                    particle, impact, 8, 0.25, 0.25, 0.25, 0.02);
-        }
-        if (WeaponType.primary(weapon.weaponTypes()) == WeaponType.BOW) {
+        if (impact == null || impact.getWorld() == null) {
             return;
         }
-        playWeaponSound(weapon, impact);
+        World world = impact.getWorld();
+        WeaponType type = WeaponType.primary(weapon.weaponTypes());
+
+        switch (type) {
+            case AXE -> {
+                burst(world, impact, AXE_DUST, 14, 0.3);
+                spawnParticle(world, Particle.CRIT, impact, 8, 0.3);
+            }
+            case DAGGER -> {
+                burst(world, impact, DAGGER_DUST, 8, 0.22);
+                spawnParticle(world, Particle.CRIT, impact, 5, 0.22);
+            }
+            case STAFF -> {
+                burst(world, impact, STAFF_DUST, 16, 0.35);
+                spawnParticle(world, Particle.FLAME, impact, 12, 0.35);
+            }
+            case BOW -> spawnParticle(world, Particle.CRIT, impact, 6, 0.2);
+            default -> {
+                burst(world, impact, SWORD_DUST, 12, 0.28);
+                spawnParticle(world, Particle.ENCHANTED_HIT, impact, 8, 0.28);
+            }
+        }
+
+        if (type != WeaponType.BOW) {
+            playWeaponSound(weapon, impact);
+        }
+    }
+
+    /**
+     * DUST を指定数拡散させる。
+     */
+    private static void burst(World world, Location location, Particle.DustOptions dust,
+                              int count, double spread) {
+        world.spawnParticle(Particle.DUST, location, count, spread, spread, spread, 0.01, dust);
+    }
+
+    /**
+     * データを持たないパーティクルを指定数発生させる。
+     */
+    private static void spawnParticle(World world, Particle particle, Location location,
+                                      int count, double spread) {
+        world.spawnParticle(particle, location, count, spread, spread, spread, 0.0);
+    }
+
+    /**
+     * 単発の DUST を発生させる。
+     */
+    private static void spawnDust(World world, Location location, Particle.DustOptions dust) {
+        world.spawnParticle(Particle.DUST, location, 1, 0.02, 0.02, 0.02, 0.0, dust);
+    }
+
+    /**
+     * 視線のローカル座標（前・右・上）へオフセットした座標を返す。
+     */
+    private static Location arcPoint(Location origin, ViewBasis basis,
+                                     double forward, double lateral, double upward) {
+        return origin.clone()
+                .add(basis.forward().clone().multiply(forward))
+                .add(basis.right().clone().multiply(lateral))
+                .add(basis.up().clone().multiply(upward));
     }
 
     private void playWeaponSound(WeaponData weapon, Location location) {
@@ -823,17 +1129,35 @@ public final class CombatService {
     }
 
     /**
-     * パーティクル名を解決する。未指定・不正な場合は {@code null}。
+     * 正規化した視線方向を返す。方向が不正な場合は目位置の向きを使用する。
      */
-    private static Particle parseParticle(String name) {
-        if (name == null || name.isBlank()) {
-            return null;
+    private static Vector normalizeDirection(Vector direction, Location origin) {
+        Vector result = direction == null ? null : direction.clone();
+        if (result == null || result.lengthSquared() < 1.0E-6) {
+            result = origin.getDirection();
         }
-        try {
-            return Particle.valueOf(name.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ignored) {
-            return null;
+        if (result.lengthSquared() < 1.0E-6) {
+            result = new Vector(0.0, 0.0, 1.0);
         }
+        return result.normalize();
+    }
+
+    /**
+     * 視線方向から「前・右・上」のローカル座標系を構築する。
+     * <p>
+     * 真上・真下を向いている場合は水平成分が消えるため、プレイヤーの yaw から
+     * 右方向を再構築する。これにより上下左右どの向きでもパーティクルと
+     * 攻撃判定が視線に追従する。
+     */
+    private static ViewBasis viewBasis(Vector forward, float yaw) {
+        Vector right = forward.clone().crossProduct(new Vector(0.0, 1.0, 0.0));
+        if (right.lengthSquared() < 1.0E-4) {
+            double radians = Math.toRadians(yaw);
+            right = new Vector(-Math.cos(radians), 0.0, -Math.sin(radians));
+        }
+        right.normalize();
+        Vector up = right.clone().crossProduct(forward).normalize();
+        return new ViewBasis(forward, right, up);
     }
 
     /**
@@ -844,15 +1168,20 @@ public final class CombatService {
         private final Player owner;
         private final WeaponData weapon;
         private final Projectile projectile;
+        private final Location origin;
+        /** 杖の固定速度。弓はバニラの物理演算に任せるため {@code null}。 */
+        private final Vector velocity;
         private Location lastLocation;
         private boolean handled;
 
         private ProjectileAttack(Player owner, WeaponData weapon,
-                                 Projectile projectile, Location lastLocation) {
+                                 Projectile projectile, Location origin, Vector velocity) {
             this.owner = owner;
             this.weapon = weapon;
             this.projectile = projectile;
-            this.lastLocation = lastLocation;
+            this.origin = origin;
+            this.velocity = velocity;
+            this.lastLocation = origin.clone();
         }
 
         private Player owner() {
@@ -865,6 +1194,14 @@ public final class CombatService {
 
         private Projectile projectile() {
             return projectile;
+        }
+
+        private Location origin() {
+            return origin;
+        }
+
+        private Vector velocity() {
+            return velocity;
         }
 
         private Location lastLocation() {
@@ -918,6 +1255,12 @@ public final class CombatService {
 
     private static double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    /**
+     * 視線方向のローカル座標系。
+     */
+    private record ViewBasis(Vector forward, Vector right, Vector up) {
     }
 
     /**

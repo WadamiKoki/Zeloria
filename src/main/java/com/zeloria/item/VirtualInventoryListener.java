@@ -3,6 +3,7 @@ package com.zeloria.item;
 import com.zeloria.core.Zeloria;
 import com.zeloria.gui.GuiClickSupport;
 import com.zeloria.gui.MenuGui;
+import com.zeloria.gui.ShopBuyGui;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.PlayerData;
@@ -163,6 +164,12 @@ public class VirtualInventoryListener implements Listener {
 
         if (VirtualInventoryService.isTabSwitch(clicked)) {
             service.switchTab(player);
+            return;
+        }
+
+        // 買取屋の売却 GUI 表示中は、売却予約リスナーがアイテムクリックを処理する。
+        // ここでは装備・タブ間移動を行わない（スクロールとタブ切り替えは許可する）。
+        if (event.getView().getTopInventory().getHolder() instanceof ShopBuyGui) {
             return;
         }
 

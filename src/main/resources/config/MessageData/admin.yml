@@ -34,6 +34,7 @@ give:
   full: "<red>プレイヤーインベントリに空きがありません。</red>"
   not_found: "<red>アイテム設定が見つかりません: <white>{item_id}</white></red>"
   invalid_amount: "<red>個数は <white>1</white> 〜 <white>{max}</white> の範囲で指定してください。</red>"
+  single_only: "<yellow>{item_name}</yellow> <gray>は重ねられないため、付与数を</gray> <white>1</white> <gray>に制限しました。</gray> <dark_gray>(指定: {requested})</dark_gray>"
 
 info:
   usage: "<gray>使い方:</gray> <white>/admin info \\<player></white>"

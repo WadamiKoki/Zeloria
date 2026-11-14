@@ -21,7 +21,7 @@ import java.util.List;
  * attackSpeedTicks: 32
  * attackRange: 3.5
  * attackAngle: 90.0
- * attackParticle: SWEEP_ATTACK
+ * attackParticle: DUST
  * attackSound: "entity.player.attack.sweep"
  * requiredLevel: 0
  * stats:

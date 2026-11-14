@@ -26,11 +26,15 @@ public final class TextComponents {
      * @return 斜体を無効化したコンポーネント
      */
     public static Component mini(String miniMessage) {
-        return noItalic(MINI.deserialize(miniMessage == null ? "" : miniMessage));
+        return mini(MINI, miniMessage);
     }
 
     /**
      * 指定パーサーで MiniMessage 文字列を解決し、斜体を無効化したコンポーネントを返す。
+     * <p>
+     * Geyser（Bedrock）ではアイテム名・Lore の {@code italic=false} が
+     * 伝播しない場合があるため、MiniMessage の {@code <!italic>} タグも
+     * 併用して明示的に斜体を無効化する。
      *
      * @param parser      MiniMessage パーサー
      * @param miniMessage MiniMessage 文字列
@@ -38,7 +42,11 @@ public final class TextComponents {
      */
     public static Component mini(MiniMessage parser, String miniMessage) {
         MiniMessage resolved = parser == null ? MINI : parser;
-        return noItalic(resolved.deserialize(miniMessage == null ? "" : miniMessage));
+        String message = miniMessage == null ? "" : miniMessage;
+        if (!message.startsWith("<!italic>")) {
+            message = "<!italic>" + message;
+        }
+        return noItalic(resolved.deserialize(message));
     }
 
     /**

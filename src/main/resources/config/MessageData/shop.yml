@@ -1,0 +1,16 @@
+# 買取屋 NPC・売却 GUI のメッセージ。
+shop_buy:
+  sold: "<gray>売却しました。獲得: <gold>{price}</gold> G / 所持金: <gold>{balance}</gold> G</gray>"
+  nothing_to_sell: "<red>売却できるアイテムがありません。</red>"
+  unsellable: "<red>{item}</red> <gray>は売却できません。予約から外してください。</gray>"
+  not_ready: "<red>プレイヤーデータの読み込みが完了していません。少し待ってから再度お試しください。</red>"
+  already_reserved: "<yellow>そのアイテムは所持数すべてを予約済みです。</yellow>"
+  reservation_full: "<red>売却枠がいっぱいです。いったん売却するか、予約を解除してください。</red>"
+
+# 販売屋 NPC・購入 GUI のメッセージ。
+shop_sell:
+  bought: "<gray>購入しました。アイテム: <white>{item}</white> × <white>{quantity}</white> / 支払い: <gold>{price}</gold> コイン / 所持金: <gold>{balance}</gold> コイン</gray>"
+  not_selected: "<red>購入するアイテムを選択してください。</red>"
+  not_ready: "<red>プレイヤーデータの読み込みが完了していません。少し待ってから再度お試しください。</red>"
+  insufficient_money: "<red>所持金が足りません。必要: <gold>{price}</gold> コイン / 所持金: <gold>{balance}</gold> コイン</red>"
+  storage_full: "<red>仮想ストレージに空きがありません。整理してから再度お試しください。</red>"

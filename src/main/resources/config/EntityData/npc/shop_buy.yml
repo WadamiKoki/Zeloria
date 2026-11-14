@@ -1,0 +1,12 @@
+id: "shop_buy"
+name: "<gold>買取屋</gold>"
+mobType: "VILLAGER"
+alwaysShowName: true
+interactGui: "shop_buy"
+
+equipment:
+  mainHand: "AIR"
+  helmet: "AIR"
+  chestplate: "AIR"
+  leggings: "AIR"
+  boots: "AIR"

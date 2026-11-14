@@ -180,9 +180,9 @@ public final class ClassSelectGUI implements Listener {
                 DEFAULT_OPEN,
                 DEFAULT_CLICK,
                 DEFAULT_ERROR,
-                MINI.deserialize(DEFAULT_SELECTED),
-                MINI.deserialize(DEFAULT_UNLOCKED),
-                MINI.deserialize(DEFAULT_LOCKED),
+                TextComponents.mini(MINI, DEFAULT_SELECTED),
+                TextComponents.mini(MINI, DEFAULT_UNLOCKED),
+                TextComponents.mini(MINI, DEFAULT_LOCKED),
                 GrowthDisplay.defaults());
     }
 
@@ -240,7 +240,7 @@ public final class ClassSelectGUI implements Listener {
 
     private static Component parseStatus(ConfigurationSection section, String key, String fallback) {
         String raw = section == null ? null : section.getString(key);
-        return MINI.deserialize(raw == null || raw.isBlank() ? fallback : raw);
+        return TextComponents.mini(MINI, raw == null || raw.isBlank() ? fallback : raw);
     }
 
     /**
@@ -508,7 +508,7 @@ public final class ClassSelectGUI implements Listener {
 
         meta.displayName(noItalic(definition.displayName()));
         List<Component> lore = new ArrayList<>();
-        lore.add(MINI.deserialize("<gray>Lv. " + classLevel + "</gray>"));
+        lore.add(TextComponents.mini(MINI, "<gray>Lv. " + classLevel + "</gray>"));
         lore.add(Component.empty());
         lore.addAll(definition.description());
         lore.add(Component.empty());
@@ -526,7 +526,7 @@ public final class ClassSelectGUI implements Listener {
         for (Component line : lore) {
             plainLore.add(noItalic(line));
         }
-        meta.lore(plainLore);
+        meta.lore(TextComponents.noItalic(plainLore));
         meta.getPersistentDataContainer().set(classIdKey, PersistentDataType.STRING, definition.id());
         item.setItemMeta(meta);
         return item;

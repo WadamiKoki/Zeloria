@@ -10,7 +10,7 @@ weaponTypes: [AXE]
 attackSpeedTicks: 64
 attackRange: 5.0
 attackAngle: 0.0
-attackParticle: CRIT
+attackParticle: DUST
 attackSound: "entity.player.attack.crit"
 requiredLevel: 0
 stats:

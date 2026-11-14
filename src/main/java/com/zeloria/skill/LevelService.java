@@ -1,10 +1,12 @@
 package com.zeloria.skill;
 
+import com.zeloria.combat.CombatService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.player.LevelUpNotifier;
 import com.zeloria.core.YamlLoader;
 import com.zeloria.player.PlayerData;
 import com.zeloria.player.PlayerStatsService;
+import com.zeloria.player.PlayerStatusDisplayTask;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
@@ -174,8 +176,13 @@ public class LevelService {
         }
 
         // レベルアップ時はクラス基礎ステータス（baseStats × レベル成長率）を再計算する。
-        if (levelsGained > 0 && plugin.getPlayerStatsService() != null) {
-            plugin.getPlayerStatsService().refreshClassStats(data);
+        if (levelsGained > 0) {
+            PlayerStatsService levelStatsService = plugin.getPlayerStatsService();
+            if (levelStatsService != null) {
+                levelStatsService.refreshClassStats(data);
+            }
+            // クラスレベルが上がった時のみ HP/MP を全回復する（経験値獲得だけでは回復しない）。
+            data.getStats().restoreVitals();
         }
 
         // バニラのレベル／経験値バー表示を最新値へ追従させる。
@@ -183,6 +190,17 @@ public class LevelService {
         Player player = data.getUuid() == null ? null : Bukkit.getPlayer(data.getUuid());
         if (statsService != null && player != null) {
             statsService.syncVanillaStats(player, data);
+            if (levelsGained > 0) {
+                // バニラ体力バーと頭上 HP ゲージも全回復後の値へ更新する。
+                CombatService combatService = plugin.getCombatService();
+                if (combatService != null) {
+                    combatService.syncPlayerHealth(player);
+                }
+                PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+                if (statusDisplayTask != null) {
+                    statusDisplayTask.refresh(player);
+                }
+            }
         }
 
         // レベルアップ通知（チャット・効果音・パーティクル）は各プレイヤーの設定に従う。
