@@ -24,7 +24,6 @@ import java.util.Optional;
  * @param fillerMaterial 装飾枠のマテリアル
  * @param fillerSlots   装飾枠として使用するスロット
  * @param productSlots  商品／売却枠として使用するスロット
- * @param shopId        対象の {@code ShopData/*.yml} ID（販売屋のみ）
  * @param buttons       ボタン ID → ボタン設定
  * @param sounds        効果音キー → 効果音設定
  */
@@ -35,7 +34,6 @@ public record ShopGuiSettings(
         Material fillerMaterial,
         List<Integer> fillerSlots,
         List<Integer> productSlots,
-        String shopId,
         Map<String, ButtonConfig> buttons,
         Map<String, GuiSound> sounds) {
 
@@ -47,7 +45,6 @@ public record ShopGuiSettings(
                 ? Material.WHITE_STAINED_GLASS_PANE : fillerMaterial;
         fillerSlots = fillerSlots == null ? List.of() : List.copyOf(fillerSlots);
         productSlots = productSlots == null ? List.of() : List.copyOf(productSlots);
-        shopId = shopId == null ? "" : shopId.trim();
         buttons = buttons == null ? Map.of()
                 : Map.copyOf(new LinkedHashMap<>(buttons));
         sounds = sounds == null ? Map.of()

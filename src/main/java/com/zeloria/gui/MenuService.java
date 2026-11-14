@@ -10,6 +10,7 @@ import com.zeloria.item.ItemService;
 import com.zeloria.item.VirtualInventoryService;
 import com.zeloria.item.VirtualItem;
 import com.zeloria.item.WeaponData;
+import com.zeloria.npc.NpcData;
 import com.zeloria.player.PlayerSettings;
 import com.zeloria.core.MessageService;
 import com.zeloria.player.EquipSlot;
@@ -186,11 +187,14 @@ public class MenuService {
     }
 
     /**
-     * 指定名の GUI を開く（NPC の {@code interactGui} などから呼び出される汎用入り口）。
+     * 指定名の GUI を開く汎用入り口。
      * <p>
      * {@code gui.yml} の {@code id} が {@code menu} の場合は既存のメニュー GUI を、
      * {@code class_select} の場合はクラス選択 GUI を開く。それ以外は
      * {@code rows} / {@code items} を持つ汎用 YAML として {@link SimpleGui} を生成する。
+     * <p>
+     * NPC の {@code interact.type=gui} からも使用する。{@code shop} を持つ NPC は
+     * {@link #openNpcShop(Player, NpcData)} を使用する。
      *
      * @param player  対象プレイヤー
      * @param guiName GUI の YAML 名（例: {@code guide_menu}）
@@ -237,18 +241,6 @@ public class MenuService {
             return true;
         }
 
-        if ("shop_buy".equals(normalized)) {
-            // 買取屋の売却 GUI は仮想ストレージの予約管理を行う専用実装を使う。
-            ShopBuyGui.open(plugin, player, config);
-            return true;
-        }
-
-        if ("shop_sell".equals(normalized)) {
-            // 販売屋の購入 GUI は ShopData の商品を仮想表示する専用実装を使う。
-            ShopSellGui.open(plugin, player);
-            return true;
-        }
-
         SimpleGui gui;
         try {
             gui = SimpleGui.from(config, resolvedId, plugin.getConfigCache(), sourceKey);
@@ -260,6 +252,38 @@ public class MenuService {
 
         player.openInventory(gui.getInventory());
         playSound(player, SOUND_OPEN);
+        return true;
+    }
+
+    /**
+     * NPC の {@code shop} セクションに従って店舗 GUI を開く。
+     * <p>
+     * {@code shop.template} が {@code buy} なら {@link ShopBuyGui}、
+     * {@code sell} なら {@link ShopSellGui} を開く。販売屋の商品は
+     * NPC の {@code shop.items} から生成し、商品エリアへ記述順に自動配置する。
+     *
+     * @param player 対象プレイヤー
+     * @param npc    クリックされた NPC の定義
+     * @return 店舗 GUI を開いた場合は {@code true}
+     */
+    public boolean openNpcShop(Player player, NpcData npc) {
+        if (player == null || npc == null || !npc.hasShop()) {
+            return false;
+        }
+
+        if (npc.isBuyShop()) {
+            YamlLoader yamlLoader = plugin.getYamlLoader();
+            FileConfiguration config = yamlLoader == null ? null
+                    : yamlLoader.getConfig(ShopConfigService.SHOP_BUY_KEY);
+            ShopBuyGui.open(plugin, player, config);
+            return true;
+        }
+
+        ShopConfigService service = plugin.getShopConfigService();
+        ShopDefinition shop = service == null
+                ? new ShopDefinition(npc.id(), npc.shopItems())
+                : service.buildNpcShop(npc.id(), npc.shopItems());
+        ShopSellGui.open(plugin, player, shop);
         return true;
     }
 

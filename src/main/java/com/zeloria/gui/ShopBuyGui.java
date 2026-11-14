@@ -135,7 +135,6 @@ public final class ShopBuyGui implements InventoryHolder {
                     DEFAULT_FILLER_MATERIAL,
                     DEFAULT_FILLER_SLOTS,
                     DEFAULT_SELL_SLOTS,
-                    "",
                     Map.of(),
                     Map.of());
             settings = ShopConfigService.parseGui(config,

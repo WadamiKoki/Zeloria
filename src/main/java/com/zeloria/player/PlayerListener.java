@@ -130,6 +130,12 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // 退出後は HP / MP の変更通知が不要になるため、キャッシュ破棄より先に解除する。
+        PlayerStatsService statsService = plugin.getPlayerStatsService();
+        if (statsService != null) {
+            statsService.unregisterVitalsChangeListener(uuid);
+        }
+
         // パーティは脱退させず、オフライン表示用に名前だけをキャッシュする。
         PartyManager partyManager = plugin.getPartyManager();
         if (partyManager != null) {

@@ -173,18 +173,62 @@ public class PlayerStats {
     private double lifesteal = DEFAULT_LIFESTEAL;
 
     /**
-     * 現在の HP / MP を最大値まで回復する（リスポーン時などに使用）。
+     * 現在 HP / MP が変更されたときに呼び出す通知。
+     * <p>
+     * バニラの体力バー・満腹度（MP バー）への即時同期に使用する。
+     * プレイヤーごとに {@code PlayerStatsService} が設定する。
      */
-    public synchronized void restoreVitals() {
-        this.currentHealth = getMaxHealth();
-        restoreMana();
+    private volatile Runnable vitalsChangeListener;
+
+    /**
+     * 現在 HP / MP の変更通知を設定する。
+     *
+     * @param listener 変更時に呼び出す処理（{@code null} で解除）
+     */
+    public void setVitalsChangeListener(Runnable listener) {
+        this.vitalsChangeListener = listener;
+    }
+
+    /**
+     * 現在 HP / MP の変更通知を解除する。
+     * <p>
+     * プレイヤー退出時に {@code PlayerStatsService} から呼び出し、
+     * 不要になったリスナー参照を確実に破棄する。
+     */
+    public void clearVitalsChangeListener() {
+        this.vitalsChangeListener = null;
+    }
+
+    /**
+     * 現在 HP / MP の変更を通知する。
+     */
+    private void notifyVitalsChanged() {
+        Runnable listener = vitalsChangeListener;
+        if (listener != null) {
+            listener.run();
+        }
+    }
+
+    /**
+     * 現在の HP / MP を最大値まで回復する（リスポーン時などに使用）。
+     * <p>
+     * 変更通知（バニラの体力バー・満腹度の即時同期）を通すため、
+     * フィールドを直接書き換えず {@link #setCurrentHealth(double)} /
+     * {@link #setCurrentMana(double)} を経由する。
+     */
+    public void restoreVitals() {
+        setCurrentHealth(getMaxHealth());
+        setCurrentMana(getMaxMana());
     }
 
     /**
      * 現在 MP を最大 MP まで回復する（クラス変更時などに使用）。
+     * <p>
+     * 変更通知（バニラの満腹度ゲージの即時同期）を通すため、
+     * フィールドを直接書き換えず {@link #setCurrentMana(double)} を経由する。
      */
-    public synchronized void restoreMana() {
-        this.currentMana = getMaxMana();
+    public void restoreMana() {
+        setCurrentMana(getMaxMana());
     }
 
     /* ------------------------------------------------------------------
@@ -326,8 +370,16 @@ public class PlayerStats {
      *
      * @param currentHealth 現在 HP
      */
-    public synchronized void setCurrentHealth(double currentHealth) {
-        this.currentHealth = clamp(currentHealth, 0.0, getMaxHealth());
+    public void setCurrentHealth(double currentHealth) {
+        boolean changed;
+        synchronized (this) {
+            double next = clamp(currentHealth, 0.0, getMaxHealth());
+            changed = Double.compare(this.currentHealth, next) != 0;
+            this.currentHealth = next;
+        }
+        if (changed) {
+            notifyVitalsChanged();
+        }
     }
 
     public synchronized double getMaxMana() {
@@ -374,8 +426,16 @@ public class PlayerStats {
      *
      * @param currentMana 現在 MP
      */
-    public synchronized void setCurrentMana(double currentMana) {
-        this.currentMana = clamp(currentMana, 0.0, getMaxMana());
+    public void setCurrentMana(double currentMana) {
+        boolean changed;
+        synchronized (this) {
+            double next = clamp(currentMana, 0.0, getMaxMana());
+            changed = Double.compare(this.currentMana, next) != 0;
+            this.currentMana = next;
+        }
+        if (changed) {
+            notifyVitalsChanged();
+        }
     }
 
     public synchronized double getAttackPower() {

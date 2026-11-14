@@ -3,10 +3,10 @@ package com.zeloria.gui;
 import java.util.List;
 
 /**
- * {@code config/ShopData/*.yml} 1 ファイル分の店舗定義。
+ * NPC の YAML（{@code shop} セクション）1 件分の店舗定義。
  *
- * @param id    店舗 ID（YAML の {@code id}、未指定時はファイル名）
- * @param items 販売する商品一覧
+ * @param id    NPC ID（商品を定義した NPC の識別子）
+ * @param items 販売する商品一覧（スロット割り当て済み）
  */
 public record ShopDefinition(String id, List<ShopItemConfig> items) {
 

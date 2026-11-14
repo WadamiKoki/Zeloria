@@ -1,8 +1,6 @@
 # 販売屋 NPC が開く購入 GUI。
 title: "<gold>販売屋</gold> <dark_gray>|</dark_gray> <white>アイテム購入</white>"
 rows: 6
-# 商品リストを読み込む ShopData/*.yml の ID。
-shop: "weapon_shop"
 
 filler:
   material: "WHITE_STAINED_GLASS_PANE"
@@ -26,21 +24,6 @@ buttons:
     material: "HEART_OF_THE_SEA"
     name: "<aqua>個数: {quantity}</aqua>"
     sound: "quantity_change"
-  total_price:
-    slot: 47
-    material: "GOLD_NUGGET"
-    name: "<gold>合計: {price} コイン</gold>"
-    sound: "click"
-  buy:
-    slot: 48
-    material: "LIME_CONCRETE"
-    name: "<green>購入する</green>"
-    sound: "buy_success"
-  selected_item:
-    slot: 49
-    material: "CHEST"
-    name: "<yellow>選択中のアイテム</yellow>"
-    sound: "slot_click"
   close:
     slot: 53
     material: "TARGET"

@@ -2,75 +2,60 @@ package com.zeloria.npc;
 
 import com.zeloria.core.Zeloria;
 import com.zeloria.gui.MenuService;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
-import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * NPC の右クリック操作を処理するリスナー。
  * <p>
- * 統合版（Geyser）では 1 回のタップでメインハンド・オフハンドのイベントが
- * 連続して届くことがあるため、プレイヤーごとの最終クリック時刻を保持し、
- * {@link #CLICK_COOLDOWN_MILLIS} 以内の連続クリックを無視する。
- * 左クリック（{@code PlayerInteractEntityEvent} は右クリックのみ）や
- * ダメージ操作はこのリスナーの対象外。
+ * {@code shop} / {@code interact} の排他的定義に従い、早期リターンで最小限の分岐のみ行う。
+ * 左クリックやダメージ操作はこのリスナーの対象外。
  */
 public class NpcInteractListener implements Listener {
 
-    /**
-     * 連続クリックを無視する時間（ミリ秒）。
-     * <p>
-     * Geyser / Bedrock のタップは 1 回の操作で複数のクリックイベントを送ることがあるため、
-     * 約 2 ティック分の間隔を空けて GUI の多重オープンを防ぐ。
-     */
-    private static final long CLICK_COOLDOWN_MILLIS = 100L;
-
     private final Zeloria plugin;
-
-    /** プレイヤー UUID → 最終クリック時刻（epoch millis）。 */
-    private final Map<UUID, Long> lastClickAt = new ConcurrentHashMap<>();
 
     public NpcInteractListener(Zeloria plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
     }
 
     /**
-     * NPC の右クリックを処理し、設定された GUI を開く。
+     * NPC の右クリックを処理する。
+     * <p>
+     * メインハンド以外・NPC 以外は即座に処理を抜ける。
+     * {@code shop} が有効なら店舗 GUI、{@code interact} が有効なら汎用アクションを実行し、
+     * どちらもなければ何もしない。
      */
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
-        EquipmentSlot hand = event.getHand();
-        // 右クリック（メインハンド / オフハンド）のみ反応する。
-        if (hand != EquipmentSlot.HAND && hand != EquipmentSlot.OFF_HAND) {
+    public void onNpcInteract(PlayerInteractEntityEvent event) {
+        // メインハンドの右クリック以外は無視する（オフハンドの重複イベントも除外）。
+        if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
 
         NpcManager npcManager = plugin.getNpcManager();
+        if (npcManager == null) {
+            return;
+        }
+
         Entity clicked = event.getRightClicked();
-        if (npcManager == null || !npcManager.isNpc(clicked)) {
+        NpcData data = npcManager.getNpcData(clicked);
+        if (data == null) {
             return;
         }
 
         // 村人取引などのバニラ操作を抑止する。
         event.setCancelled(true);
 
-        Player player = event.getPlayer();
-        if (isDuplicateClick(player)) {
-            return;
-        }
-
-        NpcData data = npcManager.findNpc(clicked).orElse(null);
-        if (data == null || !data.hasInteractGui()) {
+        if (!data.hasShop() && !data.hasInteract()) {
             return;
         }
 
@@ -78,36 +63,44 @@ public class NpcInteractListener implements Listener {
         if (menuService == null) {
             return;
         }
-        menuService.openGui(player, data.interactGui());
-    }
 
-    /**
-     * プレイヤーの退出時にクリック時刻を破棄する。
-     */
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        if (event.getPlayer() != null) {
-            lastClickAt.remove(event.getPlayer().getUniqueId());
+        Player player = event.getPlayer();
+        if (data.hasShop()) {
+            menuService.openNpcShop(player, data);
+            return;
         }
+        handleInteract(player, data, menuService);
     }
 
     /**
-     * 直前のクリックから {@link #CLICK_COOLDOWN_MILLIS} 未満かを判定する。
+     * {@code interact} セクションの設定に応じて汎用アクションを実行する。
      * <p>
-     * 判定と時刻更新は {@link ConcurrentHashMap#compute} でアトミックに行う。
+     * {@code gui} は GUI を開き、{@code command} はコンソールから実行する
+     * （{@code {player}} はプレイヤー名に置換）。{@code none} は何もしない。
      */
-    private boolean isDuplicateClick(Player player) {
-        long now = System.currentTimeMillis();
-        boolean[] duplicate = {false};
-
-        lastClickAt.compute(player.getUniqueId(), (uuid, last) -> {
-            if (last != null && now - last < CLICK_COOLDOWN_MILLIS) {
-                duplicate[0] = true;
-                return last;
+    private void handleInteract(Player player, NpcData data, MenuService menuService) {
+        switch (data.interactType()) {
+            case NpcData.INTERACT_TYPE_GUI -> {
+                if (!menuService.openGui(player, data.interactGuiId())) {
+                    plugin.getLogger().warning("interact.gui-id の GUI を開けません: "
+                            + data.interactGuiId() + " (npc=" + data.id() + ")");
+                }
             }
-            return now;
-        });
-
-        return duplicate[0];
+            case NpcData.INTERACT_TYPE_COMMAND -> {
+                for (String command : data.interactCommands()) {
+                    String resolved = command.replace(NpcData.PLAYER_PLACEHOLDER, player.getName());
+                    if (resolved.startsWith("/")) {
+                        resolved = resolved.substring(1);
+                    }
+                    if (!Bukkit.dispatchCommand(Bukkit.getConsoleSender(), resolved)) {
+                        plugin.getLogger().warning("interact.commands の実行に失敗しました: "
+                                + resolved + " (npc=" + data.id() + ")");
+                    }
+                }
+            }
+            default -> {
+                // none: 何もしない
+            }
+        }
     }
 }

@@ -14,7 +14,7 @@ import org.bukkit.inventory.InventoryView;
  * <p>
  * 販売屋 GUI の表示中は、商品枠・装飾枠・ボタン枠へのクリック、シフトクリック・ドラッグ、
  * プレイヤーインベントリ側の物理アイテム操作をすべて拒否する。
- * 商品枠をクリックした場合は、購入対象の選択だけを GUI 内で行う。
+ * 商品枠をクリックした場合は、選択中の数量で即時購入する。
  */
 public class ShopSellListener implements Listener {
 

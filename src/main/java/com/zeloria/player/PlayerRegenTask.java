@@ -62,10 +62,8 @@ public class PlayerRegenTask extends BukkitRunnable {
             // ゲージが変動しないよう、3 秒ごとに最大値で固定する。
             player.setSaturation(20.0f);
             player.setExhaustion(0.0f);
-            if (regenerate(data.getStats())) {
-                // 満腹度（MP バー）・レベル／経験値表示を最新値へ追従させる。
-                statsService.syncVanillaStats(player, data);
-            }
+            // HP / MP の変更は PlayerStats の変更通知がバニラ表示へ即時反映する。
+            regenerate(data.getStats());
         }
     }
 

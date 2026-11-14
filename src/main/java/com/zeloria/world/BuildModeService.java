@@ -3,6 +3,7 @@ package com.zeloria.world;
 import com.zeloria.combat.CombatModeService;
 import com.zeloria.core.Zeloria;
 import com.zeloria.item.VirtualInventoryService;
+import com.zeloria.player.PlayerStatusDisplayTask;
 import org.bukkit.entity.Player;
 
 import java.util.Map;
@@ -93,6 +94,8 @@ public final class BuildModeService {
         }
 
         activeModes.put(player.getUniqueId(), Boolean.TRUE);
+        // ビルドモード中は頭上 HP / MP バーを非表示にする。
+        refreshStatusDisplay(player);
     }
 
     /**
@@ -114,6 +117,20 @@ public final class BuildModeService {
         }
 
         activeModes.remove(player.getUniqueId());
+        // ビルドモード解除後は頭上 HP / MP バーを再表示する。
+        refreshStatusDisplay(player);
+    }
+
+    /**
+     * 頭上 HP / MP バーの表示状態を現在のビルドモードに合わせて更新する。
+     *
+     * @param player 対象プレイヤー
+     */
+    private void refreshStatusDisplay(Player player) {
+        PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+        if (statusDisplayTask != null) {
+            statusDisplayTask.refresh(player);
+        }
     }
 
     /**

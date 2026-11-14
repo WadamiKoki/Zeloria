@@ -49,6 +49,12 @@ npcs:
     z: 0.5
     yaw: 90.0
     pitch: 0.0
+  - npcId: blacksmith
+    x: 12.5
+    y: 65.0
+    z: 0.5
+    yaw: 90.0
+    pitch: 0.0
 
 # 中心街にはモブを湧かせないため spawners は空。
 # 必要になった場合は Field1.yml と同じ形式で以下を有効化する。

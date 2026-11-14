@@ -91,6 +91,9 @@ public final class PlayerStatsService {
         if (player == null || data == null) {
             return;
         }
+        // HP / MP が変更されたらバニラの体力バー・満腹度（MP バー）へ即時同期する。
+        registerVitalsChangeListener(player, data);
+
         // refreshClassStats が基礎値の再計算とツリー効果の再適用まで行う。
         refreshClassStats(data);
 
@@ -366,6 +369,65 @@ public final class PlayerStatsService {
             plugin.getServer().getScheduler().runTask(plugin, task);
         } else {
             task.run();
+        }
+    }
+
+    /**
+     * 現在 HP / MP の変更をバニラ表示へ即時反映するリスナーを登録する。
+     * <p>
+     * 退出後に古いプレイヤー参照を掴まないよう、通知時点の UUID から
+     * オンラインプレイヤーを引き直す。実際の同期は
+     * {@link PlayerStatusDisplayTask#refreshFromVitals(Player)} に委譲する。
+     *
+     * @param player 対象プレイヤー
+     * @param data   対象のプレイヤーデータ
+     */
+    private void registerVitalsChangeListener(Player player, PlayerData data) {
+        UUID playerId = player.getUniqueId();
+        // setVitalsChangeListener は既存のリスナーを上書きするため、
+        // apply が複数回呼ばれてもリスナーが重複登録されることはない。
+        data.getStats().setVitalsChangeListener(() -> {
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            Player online = plugin.getServer().getPlayer(playerId);
+            if (online == null || !online.isOnline()) {
+                return;
+            }
+            PlayerStatusDisplayTask statusDisplayTask = plugin.getPlayerStatusDisplayTask();
+            if (statusDisplayTask != null) {
+                statusDisplayTask.refreshFromVitals(online);
+            }
+        });
+    }
+
+    /**
+     * プレイヤーの現在 HP / MP 変更リスナーを解除する。
+     * <p>
+     * 退出時に呼び出し、{@link PlayerStats} からプレイヤー由来の処理への
+     * 参照を確実に破棄する。
+     *
+     * @param player 退出するプレイヤー
+     */
+    public void unregisterVitalsChangeListener(Player player) {
+        if (player == null) {
+            return;
+        }
+        unregisterVitalsChangeListener(player.getUniqueId());
+    }
+
+    /**
+     * 指定 UUID の現在 HP / MP 変更リスナーを解除する。
+     *
+     * @param playerId 対象プレイヤーの UUID
+     */
+    public void unregisterVitalsChangeListener(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        PlayerData data = PlayerData.getCached(playerId);
+        if (data != null && data.getStats() != null) {
+            data.getStats().clearVitalsChangeListener();
         }
     }
 

@@ -84,7 +84,7 @@ public final class NpcManager {
 
             NpcData data;
             try {
-                data = NpcData.fromConfig(key, config);
+                data = NpcData.fromConfig(key, config, plugin.getLogger()::warning);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning(
                         "EntityData/npc の解析に失敗しました: " + key + " (" + e.getMessage() + ")");
@@ -262,6 +262,18 @@ public final class NpcManager {
         String npcId = entity.getPersistentDataContainer()
                 .get(npcIdKey, PersistentDataType.STRING);
         return find(npcId);
+    }
+
+    /**
+     * エンティティに紐づく NPC 定義を取得する（未登録・NPC でない場合は {@code null}）。
+     * <p>
+     * PDC を 1 回だけ参照するため、クリック処理の早期リターン用に使用する。
+     *
+     * @param entity 対象エンティティ
+     * @return NPC 定義。NPC でない場合は {@code null}
+     */
+    public NpcData getNpcData(Entity entity) {
+        return findNpc(entity).orElse(null);
     }
 
     /**

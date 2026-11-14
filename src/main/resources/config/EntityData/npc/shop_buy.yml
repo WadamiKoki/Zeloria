@@ -2,7 +2,11 @@ id: "shop_buy"
 name: "<gold>買取屋</gold>"
 mobType: "VILLAGER"
 alwaysShowName: true
-interactGui: "shop_buy"
+
+# 買取屋（アイテム売却）。GUI レイアウトは GuiData/shop_buy.yml を使用する。
+# 買取屋では商品リスト（shop.items）は不要。
+shop:
+  template: "buy"
 
 equipment:
   mainHand: "AIR"

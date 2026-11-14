@@ -17,7 +17,7 @@ import java.util.Set;
  * {@code config/GuiData/*.yml} の汎用定義から生成する読み取り専用 GUI。
  * <p>
  * {@code rows} / {@code items} を持つシンプルな YAML をそのまま表示する。
- * NPC の {@code interactGui} など、コードを持たない GUI を開くために使用する。
+ * NPC の {@code interact}（{@code type=gui}）など、コードを持たない GUI を開くために使用する。
  * <pre>
  * id: "guide_menu"
  * gui:

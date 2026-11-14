@@ -1,8 +1,0 @@
-# 武器販売屋の商品リスト。
-items:
-  - item-id: "iron_sword"
-    price: 500
-    slot: 10
-  - item-id: "steel_sword"
-    price: 1200
-    slot: 11

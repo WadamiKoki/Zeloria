@@ -11,10 +11,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * 店舗 GUI（買取屋・販売屋）の設定を読み込むサービス。
@@ -23,8 +21,10 @@ import java.util.Optional;
  * <ul>
  *     <li>{@code GuiData/shop_buy.yml}: 買取屋 GUI のボタン・効果音</li>
  *     <li>{@code GuiData/shop_sell.yml}: 販売屋 GUI の商品枠・ボタン・効果音</li>
- *     <li>{@code ShopData/*.yml}: 店舗ごとの商品リスト</li>
  * </ul>
+ * 商品リストは NPC の定義ファイル（{@code EntityData/npc/*.yml}）の {@code shop.items} に
+ * 直接記述する。{@code slot} を省略した商品は {@link #buildNpcShop(String, List)} が
+ * 商品エリアのスロットへ記述順に割り当てる。
  * {@code /admin reload} から {@link #reload()} を呼ぶと最新の設定を反映できる。
  */
 public final class ShopConfigService {
@@ -34,9 +34,6 @@ public final class ShopConfigService {
 
     /** 販売屋 GUI 設定のキャッシュキー。 */
     public static final String SHOP_SELL_KEY = "GuiData/shop_sell.yml";
-
-    /** 店舗データを配置するディレクトリ。 */
-    private static final String SHOP_DATA_DIR = "ShopData";
 
     /** 装飾枠の既定スロット。 */
     private static final List<Integer> DEFAULT_FILLER_SLOTS = List.of(
@@ -57,7 +54,6 @@ public final class ShopConfigService {
 
     private volatile ShopGuiSettings buyGui;
     private volatile ShopGuiSettings sellGui;
-    private volatile Map<String, ShopDefinition> shops = Map.of();
 
     public ShopConfigService(Zeloria plugin, YamlLoader yamlLoader, ConfigCache cache) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -78,7 +74,6 @@ public final class ShopConfigService {
                 Material.WHITE_STAINED_GLASS_PANE,
                 DEFAULT_FILLER_SLOTS,
                 DEFAULT_PRODUCT_SLOTS,
-                "",
                 Map.of(),
                 Map.of());
 
@@ -89,7 +84,6 @@ public final class ShopConfigService {
                 Material.WHITE_STAINED_GLASS_PANE,
                 DEFAULT_FILLER_SLOTS,
                 DEFAULT_PRODUCT_SLOTS,
-                "weapon_shop",
                 Map.of(),
                 Map.of());
 
@@ -106,11 +100,10 @@ public final class ShopConfigService {
 
         this.buyGui = parseGui(buyConfig, SHOP_BUY_KEY, cache, buyFallback);
         this.sellGui = parseGui(sellConfig, SHOP_SELL_KEY, cache, sellFallback);
-        this.shops = loadShops();
 
-        plugin.getLogger().info("店舗設定を読み込みました (ShopData: " + uniqueShopCount()
-                + " 件, 販売ボタン: " + sellGui.buttons().size()
-                + ", 買取ボタン: " + buyGui.buttons().size() + ")。");
+        plugin.getLogger().info("店舗 GUI 設定を読み込みました (販売ボタン: "
+                + sellGui.buttons().size() + ", 買取ボタン: "
+                + buyGui.buttons().size() + ")。");
     }
 
     /**
@@ -128,20 +121,63 @@ public final class ShopConfigService {
     }
 
     /**
-     * 店舗 ID（またはファイル名）から店舗定義を取得する。
+     * NPC の YAML に記述された商品リストから店舗定義を生成する。
+     * <p>
+     * 商品は {@code GuiData/shop_sell.yml} の {@code product_slots}
+     * （既定: 10〜16, 19〜25, 28〜34, 37〜43）へ、リストの順番で自動配置する。
+     * {@code slot} の指定は不要で、記述された {@code slot} は使用しない。
+     * 商品枠を超えた分は警告を出して無視する。
+     *
+     * @param npcId NPC ID（店舗定義の識別子）
+     * @param items NPC の {@code shop.items}
+     * @return スロットを割り当てた店舗定義
      */
-    public Optional<ShopDefinition> findShop(String id) {
-        if (id == null || id.isBlank()) {
-            return Optional.empty();
+    public ShopDefinition buildNpcShop(String npcId, List<ShopItemConfig> items) {
+        String id = npcId == null ? "" : npcId.trim();
+        List<ShopItemConfig> assigned = new ArrayList<>();
+        List<Integer> slots = sellGui.productSlots();
+        int cursor = 0;
+
+        if (items != null) {
+            for (ShopItemConfig item : items) {
+                if (item == null || !item.isValid()) {
+                    plugin.getLogger().warning(
+                            "NPC の商品設定が不正です: " + id + " (item-id="
+                                    + (item == null ? "" : item.itemId()) + ", price="
+                                    + (item == null ? 0L : item.price()) + ")");
+                    continue;
+                }
+
+                int slot = ShopItemConfig.AUTO_SLOT;
+                while (cursor < slots.size()) {
+                    int candidate = slots.get(cursor++);
+                    if (!isButtonSlot(candidate)) {
+                        slot = candidate;
+                        break;
+                    }
+                }
+                if (slot < 0) {
+                    plugin.getLogger().warning(
+                            "商品枠 (" + slots.size() + " 枠) を超えるため無視します: "
+                                    + id + " / " + item.itemId());
+                    break;
+                }
+                assigned.add(item.withSlot(slot));
+            }
         }
-        return Optional.ofNullable(shops.get(id.trim().toLowerCase(Locale.ROOT)));
+        return new ShopDefinition(id, assigned);
     }
 
     /**
-     * 読み込み済みの店舗定義を取得する（不変ビュー）。
+     * 販売屋 GUI のボタンが配置されているスロットか判定する。
      */
-    public Map<String, ShopDefinition> shops() {
-        return shops;
+    private boolean isButtonSlot(int slot) {
+        for (ShopGuiSettings.ButtonConfig button : sellGui.buttons().values()) {
+            if (button.slot() == slot) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -181,62 +217,14 @@ public final class ShopConfigService {
         List<Integer> productSlots = readSlots(
                 config, "product_slots", rows * 9, fallback.productSlots());
 
-        String shopId = text(config.getString("shop"));
-        if (shopId.isBlank()) {
-            shopId = text(config.getString("shop-id"));
-        }
-        if (shopId.isBlank()) {
-            shopId = text(config.getString("shop_id"));
-        }
-        if (shopId.isBlank()) {
-            shopId = fallback.shopId();
-        }
-
         Map<String, GuiSound> sounds = readSounds(
                 config.getConfigurationSection("sounds"), sourceKey, cache);
         Map<String, ShopGuiSettings.ButtonConfig> buttons = readButtons(
                 config, rows * 9, cache, sounds);
 
         return new ShopGuiSettings(sourceKey, title, rows, fillerMaterial,
-                fillerSlots, productSlots, shopId, buttons, sounds);
+                fillerSlots, productSlots, buttons, sounds);
     }
-
-    /**
-     * {@code ShopData/*.yml} を読み込み、店舗 ID・ファイル名の両方で引けるようにする。
-     */
-    private Map<String, ShopDefinition> loadShops() {
-        Map<String, ShopDefinition> result = new LinkedHashMap<>();
-        for (String key : yamlLoader.getKeysUnder(SHOP_DATA_DIR)) {
-            FileConfiguration config = yamlLoader.getConfig(key);
-            if (config == null) {
-                continue;
-            }
-
-            List<ShopItemConfig> items = new ArrayList<>();
-            for (Map<?, ?> raw : config.getMapList("items")) {
-                ShopItemConfig item = ShopItemConfig.fromMap(raw);
-                if (item.isValid()) {
-                    items.add(item);
-                } else {
-                    plugin.getLogger().warning(
-                            "ShopData の商品設定が不正です: " + key + " (item-id="
-                                    + item.itemId() + ", price=" + item.price()
-                                    + ", slot=" + item.slot() + ")");
-                }
-            }
-
-            String fileName = fileNameOf(key);
-            String id = text(config.getString("id"));
-            if (id.isBlank()) {
-                id = fileName;
-            }
-            ShopDefinition definition = new ShopDefinition(id, items);
-            result.put(id.toLowerCase(Locale.ROOT), definition);
-            result.put(fileName.toLowerCase(Locale.ROOT), definition);
-        }
-        return Map.copyOf(new LinkedHashMap<>(result));
-    }
-
 
     private static Map<String, ShopGuiSettings.ButtonConfig> readButtons(
             FileConfiguration config, int size, ConfigCache cache,
@@ -348,19 +336,8 @@ public final class ShopConfigService {
         return -1;
     }
 
-    private static String fileNameOf(String key) {
-        int slash = key.lastIndexOf('/');
-        String fileName = slash >= 0 ? key.substring(slash + 1) : key;
-        int dot = fileName.lastIndexOf('.');
-        return dot >= 0 ? fileName.substring(0, dot) : fileName;
-    }
-
     private static String text(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private int uniqueShopCount() {
-        return (int) shops.values().stream().map(ShopDefinition::id).distinct().count();
     }
 }
 

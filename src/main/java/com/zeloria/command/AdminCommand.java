@@ -808,9 +808,22 @@ public class AdminCommand implements CommandExecutor, TabCompleter {
             send(sender, message("npc.list.entry",
                     Map.of("npc_id", data.id(),
                             "entity_type", data.spawnableMobType().getKey().toString(),
-                            "gui", data.hasInteractGui() ? data.interactGui() : "-"),
-                    "<gray>- <white>{npc_id}</white> <dark_gray>({entity_type}, GUI: {gui})</dark_gray></gray>"));
+                            "action", npcAction(data)),
+                    "<gray>- <white>{npc_id}</white> <dark_gray>({entity_type}, {action})</dark_gray></gray>"));
         }
+    }
+
+    /**
+     * NPC のクリック動作を一覧表示用の文字列へ変換する。
+     */
+    private static String npcAction(NpcData data) {
+        if (data.hasShop()) {
+            return "shop:" + data.shopTemplate();
+        }
+        if (data.hasInteract()) {
+            return "interact:" + data.interactType();
+        }
+        return "-";
     }
 
     /**
