@@ -1,0 +1,11 @@
+# レベル・経験値設定
+# 必要経験値は Wynncraft 方式の二次関数で算出します。
+#   次レベルまで : base_exp * (2 * level - 1)
+#   累計経験値   : base_exp * (level - 1)^2
+base_exp: 1200
+
+# 到達可能な最大レベル。
+max_level: 100
+
+# クラスレベルが 1 上がるごとに付与するクラスツリーポイント。
+tree_points_per_level: 1
