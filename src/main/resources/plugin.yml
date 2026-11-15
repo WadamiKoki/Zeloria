@@ -1,0 +1,5 @@
+name: Zeloria
+version: "${version}"
+main: com.zeloria.Zeloria
+api-version: "26.3"
+description: "Zeloria - Phase 1 base implementation"
