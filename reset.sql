@@ -1,66 +1,38 @@
 -- ============================================================================
--- Zeloria 開発用データリセット SQL
+-- 開発用データリセット SQL
 -- ----------------------------------------------------------------------------
 -- このファイルは「開発環境でプレイヤーデータを初期化する」ためのものです。
 -- 本番環境では実行しないでください（players テーブルのデータが全消去されます）。
---
--- 実行方法:
---   mysql -u <user> -p <database> < reset.sql
---   または MySQL クライアントで USE <database>; してから source reset.sql;
---
--- カラム定義は PlayerRepository / DatabaseManager の CREATE TABLE と完全に一致
--- させています。カラムを変更する場合は以下の 3 箇所を同時に更新してください。
---   * src/main/resources/sql/reset.sql
---   * src/main/java/com/zeloria/core/DatabaseManager.java
---   * src/main/java/com/zeloria/player/PlayerRepository.java
+-- 設計方針（シンプルさ優先）:
+--   * 保存するのは「累積でしか得られない素材データ」のみ
+--     （レベル・経験値・所持金・装備の中身＝バニラインベントリ）
+--   * 戦闘ステータス（max_health / attack_power / defense / walk_speed）は
+--     DB に保存しない。combat_level と装備から実行時に計算する（Hypixel 方式）
+--   * 生活（ギャザリング）は農業 / 採掘 / 木こりの 3 種を JSON 内のキーで保持
+--   * レベルと経験値はランキング・レベルアップ判定での参照頻度が高いため別カラム
+--   * 仮想インベントリ・仮想装備は持たない（バニラのインベントリ・装備スロットを使う）
+--   * 装備補正は item パッケージのマッピングから実行時に合算する
 -- ============================================================================
 
 DROP TABLE IF EXISTS players;
 
 CREATE TABLE players (
     uuid CHAR(36) NOT NULL,
-    player_name VARCHAR(64) NOT NULL,
+    player_name VARCHAR(16) NOT NULL,
     money BIGINT NOT NULL DEFAULT 0,
-    current_class_id VARCHAR(64) NULL,
-    unlocked_classes TEXT NULL,
-    -- クラス別レベル / 経験値 / 未使用ツリーポイント / 解放済みツリーノード
-    -- （PlayerSnapshot の class_levels / class_exps / class_tree_points /
-    --   allocated_class_nodes に対応。PlayerRepository では *_json 名で読み書きする）
-    class_levels_json LONGTEXT NULL,
-    class_exps_json LONGTEXT NULL,
-    class_tree_points_json LONGTEXT NULL,
-    allocated_class_nodes_json LONGTEXT NULL,
-    gathering_levels_json LONGTEXT NULL,
-    gathering_exps_json LONGTEXT NULL,
-    virtual_equipment_base64 LONGTEXT NULL,
-    virtual_inventory_json LONGTEXT NULL,
-    virtual_equipment_json LONGTEXT NULL,
-    player_settings_json LONGTEXT NULL,
-    admin_bonuses_json LONGTEXT NULL,
-    max_health DOUBLE NULL,
-    current_health DOUBLE NULL,
-    max_mana DOUBLE NULL,
-    current_mana DOUBLE NULL,
-    attack_power DOUBLE NULL,
-    defense1 DOUBLE NULL,
-    defense2 DOUBLE NULL,
-    critical_rate DOUBLE NULL,
-    critical_damage DOUBLE NULL DEFAULT 50.0,
-    accuracy DOUBLE NULL,
-    evasion DOUBLE NULL,
-    dodge_cooldown_reduction DOUBLE NULL,
-    cooldown_reduction DOUBLE NULL,
-    walk_speed DOUBLE NULL,
-    health_regen_flat DOUBLE NULL,
-    health_regen_percent DOUBLE NULL,
-    mana_regen_flat DOUBLE NULL,
-    mana_regen_percent DOUBLE NULL,
-    armor_penetration DOUBLE NULL,
-    lifesteal DOUBLE NULL,
-    cooldown_end_at TEXT NULL,
-    last_instance VARCHAR(128) NULL,
-    last_login TIMESTAMP NULL,
-    last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+    -- 生活（ギャザリング）: 3 種を JSON 内のキーで格納
+    --   gathering_levels_json: {"farming": 1, "mining": 1, "woodcutting": 1}
+    --   gathering_exps_json:   {"farming": 0, "mining": 0, "woodcutting": 0}
+    gathering_levels_json JSON NULL,
+    gathering_exps_json JSON NULL,
+
+    -- 戦闘（レベルと経験値のみ。ステータスは保存しない）
+    combat_level INT NOT NULL DEFAULT 1,
+    combat_exp BIGINT NOT NULL DEFAULT 0,
+
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
+
     PRIMARY KEY (uuid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

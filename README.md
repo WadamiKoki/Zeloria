@@ -18,4 +18,4 @@ Paper 26.3 / Java 25 向けのRPGプラグイン。
 - 既存DBへのカラム追加: src/main/resources/sql/migrate_*.sql を流す
 
 ## スキーマ変更時
-reset.sql / DatabaseManager / PlayerRepository の3箇所を同時に更新する。
+reset.sql を同時に更新する。
