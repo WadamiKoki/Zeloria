@@ -1,8 +1,0 @@
-id: "mining_test_pickaxe"
-name: "<white>テスト用ツルハシ"
-material: WOODEN_PICKAXE
-lore:
-  - "<gray>採掘用ツールのテスト定義。"
-gatheringType: MINING
-requiredLevel: 1
-sell_price: 10
